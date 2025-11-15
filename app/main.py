@@ -127,7 +127,7 @@ async def upload_video(
         for lang, segs in translations.items():
             dub_audio_path = video_dir / f"dub_{lang}.mp3"
             try:
-                generate_dub_audio(segs, lang, dub_audio_path)
+                await generate_dub_audio(segs, lang, dub_audio_path)
                 dub_video_path = video_dir / f"video_dub_{lang}.mp4"
                 replace_video_audio(video_path, dub_audio_path, dub_video_path)
             except NotImplementedError:
