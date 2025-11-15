@@ -100,6 +100,30 @@ def _get_audio_duration(audio_path: Path) -> float:
     except ValueError:
         return 0.0
 
+def _select_chunk_duration(
+    file_size_bytes: int,
+    duration_seconds: float,
+    max_bytes: int,
+    default_seconds: int = 600,
+) -> int:
+    """Pick a chunk length that keeps each piece below Whisper's upload cap."""
+
+    if (
+        file_size_bytes <= 0
+        or duration_seconds <= 0
+        or max_bytes <= 0
+    ):
+        return max(1, default_seconds)
+
+    if default_seconds <= 0:
+        default_seconds = 600
+
+    bytes_per_second = file_size_bytes / duration_seconds
+    if bytes_per_second <= 0:
+        return default_seconds
+
+    chunk_seconds = int(max_bytes / bytes_per_second)
+    return max(1, chunk_seconds)
 
 
 def transcribe_audio_whisper(audio_path: Path) -> Dict:
@@ -110,11 +134,25 @@ def transcribe_audio_whisper(audio_path: Path) -> Dict:
 
     if audio_path.stat().st_size <= max_bytes:
         return _transcribe_whisper_file(client, audio_path)
+    try:
+        audio_duration = _get_audio_duration(audio_path)
+    except RuntimeError as exc:
+        logger.warning("Could not determine audio duration for chunking: %s", exc)
+        audio_duration = 0.0
+
+    segment_seconds = _select_chunk_duration(
+        audio_path.stat().st_size,
+        audio_duration,
+        max_bytes,
+        default_seconds=600,
+    )
+
 
     logger.info(
-        "Audio file %s is larger than %d MB, splitting before Whisper processing",
+        "Audio file %s is larger than %d MB, splitting into %d second chunks before Whisper processing",
         audio_path,
         max_bytes // (1024 * 1024),
+        segment_seconds,
     )
 
     combined_segments = []
@@ -133,7 +171,7 @@ def transcribe_audio_whisper(audio_path: Path) -> Dict:
                     "-y",
                     "-i",
                     str(audio_path),
-                     "-acodec",
+                    "-acodec",
                     "pcm_s16le",
                     "-ar",
                     "16000",
@@ -144,7 +182,7 @@ def transcribe_audio_whisper(audio_path: Path) -> Dict:
                     "-f",
                     "segment",
                     "-segment_time",
-                    "600",  # 15 minuten per segment
+                    str(segment_seconds),
                     str(chunk_pattern),
                 ],
                 check=True,
