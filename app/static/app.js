@@ -21,13 +21,24 @@ function createDownloadLink(text, href, downloadName) {
 }
 
 async function fetchVideos() {
-    const res = await fetch("/api/videos");
-    const videos = await res.json();
     const container = document.getElementById("video-list");
     container.innerHTML = "";
+    let videos = [];
+    try {
+        const res = await fetch("/api/videos");
+        if (!res.ok) {
+            throw new Error(`Request failed with status ${res.status}`);
+        }
+        videos = await res.json();
+    } catch (error) {
+        console.error("Failed to load processed videos", error);
+        container.textContent = "Unable to load the processed videos right now.";
+        return;
+    }
 
-    if (videos.length === 0) {
-        container.textContent = " videos have been processed yet";
+    if (!Array.isArray(videos) || videos.length === 0) {
+        container.textContent = "No videos have been processed yet.";
+
         return;
     }
 
