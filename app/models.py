@@ -21,3 +21,4 @@ class VideoListItem(BaseModel):
     filename: str
     available_subtitles: List[str]
     available_dubs: List[str]
+    available_audio: List[str]
