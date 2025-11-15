@@ -19,3 +19,15 @@ python -m venv .venv
 source .venv/bin/activate  # op Windows: .venv\Scripts\activate
 
 pip install -r requirements.txt
+
+
+## Starten
+
+```bash
+uvicorn app.main:app --host 0.0.0.0 --port 8000
+```
+
+Voor omgevingen die [Cloud Native Buildpacks](https://buildpacks.io/) gebruiken (zoals
+Azure App Service of Azure Container Apps met source-based deployment) is een
+`Procfile` toegevoegd. Dit zorgt ervoor dat het platform de applicatie kan
+starten met het juiste commando.
