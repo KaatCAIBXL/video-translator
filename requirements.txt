@@ -7,3 +7,5 @@ requests
 openai
 python-dotenv
 ffmpeg-python
+edge-tts
+
