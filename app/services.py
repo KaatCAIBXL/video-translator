@@ -103,12 +103,7 @@ def _get_audio_duration(audio_path: Path) -> float:
 
 
 def transcribe_audio_whisper(audio_path: Path) -> Dict:
-    """
-    Gebruik OpenAI Whisper (whisper-1) om audio te transcriberen.
-    Bij bestanden groter dan ~25 MB splitten we het audio-bestand automatisch
-    in deelbestanden zodat de Whisper API het kan verwerken. De resulterende
-    segmenten worden daarna weer samengevoegd met gecorrigeerde tijdstempels.
-    """
+     """Transcribe audio with Whisper, chunking long files transparently."""
     
     client = get_openai_client()
     max_bytes = 24 * 1024 * 1024  # iets onder de 25 MB limiet van Whisper
@@ -117,7 +112,7 @@ def transcribe_audio_whisper(audio_path: Path) -> Dict:
         return _transcribe_whisper_file(client, audio_path)
 
     logger.info(
-        "Audio-bestand %s is groter dan %d MB, starten met opsplitsen voor Whisper",
+        "Audio file %s is larger than %d MB, splitting before Whisper processing",
         audio_path,
         max_bytes // (1024 * 1024),
     )
@@ -149,16 +144,15 @@ def transcribe_audio_whisper(audio_path: Path) -> Dict:
                 check=True,
             )
         except subprocess.CalledProcessError as exc:
-            raise RuntimeError(
-                "Opsplitsen van audio voor Whisper is mislukt"
-            ) from exc
+            raise RuntimeError("Splitting audio before Whisper processing failed") from exc
 
         chunk_paths = sorted(chunk_dir.glob("chunk_*.wav"))
         if not chunk_paths:
             raise RuntimeError(
-                "Opsplitsen van audio voor Whisper is mislukt: geen segmenten gevonden"
+                "Splitting audio before Whisper processing failed: no chunks were produced"
             )
-    for chunk_path in chunk_paths:
+
+        for chunk_path in chunk_paths:
             chunk_result = _transcribe_whisper_file(client, chunk_path)
 
             if detected_language is None:
@@ -246,18 +240,14 @@ def translate_text_deepl(text: str, target_lang: str) -> str:
         )
         resp.raise_for_status()
     except requests.RequestException as exc:
-        raise RuntimeError(f"DeepL-vertaling voor {target_lang} mislukt: {exc}") from exc
+        raise RuntimeError(f"DeepL translation for {target_lang} failed: {exc}") from exc
 
     data = resp.json()
     return data["translations"][0]["text"]
 
 
 def translate_text_ai(text: str, target_lang: str) -> str:
-    """
-    Gebruik OpenAI om te vertalen naar talen die DeepL niet ondersteunt
-    (bv. Lingala / Tshiluba).
-    target_lang: 'ln' of 'lu' of iets dergelijks.
-    """
+    """Use OpenAI to translate into languages that DeepL does not support."""
     lang_name = {
         "ln": "Lingala",
         "lu": "Tshiluba",
@@ -273,7 +263,7 @@ def translate_text_ai(text: str, target_lang: str) -> str:
             input=text,
         )
     except Exception as exc:
-        raise RuntimeError(f"AI-vertaling voor {lang_name} mislukt: {exc}") from exc
+        raise RuntimeError(f"AI translation for {lang_name} failed: {exc}") from exc
 
     return response.output_text
 
@@ -281,12 +271,7 @@ def translate_text_ai(text: str, target_lang: str) -> str:
 def translate_segments(
     sentence_pairs: List[Segment], target_langs: List[str]
 ) -> Tuple[Dict[str, List[TranslationSegment]], List[str]]:
-    """
-    Vertaal alle segmenten naar alle geselecteerde talen.
-    max 2 talen volgens jouw wens.
-    
-    Retourneert een tuple met (geslaagde vertalingen, waarschuwingen).
-    """
+    """Translate all segments into each requested target language."""
     result: Dict[str, List[TranslationSegment]] = {}
     warnings: List[str] = []
 
@@ -329,9 +314,7 @@ def translate_segments(
 # ---------- VTT ondertitels ----------
 
 def _format_timestamp(seconds: float) -> str:
-    """
-    VTT tijdformaat: HH:MM:SS.mmm
-    """
+     """Return a timestamp in VTT format (HH:MM:SS.mmm)."""
     ms = int((seconds - int(seconds)) * 1000)
     s = int(seconds)
     h = s // 3600
@@ -393,18 +376,13 @@ def _phonetic_for_lingala_tshiluba(text: str, lang: str) -> str:
         )
     except Exception as exc:
         raise RuntimeError(
-            f"Fonettische omzetting voor {lang_name} mislukt: {exc}"
+            f"Phonetic conversion for {lang_name} failed: {exc}"
         ) from exc
     return response.output_text
 
 
 async def tts_for_language(text: str, lang: str) -> bytes:
-    """
-    Centrale TTS-functie:
-    - es, en, nl, pt, fi  → edge-tts met passende stem
-    - ln (Lingala), lu (Tshiluba) → eerst fonetisch maken, dan edge-tts
-    Geeft mp3/wav-audio terug als bytes.
-    """
+    """Generate TTS audio for the requested language."""
 
     # 1. stem per taal
     voice_map = {
@@ -441,11 +419,7 @@ async def tts_for_language(text: str, lang: str) -> bytes:
 async def generate_dub_audio(
     translated_segments: List[TranslationSegment], lang: str, dub_audio_path: Path
 ):
-    """
-    Heel simpele versie: concat alle TTS-audio stukjes achter elkaar.
-    In praktijk kun je per segment TTS doen en dan met ffmpeg concat.
-    Hier doen we het (voor demo) als één grote TTS-call op volledig script.
-    """
+    """Generate a single TTS track for all translated segments."""
     full_text = " ".join(seg.text for seg in translated_segments)
     audio_bytes = await tts_for_language(full_text, lang)
 
