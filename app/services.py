@@ -133,12 +133,18 @@ def transcribe_audio_whisper(audio_path: Path) -> Dict:
                     "-y",
                     "-i",
                     str(audio_path),
+                     "-acodec",
+                    "pcm_s16le",
+                    "-ar",
+                    "16000",
+                    "-ac",
+                    "1",
+                    # Door opnieuw te encoderen naar 16 kHz mono PCM houden we de
+                    # chunks gegarandeerd onder de 25 MB limiet van Whisper.
                     "-f",
                     "segment",
                     "-segment_time",
                     "600",  # 15 minuten per segment
-                    "-c",
-                    "copy",
                     str(chunk_pattern),
                 ],
                 check=True,
