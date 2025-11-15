@@ -21,3 +21,47 @@ button {
     margin-right: 10px;
     margin-top: 5px;
 }
+#video-container {
+    position: relative;
+    display: inline-block;
+}
+
+#subtitle-overlay {
+    position: absolute;
+    left: 50%;
+    bottom: 12%;
+    transform: translateX(-50%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    max-width: 90%;
+    text-align: center;
+    pointer-events: none;
+}
+
+#subtitle-overlay.hidden {
+    display: none;
+}
+
+.subtitle-line {
+    background: rgba(0, 0, 0, 0.75);
+    color: #fff;
+    padding: 6px 10px;
+    border-radius: 6px;
+    font-size: 18px;
+    line-height: 1.4;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+}
+
+.subtitle-lang {
+    display: block;
+    font-size: 12px;
+    text-transform: uppercase;
+    color: #ffd24c;
+    margin-bottom: 2px;
+}
+
+.dub-buttons {
+    margin-top: 8px;
+}
