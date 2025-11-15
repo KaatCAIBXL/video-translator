@@ -1,0 +1,23 @@
+body {
+    font-family: sans-serif;
+    margin: 20px;
+}
+
+h1 {
+    margin-bottom: 10px;
+}
+
+section {
+    margin-bottom: 30px;
+}
+
+.video-item {
+    border: 1px solid #ccc;
+    padding: 10px;
+    margin-bottom: 10px;
+}
+
+button {
+    margin-right: 10px;
+    margin-top: 5px;
+}
