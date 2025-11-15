@@ -118,7 +118,7 @@ async def upload_video(
         sentence_pairs = build_sentence_pairs(whisper_result)
 
         # 4. vertalingen
-       translations, translation_warnings = translate_segments(
+        translations, translation_warnings = translate_segments(
             sentence_pairs, languages
         )
         warnings.extend(translation_warnings)
