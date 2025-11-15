@@ -180,14 +180,54 @@ function clearTracks(videoEl) {
 
 let currentSubtitleCleanup = null;
 
+const videoEl = document.getElementById("video-player");
+const videoContainer = document.getElementById("video-container");
+let pendingContainerFullscreen = false;
+
 function clearSubtitleOverlay() {
     const overlay = document.getElementById("subtitle-overlay");
     overlay.innerHTML = "";
     overlay.classList.add("hidden");
 }
 
+function switchToContainerFullscreen() {
+    if (!videoContainer || !videoContainer.requestFullscreen) {
+        pendingContainerFullscreen = false;
+        return;
+    }
+
+    videoContainer
+        .requestFullscreen()
+        .catch(() => {
+            pendingContainerFullscreen = false;
+        })
+        .then(() => {
+            pendingContainerFullscreen = false;
+        });
+}
+
+function handleFullscreenChange() {
+    const fullscreenElement = document.fullscreenElement;
+
+    if (fullscreenElement === videoEl) {
+        if (!document.exitFullscreen) {
+            pendingContainerFullscreen = false;
+            return;
+        }
+
+        pendingContainerFullscreen = true;
+        document.exitFullscreen().catch(() => {
+            pendingContainerFullscreen = false;
+        });
+    } else if (!fullscreenElement && pendingContainerFullscreen) {
+        switchToContainerFullscreen();
+    } else if (fullscreenElement !== videoContainer) {
+        pendingContainerFullscreen = false;
+    }
+}
+
+document.addEventListener("fullscreenchange", handleFullscreenChange);
 async function playVideo(video, options = {}) {
-    const videoEl = document.getElementById("video-player");
     const infoEl = document.getElementById("player-info");
     const overlay = document.getElementById("subtitle-overlay");
 
