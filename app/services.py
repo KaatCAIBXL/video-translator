@@ -226,7 +226,7 @@ def generate_vtt(segments: List[TranslationSegment], out_path: Path):
 
 # ---------- Dubbing (audio vervangen) ----------
 
-async def tts_for_language(text: str, lang: str) -> bytes:
+async def _edge_tts_to_bytes(text: str, voice: str) -> bytes:
     """
     Helper: roept edge-tts aan en geeft audio terug als bytes.
     """
@@ -261,7 +261,7 @@ def _phonetic_for_lingala_tshiluba(text: str, lang: str) -> str:
     return response.output_text
 
 
-def tts_for_language(text: str, lang: str) -> bytes:
+async def tts_for_language(text: str, lang: str) -> bytes:
     """
     Centrale TTS-functie:
     - es, en, nl, pt, fi  → edge-tts met passende stem
