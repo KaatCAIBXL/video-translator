@@ -2,7 +2,7 @@ import json
 import uuid
 import subprocess
 from pathlib import Path
-from typing import List, Dict
+from typing import List, Dict, Optional
 
 import requests
 from openai import OpenAI
@@ -11,10 +11,28 @@ from .config import settings
 from .models import Segment, TranslationSegment, VideoMetadata
 import asyncio
 import edge_tts
-from .config import settings
-from openai import OpenAI
 
-client = OpenAI(api_key=settings.OPENAI_API_KEY)
+_openai_client: Optional[OpenAI] = None
+
+
+def get_openai_client() -> OpenAI:
+    """Return a lazily initialised OpenAI client.
+
+    We keep the instantiation here to avoid creating a client with an empty
+    API key at import time. When the key is missing we raise a RuntimeError so
+    the calling code can surface a friendly error to the user instead of a
+    generic 500 response.
+    """
+
+    global _openai_client
+
+    if not settings.OPENAI_API_KEY:
+        raise RuntimeError("OPENAI_API_KEY ontbreekt in de configuratie")
+
+    if _openai_client is None:
+        _openai_client = OpenAI(api_key=settings.OPENAI_API_KEY)
+
+    return _openai_client
 
 
 
@@ -49,6 +67,8 @@ def transcribe_audio_whisper(audio_path: Path) -> Dict:
     Gebruik OpenAI Whisper (whisper-1) om audio te transcriberen.
     We vragen 'verbose_json' zodat we segmenten met start/eindtijd krijgen.
     """
+    client = get_openai_client()
+
     with open(audio_path, "rb") as f:
         transcription = client.audio.transcriptions.create(
             model="whisper-1",
@@ -133,6 +153,7 @@ def translate_text_ai(text: str, target_lang: str) -> str:
         "ln": "Lingala",
         "lu": "Tshiluba",
     }.get(target_lang, target_lang)
+    client = get_openai_client()
 
     response = client.responses.create(
         model="gpt-4o-mini",
@@ -227,6 +248,7 @@ def _phonetic_for_lingala_tshiluba(text: str, lang: str) -> str:
     een TTS-stem ze verstaanbaar uitspreekt.
     """
     lang_name = "Lingala" if lang == "ln" else "Tshiluba"
+    client = get_openai_client()
 
     response = client.responses.create(
         model="gpt-4o-mini",
