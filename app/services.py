@@ -9,7 +9,6 @@ from openai import OpenAI
 
 from .config import settings
 from .models import Segment, TranslationSegment, VideoMetadata
-import asyncio
 import edge_tts
 
 _openai_client: Optional[OpenAI] = None
@@ -227,7 +226,7 @@ def generate_vtt(segments: List[TranslationSegment], out_path: Path):
 
 # ---------- Dubbing (audio vervangen) ----------
 
-async def _edge_tts_to_bytes(text: str, voice: str) -> bytes:
+async def tts_for_language(text: str, lang: str) -> bytes:
     """
     Helper: roept edge-tts aan en geeft audio terug als bytes.
     """
@@ -295,12 +294,11 @@ def tts_for_language(text: str, lang: str) -> bytes:
         tts_text = text
 
     # 3. edge-tts async helper aanroepen
-    audio_bytes = asyncio.run(_edge_tts_to_bytes(tts_text, voice))
-    return audio_bytes
+    return await _edge_tts_to_bytes(tts_text, voice)
 
 
 
-def generate_dub_audio(
+async def generate_dub_audio(
     translated_segments: List[TranslationSegment], lang: str, dub_audio_path: Path
 ):
     """
@@ -309,7 +307,7 @@ def generate_dub_audio(
     Hier doen we het (voor demo) als één grote TTS-call op volledig script.
     """
     full_text = " ".join(seg.text for seg in translated_segments)
-    audio_bytes = tts_for_language(full_text, lang)
+    audio_bytes = await tts_for_language(full_text, lang)
 
     with open(dub_audio_path, "wb") as f:
         f.write(audio_bytes)
