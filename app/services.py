@@ -136,7 +136,7 @@ def transcribe_audio_whisper(audio_path: Path) -> Dict:
                     "-f",
                     "segment",
                     "-segment_time",
-                    "900",  # 15 minuten per segment
+                    "600",  # 15 minuten per segment
                     "-c",
                     "copy",
                     str(chunk_pattern),
