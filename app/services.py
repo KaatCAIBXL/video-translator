@@ -215,10 +215,10 @@ def translate_segments(
                     language=lang,
                 )
             )
-            if translated_list:
-                result[lang] = translated_list
-    
-        return result, warnings
+        if translated_list:
+            result[lang] = translated_list
+
+    return result, warnings
 
 
 # ---------- VTT ondertitels ----------
