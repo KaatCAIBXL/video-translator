@@ -1,30 +1,30 @@
 <!DOCTYPE html>
-<html lang="nl">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Video Bibliotheek – Vertaling & TTS</title>
+    <title>Video  Translation</title>
     <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-<h1>Video Bibliotheek – Vertaling & TTS</h1>
+<h1>Video Translation & TTS</h1>
 
 <section id="upload">
-    <h2>Nieuwe video uploaden</h2>
+    <h2>Upload a new video</h2>
     <form id="upload-form">
-        <label>Video-bestand:
+        <label>Video file:
             <input type="file" name="file" accept="video/*" required>
         </label>
         <fieldset>
-            <legend>Doeltalen (max. 2)</legend>
-            <label><input type="checkbox" name="languages" value="es"> Spaans (es)</label>
-            <label><input type="checkbox" name="languages" value="en"> Engels (en)</label>
-            <label><input type="checkbox" name="languages" value="nl"> Nederlands (nl)</label>
-            <label><input type="checkbox" name="languages" value="pt"> Portugees (pt)</label>
-            <label><input type="checkbox" name="languages" value="fi"> Fins (fi)</label>
-            <label><input type="checkbox" name="languages" value="ln"> Lingala (ln)</label>
-            <label><input type="checkbox" name="languages" value="lu"> Tshiluba (lu)</label>
+            <legend>Target languages (max. 2)</legend>
+            <label><input type="checkbox" name="languages" value="es"> Spanish </label>
+            <label><input type="checkbox" name="languages" value="en"> English </label>
+            <label><input type="checkbox" name="languages" value="nl"> Dutch </label>
+            <label><input type="checkbox" name="languages" value="pt"> Portuguese </label>
+            <label><input type="checkbox" name="languages" value="fi"> Finnish </label>
+            <label><input type="checkbox" name="languages" value="ln"> Lingala </label>
+            <label><input type="checkbox" name="languages" value="lu"> Tshiluba </label>
         </fieldset>
-        <button type="submit">Upload & verwerk</button>
+        <button type="submit">Upload & process</button>
     </form>
     <div id="upload-status"></div>
 </section>
@@ -32,15 +32,15 @@
 <hr>
 
 <section id="library">
-    <h2>Verwerkte video’s</h2>
+    <h2>Processed videos</h2>
     <div id="video-list"></div>
 </section>
 
 <section id="player">
-    <h2>Speler</h2>
+    <h2>Player</h2>
     <div id="video-container">
         <video id="video-player" controls width="800">
-            Je browser ondersteunt geen video-tag.
+            Your browser does not support the video tag.
         </video>
         <div id="subtitle-overlay" class="hidden"></div>
     </div>
