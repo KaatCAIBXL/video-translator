@@ -1,6 +1,7 @@
 import json
 import logging
 import subprocess
+import tempfile
 from pathlib import Path
 from typing import List, Dict, Optional, Tuple
 
@@ -61,23 +62,127 @@ def extract_audio(video_path: Path, audio_path: Path):
 
 
 # ---------- Whisper transcriptie ----------
+def _transcribe_whisper_file(client: OpenAI, path: Path) -> Dict:
+    with open(path, "rb") as f:
+        transcription = client.audio.transcriptions.create(
+            model="whisper-1",
+            file=f,
+            response_format="verbose_json",
+        )
+    return transcription.to_dict()
+
+
+def _get_audio_duration(audio_path: Path) -> float:
+    """Bepaal de duur van een audiobestand in seconden met ffprobe."""
+    try:
+        result = subprocess.run(
+            [
+                "ffprobe",
+                "-v",
+                "error",
+                "-show_entries",
+                "format=duration",
+                "-of",
+                "default=noprint_wrappers=1:nokey=1",
+                str(audio_path),
+            ],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+    except subprocess.CalledProcessError as exc:
+        raise RuntimeError(
+            f"Kan de duur van audio ({audio_path}) niet bepalen: {exc}"
+        ) from exc
+
+    try:
+        return float(result.stdout.strip())
+    except ValueError:
+        return 0.0
+
+
 
 def transcribe_audio_whisper(audio_path: Path) -> Dict:
     """
     Gebruik OpenAI Whisper (whisper-1) om audio te transcriberen.
-    We vragen 'verbose_json' zodat we segmenten met start/eindtijd krijgen.
+    Bij bestanden groter dan ~25 MB splitten we het audio-bestand automatisch
+    in deelbestanden zodat de Whisper API het kan verwerken. De resulterende
+    segmenten worden daarna weer samengevoegd met gecorrigeerde tijdstempels.
     """
+    
     client = get_openai_client()
+    max_bytes = 24 * 1024 * 1024  # iets onder de 25 MB limiet van Whisper
 
-    with open(audio_path, "rb") as f:
-        transcription = client.audio.transcriptions.create(
-            model="whisper-1",
-            file=f,
-            response_format="verbose_json"
-        )
-    # transcription is een OpenAI object; we converteren naar dict
-    return transcription.to_dict()
+    if audio_path.stat().st_size <= max_bytes:
+        return _transcribe_whisper_file(client, audio_path)
 
+    logger.info(
+        "Audio-bestand %s is groter dan %d MB, starten met opsplitsen voor Whisper",
+        audio_path,
+        max_bytes // (1024 * 1024),
+    )
+
+    combined_segments = []
+    combined_texts: List[str] = []
+    detected_language: Optional[str] = None
+    offset = 0.0
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        chunk_dir = Path(tmpdir)
+        chunk_pattern = chunk_dir / "chunk_%03d.wav"
+
+        try:
+            subprocess.run(
+                [
+                    "ffmpeg",
+                    "-y",
+                    "-i",
+                    str(audio_path),
+                    "-f",
+                    "segment",
+                    "-segment_time",
+                    "900",  # 15 minuten per segment
+                    "-c",
+                    "copy",
+                    str(chunk_pattern),
+                ],
+                check=True,
+            )
+        except subprocess.CalledProcessError as exc:
+            raise RuntimeError(
+                "Opsplitsen van audio voor Whisper is mislukt"
+            ) from exc
+
+        chunk_paths = sorted(chunk_dir.glob("chunk_*.wav"))
+        if not chunk_paths:
+            raise RuntimeError(
+                "Opsplitsen van audio voor Whisper is mislukt: geen segmenten gevonden"
+            )
+    for chunk_path in chunk_paths:
+            chunk_result = _transcribe_whisper_file(client, chunk_path)
+
+            if detected_language is None:
+                detected_language = chunk_result.get("language")
+
+            combined_texts.append(chunk_result.get("text", ""))
+
+            chunk_segments = chunk_result.get("segments", []) or []
+            if chunk_segments:
+                for seg in chunk_segments:
+                    seg_copy = dict(seg)
+                    seg_copy["start"] = seg_copy.get("start", 0.0) + offset
+                    seg_copy["end"] = seg_copy.get("end", 0.0) + offset
+                    combined_segments.append(seg_copy)
+
+                offset = combined_segments[-1]["end"]
+            else:
+                offset += _get_audio_duration(chunk_path)
+
+    return {
+        "text": " ".join(part.strip() for part in combined_texts if part).strip(),
+        "segments": combined_segments,
+        "language": detected_language or "unknown",
+    }
 
 def build_sentence_pairs(whisper_result: Dict) -> List[Segment]:
     """
