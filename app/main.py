@@ -1,11 +1,14 @@
 import logging
+import os
+import tempfile
+import zipfile
 from fastapi import FastAPI, UploadFile, File, Form, Request
-from fastapi.responses import RedirectResponse, FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 import shutil
 import uuid
 
@@ -23,6 +26,7 @@ from .services import (
     load_metadata,
 )
 from .models import VideoListItem, VideoMetadata
+from starlette.background import BackgroundTask
 
 app = FastAPI()
 ensure_dirs()
@@ -34,6 +38,22 @@ app.mount("/static", StaticFiles(directory=str(BASE_DIR / "app" / "static")), na
 
 logger = logging.getLogger(__name__)
 
+def _load_video_metadata(video_dir: Path) -> Optional[VideoMetadata]:
+    meta_path = video_dir / "metadata.json"
+    if not meta_path.exists():
+        return None
+    try:
+        return load_metadata(meta_path)
+    except Exception:
+        logger.exception("Failed to load metadata for video %s", video_dir.name)
+        return None
+
+
+def _find_original_video(video_dir: Path) -> Optional[Path]:
+    for candidate in video_dir.iterdir():
+        if candidate.name.startswith("original"):
+            return candidate
+    return None
 
 
 
@@ -53,11 +73,10 @@ async def list_videos():
     for video_dir in settings.PROCESSED_DIR.iterdir():
         if not video_dir.is_dir():
             continue
-        meta_path = video_dir / "metadata.json"
-        if not meta_path.exists():
+        meta = _load_video_metadata(video_dir)
+        if meta is None:
             continue
 
-        meta = load_metadata(meta_path)
         subtitles = list(meta.translations.keys())
 
         # beschikbare dubs: check of er een video_dub_{lang}.mp4 is
@@ -65,6 +84,11 @@ async def list_videos():
         for lang in meta.translations.keys():
             if (video_dir / f"video_dub_{lang}.mp4").exists():
                 dubs.append(lang)
+        audio_tracks = []
+        for lang in meta.translations.keys():
+            if (video_dir / f"dub_{lang}.mp3").exists():
+                audio_tracks.append(lang)
+
 
         items.append(
             VideoListItem(
@@ -72,6 +96,7 @@ async def list_videos():
                 filename=meta.filename,
                 available_subtitles=subtitles,
                 available_dubs=dubs,
+                 available_audio=audio_tracks,
             )
         )
 
@@ -87,7 +112,7 @@ async def upload_video(
 ):
     if len(languages) == 0 or len(languages) > 2:
         return JSONResponse(
-            {"error": "Je moet 1 of 2 talen kiezen."},
+            {"error": "Please select one or two target languages"},
             status_code=400,
         )
 
@@ -124,7 +149,7 @@ async def upload_video(
         warnings.extend(translation_warnings)
 
         if not translations:
-            raise RuntimeError("Vertalingen zijn voor geen van de talen gelukt.")
+            raise RuntimeError("Translations failed for all requested languages.")
             
         # 5. VTT bestanden per taal
         for lang, segs in translations.items():
@@ -143,12 +168,12 @@ async def upload_video(
                 pass
             except RuntimeError as exc:
                 warnings.append(
-                    f"Dubbing voor {lang} kon niet worden gemaakt: {exc}"
+                    f"The dub for {lang} could not be created: {exc}"
                 )
             except Exception as exc:
-                logger.exception("Onverwachte fout bij dubbing voor %s", lang)
+                logger.exception("Unexpected error while creating dub for %s", lang)
                 warnings.append(
-                    f"Dubbing voor {lang} kon niet worden gemaakt door een onverwachte fout."
+                    f"The dub for {lang} could not be created because of an unexpected error."
                 )
 
         # 7. metadata opslaan
@@ -162,12 +187,12 @@ async def upload_video(
         save_metadata(meta, meta_path)
 
     except RuntimeError as exc:
-        logger.warning("Fout bij verwerken van upload: %s", exc)
+        logger.warning("Error while processing: %s", exc)
         return JSONResponse({"error": str(exc)}, status_code=400)
     except Exception as exc:
-        logger.exception("Onverwachte fout bij verwerken van upload")
+        logger.exception("Unexpected error while processing")
         return JSONResponse(
-            {"error": "Er ging iets mis tijdens het verwerken van de video."},
+            {"error": "Something went wrong while processing the video."},
             status_code=500,
         )
 
@@ -175,29 +200,119 @@ async def upload_video(
 
 
 # ---------- video + ondertitels / dub leveren ----------
+def _video_base_stem(meta: Optional[VideoMetadata], fallback: Path) -> str:
+    if meta:
+        return Path(meta.filename).stem
+    return fallback.stem
 
 @app.get("/videos/{video_id}/original")
 async def get_original_video(video_id: str):
     video_dir = settings.PROCESSED_DIR / video_id
-    for f in video_dir.iterdir():
-        if f.name.startswith("original"):
-            return FileResponse(f)
-    return JSONResponse({"error": "Video niet gevonden"}, status_code=404)
+    if not video_dir.exists():
+        return JSONResponse({"error": "Video not found"}, status_code=404)
+
+    original_path = _find_original_video(video_dir)
+    if original_path is None:
+        return JSONResponse({"error": "Original video not found"}, status_code=404)
+
+    meta = _load_video_metadata(video_dir)
+    filename = meta.filename if meta else original_path.name
+    return FileResponse(original_path, filename=filename)
 
 
 @app.get("/videos/{video_id}/dub/{lang}")
 async def get_dubbed_video(video_id: str, lang: str):
     video_dir = settings.PROCESSED_DIR / video_id
+    if not video_dir.exists():
+        return JSONResponse({"error": "Video not found"}, status_code=404)
+
     dub_path = video_dir / f"video_dub_{lang}.mp4"
     if not dub_path.exists():
-        return JSONResponse({"error": "Dub niet gevonden"}, status_code=404)
-    return FileResponse(dub_path)
+        return JSONResponse({"error": "Dubbed video not found"}, status_code=404)
+
+    meta = _load_video_metadata(video_dir)
+    original_path = _find_original_video(video_dir)
+    base_stem = _video_base_stem(meta, dub_path if original_path is None else original_path)
+    filename = f"{base_stem}_dub_{lang}.mp4"
+    return FileResponse(dub_path, filename=filename)
+
+
+@app.get("/videos/{video_id}/audio/{lang}")
+async def get_dub_audio(video_id: str, lang: str):
+    video_dir = settings.PROCESSED_DIR / video_id
+    if not video_dir.exists():
+        return JSONResponse({"error": "Video not found"}, status_code=404)
+
+    audio_path = video_dir / f"dub_{lang}.mp3"
+    if not audio_path.exists():
+        return JSONResponse({"error": "Dubbed audio not found"}, status_code=404)
+
+    meta = _load_video_metadata(video_dir)
+    original_path = _find_original_video(video_dir)
+    base_stem = _video_base_stem(meta, audio_path if original_path is None else original_path)
+    filename = f"{base_stem}_dub_{lang}.mp3"
+    return FileResponse(audio_path, filename=filename, media_type="audio/mpeg")
+        
 
 
 @app.get("/videos/{video_id}/subs/{lang}")
 async def get_subtitles(video_id: str, lang: str):
     video_dir = settings.PROCESSED_DIR / video_id
+    if not video_dir.exists():
+        return JSONResponse({"error": "Video not found"}, status_code=404)
+
     subs_path = video_dir / f"subs_{lang}.vtt"
     if not subs_path.exists():
-        return JSONResponse({"error": "Subtitles niet gevonden"}, status_code=404)
-    return FileResponse(subs_path, media_type="text/vtt")
+        return JSONResponse({"error": "Subtitles not found"}, status_code=404)
+
+    meta = _load_video_metadata(video_dir)
+    original_path = _find_original_video(video_dir)
+    base_stem = _video_base_stem(meta, subs_path if original_path is None else original_path)
+    filename = f"{base_stem}_{lang}.vtt"
+    return FileResponse(subs_path, media_type="text/vtt", filename=filename)
+
+
+@app.get("/videos/{video_id}/package/{lang}")
+async def download_video_package(video_id: str, lang: str, include_audio: bool = False):
+    video_dir = settings.PROCESSED_DIR / video_id
+    if not video_dir.exists():
+        return JSONResponse({"error": "Video not found"}, status_code=404)
+
+    original_path = _find_original_video(video_dir)
+    if original_path is None:
+        return JSONResponse({"error": "Original video not found"}, status_code=404)
+
+    subs_path = video_dir / f"subs_{lang}.vtt"
+    if not subs_path.exists():
+        return JSONResponse({"error": "Subtitles not found"}, status_code=404)
+
+    audio_path = video_dir / f"dub_{lang}.mp3"
+    if include_audio and not audio_path.exists():
+        return JSONResponse({"error": "Requested audio track not found"}, status_code=404)
+
+    meta = _load_video_metadata(video_dir)
+    original_filename = meta.filename if meta else original_path.name
+    base_stem = Path(original_filename).stem
+
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".zip") as tmp_file:
+        tmp_path = Path(tmp_file.name)
+
+    with zipfile.ZipFile(tmp_path, "w", zipfile.ZIP_DEFLATED) as archive:
+        archive.write(original_path, arcname=original_filename)
+        archive.write(subs_path, arcname=f"{base_stem}_{lang}.vtt")
+        if include_audio and audio_path.exists():
+            archive.write(audio_path, arcname=f"{base_stem}_{lang}.mp3")
+
+    package_name = (
+        f"{base_stem}_{lang}_with_audio.zip" if include_audio else f"{base_stem}_{lang}_subtitles.zip"
+    )
+
+    return FileResponse(
+        tmp_path,
+        filename=package_name,
+        media_type="application/zip",
+        background=BackgroundTask(
+            lambda path=str(tmp_path): os.path.exists(path) and os.remove(path)
+        ),
+    )
+        
