@@ -252,7 +252,30 @@ document.getElementById("upload-form").addEventListener("submit", async (e) => {
         }
 
         const data = await res.json();
-        statusEl.textContent = `Verwerking klaar voor video-id: ${data.id}`;
+        statusEl.innerHTML = "";
+
+        const successMsg = document.createElement("div");
+        successMsg.textContent = `Verwerking klaar voor video-id: ${data.id}`;
+        statusEl.appendChild(successMsg);
+
+        if (Array.isArray(data.warnings) && data.warnings.length > 0) {
+            const warningBlock = document.createElement("div");
+            warningBlock.className = "status-warning";
+
+            const warningTitle = document.createElement("strong");
+            warningTitle.textContent = "Waarschuwingen:";
+            warningBlock.appendChild(warningTitle);
+
+            const warningList = document.createElement("ul");
+            data.warnings.forEach((msg) => {
+                const li = document.createElement("li");
+                li.textContent = msg;
+                warningList.appendChild(li);
+            });
+
+            warningBlock.appendChild(warningList);
+            statusEl.appendChild(warningBlock);
+        }
         await fetchVideos();
     } catch (err) {
         console.error(err);
