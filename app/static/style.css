@@ -88,6 +88,40 @@ button {
     margin-top: 8px;
 }
 
+.video-summary {
+    margin-bottom: 6px;
+}
+
+.video-controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 8px;
+}
+
+.download-links {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 10px;
+}
+
+.download-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.download-link {
+    color: #0645ad;
+    text-decoration: none;
+    font-size: 0.95rem;
+}
+
+.download-link:hover,
+.download-link:focus {
+    text-decoration: underline;
+}
 
 #video-container {
     position: relative;
