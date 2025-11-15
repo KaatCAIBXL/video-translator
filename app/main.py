@@ -1,3 +1,4 @@
+import logging
 from fastapi import FastAPI, UploadFile, File, Form, Request
 from fastapi.responses import RedirectResponse, FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -30,6 +31,10 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 templates = Jinja2Templates(directory=str(BASE_DIR / "app" / "templates"))
 
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "app" / "static")), name="static")
+
+logger = logging.getLogger(__name__)
+
+
 
 
 # ---------- Frontend ----------
@@ -95,48 +100,59 @@ async def upload_video(
     audio_path = video_dir / "audio.wav"
     meta_path = video_dir / "metadata.json"
 
-    # sla upload op
-    with open(video_path, "wb") as f:
-        shutil.copyfileobj(file.file, f)
+    try:
+        # sla upload op
+        with open(video_path, "wb") as f:
+            shutil.copyfileobj(file.file, f)
 
-    # 1. audio extracten
-    extract_audio(video_path, audio_path)
+        # 1. audio extracten
+        extract_audio(video_path, audio_path)
 
-    # 2. whisper transcriptie
-    whisper_result = transcribe_audio_whisper(audio_path)
-    original_lang = whisper_result.get("language", "unknown")
+        # 2. whisper transcriptie
+        whisper_result = transcribe_audio_whisper(audio_path)
+        original_lang = whisper_result.get("language", "unknown")
 
-    # 3. zin-paren bouwen
-    sentence_pairs = build_sentence_pairs(whisper_result)
+        # 3. zin-paren bouwen
+        sentence_pairs = build_sentence_pairs(whisper_result)
 
-    # 4. vertalingen
-    translations = translate_segments(sentence_pairs, languages)
+        # 4. vertalingen
+        translations = translate_segments(sentence_pairs, languages)
 
-    # 5. VTT bestanden per taal
-    for lang, segs in translations.items():
-        vtt_path = video_dir / f"subs_{lang}.vtt"
-        generate_vtt(segs, vtt_path)
+        # 5. VTT bestanden per taal
+        for lang, segs in translations.items():
+            vtt_path = video_dir / f"subs_{lang}.vtt"
+            generate_vtt(segs, vtt_path)
 
-    # 6. optioneel: dubbings genereren (hier: meteen doen)
-    for lang, segs in translations.items():
-        dub_audio_path = video_dir / f"dub_{lang}.mp3"
-        try:
-            generate_dub_audio(segs, lang, dub_audio_path)
-            dub_video_path = video_dir / f"video_dub_{lang}.mp4"
-            replace_video_audio(video_path, dub_audio_path, dub_video_path)
-        except NotImplementedError:
-            # Als TTS nog niet geïmplementeerd is, slaan we dubbing over
-            pass
+        # 6. optioneel: dubbings genereren (hier: meteen doen)
+        for lang, segs in translations.items():
+            dub_audio_path = video_dir / f"dub_{lang}.mp3"
+            try:
+                generate_dub_audio(segs, lang, dub_audio_path)
+                dub_video_path = video_dir / f"video_dub_{lang}.mp4"
+                replace_video_audio(video_path, dub_audio_path, dub_video_path)
+            except NotImplementedError:
+                # Als TTS nog niet geïmplementeerd is, slaan we dubbing over
+                pass
 
-    # 7. metadata opslaan
-    meta = VideoMetadata(
-        id=video_id,
-        filename=file.filename,
-        original_language=original_lang,
-        sentence_pairs=sentence_pairs,
-        translations=translations,
-    )
-    save_metadata(meta, meta_path)
+        # 7. metadata opslaan
+        meta = VideoMetadata(
+            id=video_id,
+            filename=file.filename,
+            original_language=original_lang,
+            sentence_pairs=sentence_pairs,
+            translations=translations,
+        )
+        save_metadata(meta, meta_path)
+
+    except RuntimeError as exc:
+        logger.warning("Fout bij verwerken van upload: %s", exc)
+        return JSONResponse({"error": str(exc)}, status_code=400)
+    except Exception as exc:
+        logger.exception("Onverwachte fout bij verwerken van upload")
+        return JSONResponse(
+            {"error": "Er ging iets mis tijdens het verwerken van de video."},
+            status_code=500,
+        )
 
     return {"id": video_id}
 
