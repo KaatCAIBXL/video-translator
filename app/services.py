@@ -103,7 +103,7 @@ def _get_audio_duration(audio_path: Path) -> float:
 
 
 def transcribe_audio_whisper(audio_path: Path) -> Dict:
-     """Transcribe audio with Whisper, chunking long files transparently."""
+    """Transcribe audio with Whisper, chunking long files transparently."""
     
     client = get_openai_client()
     max_bytes = 24 * 1024 * 1024  # iets onder de 25 MB limiet van Whisper
@@ -314,7 +314,7 @@ def translate_segments(
 # ---------- VTT ondertitels ----------
 
 def _format_timestamp(seconds: float) -> str:
-     """Return a timestamp in VTT format (HH:MM:SS.mmm)."""
+    """Return a timestamp in VTT format (HH:MM:SS.mmm)."""
     ms = int((seconds - int(seconds)) * 1000)
     s = int(seconds)
     h = s // 3600
