@@ -100,6 +100,8 @@ async def upload_video(
     audio_path = video_dir / "audio.wav"
     meta_path = video_dir / "metadata.json"
 
+    warnings: List[str] = []
+
     try:
         # sla upload op
         with open(video_path, "wb") as f:
@@ -116,8 +118,14 @@ async def upload_video(
         sentence_pairs = build_sentence_pairs(whisper_result)
 
         # 4. vertalingen
-        translations = translate_segments(sentence_pairs, languages)
+       translations, translation_warnings = translate_segments(
+            sentence_pairs, languages
+        )
+        warnings.extend(translation_warnings)
 
+        if not translations:
+            raise RuntimeError("Vertalingen zijn voor geen van de talen gelukt.")
+            
         # 5. VTT bestanden per taal
         for lang, segs in translations.items():
             vtt_path = video_dir / f"subs_{lang}.vtt"
@@ -133,6 +141,15 @@ async def upload_video(
             except NotImplementedError:
                 # Als TTS nog niet geïmplementeerd is, slaan we dubbing over
                 pass
+            except RuntimeError as exc:
+                warnings.append(
+                    f"Dubbing voor {lang} kon niet worden gemaakt: {exc}"
+                )
+            except Exception as exc:
+                logger.exception("Onverwachte fout bij dubbing voor %s", lang)
+                warnings.append(
+                    f"Dubbing voor {lang} kon niet worden gemaakt door een onverwachte fout."
+                )
 
         # 7. metadata opslaan
         meta = VideoMetadata(
@@ -154,7 +171,7 @@ async def upload_video(
             status_code=500,
         )
 
-    return {"id": video_id}
+    return {"id": video_id, "warnings": warnings}
 
 
 # ---------- video + ondertitels / dub leveren ----------
