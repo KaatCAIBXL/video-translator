@@ -9,8 +9,13 @@ from openai import OpenAI
 
 from .config import settings
 from .models import Segment, TranslationSegment, VideoMetadata
+import asyncio
+import edge_tts
+from .config import settings
+from openai import OpenAI
 
 client = OpenAI(api_key=settings.OPENAI_API_KEY)
+
 
 
 # ---------- Hulp: padbeheer ----------
@@ -201,16 +206,76 @@ def generate_vtt(segments: List[TranslationSegment], out_path: Path):
 
 # ---------- Dubbing (audio vervangen) ----------
 
+async def _edge_tts_to_bytes(text: str, voice: str) -> bytes:
+    """
+    Helper: roept edge-tts aan en geeft audio terug als bytes.
+    """
+    communicate = edge_tts.Communicate(text=text, voice=voice)
+    audio_chunks = []
+
+    async for chunk in communicate.stream():
+        if chunk["type"] == "audio":
+            audio_chunks.append(chunk["data"])
+
+    return b"".join(audio_chunks)
+
+
+def _phonetic_for_lingala_tshiluba(text: str, lang: str) -> str:
+    """
+    Maak een fonetische versie van de tekst voor Lingala / Tshiluba.
+    We gebruiken OpenAI om syllabes/klanken zo te herschrijven dat
+    een TTS-stem ze verstaanbaar uitspreekt.
+    """
+    lang_name = "Lingala" if lang == "ln" else "Tshiluba"
+
+    response = client.responses.create(
+        model="gpt-4o-mini",
+        instructions=(
+            f"Zet deze {lang_name}-tekst om naar een fonetische versie met Latijnse letters "
+            f"zodat een TTS-stem het begrijpelijk kan uitspreken. Verander niets aan de betekenis. "
+            f"Geen uitleg, alleen de fonetisch herschreven tekst."
+        ),
+        input=text,
+    )
+    return response.output_text
+
+
 def tts_for_language(text: str, lang: str) -> bytes:
     """
-    hier koppel je je eigen TTS-systeem.
-    - voor es/en/nl/pt/fi kun je bv. edge-tts of ElevenLabs gebruiken
-    - voor 'ln' (Lingala) of 'lu' (Tshiluba) je custom API met je key
-
-    Nu: stub -> jij moet deze functie koppelen aan je bestaande TTS-code.
+    Centrale TTS-functie:
+    - es, en, nl, pt, fi  → edge-tts met passende stem
+    - ln (Lingala), lu (Tshiluba) → eerst fonetisch maken, dan edge-tts
+    Geeft mp3/wav-audio terug als bytes.
     """
-    # TODO: verbind met jouw bestaande TTS (reading.py / reading_fonetical.py)
-    raise NotImplementedError("Koppel hier jouw TTS-engine in tts_for_language().")
+
+    # 1. stem per taal
+    voice_map = {
+        "nl": "nl-NL-MaartenNeural",
+        "en": "en-US-GuyNeural",
+        "es": "es-ES-AlvaroNeural",
+        "pt": "pt-BR-AntonioNeural",
+        "fi": "fi-FI-HarriNeural",
+
+        # Voor Lingala/Tshiluba kiezen we bv. een Franse stem
+        # (omdat die vaak beter met Afrikaanse namen/klanken omgaat)
+        "ln": "fr-FR-DeniseNeural",
+        "lu": "fr-FR-DeniseNeural",
+    }
+
+    lang = lang.lower()
+    voice = voice_map.get(lang, "en-US-GuyNeural")
+
+    # 2. Fonetik stap voor ln/lu
+    if lang in ["ln", "lu"]:
+        phonetic_text = _phonetic_for_lingala_tshiluba(text, lang)
+        tts_text = phonetic_text
+    else:
+        tts_text = text
+
+    # 3. edge-tts async helper aanroepen
+    audio_bytes = asyncio.run(_edge_tts_to_bytes(tts_text, voice))
+    return audio_bytes
+
 
 
 def generate_dub_audio(
