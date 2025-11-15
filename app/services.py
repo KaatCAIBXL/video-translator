@@ -1,8 +1,8 @@
 import json
-import uuid
+import logging
 import subprocess
 from pathlib import Path
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Tuple
 
 import requests
 from openai import OpenAI
@@ -12,6 +12,7 @@ from .models import Segment, TranslationSegment, VideoMetadata
 import edge_tts
 
 _openai_client: Optional[OpenAI] = None
+logger = logging.getLogger(__name__)
 
 
 def get_openai_client() -> OpenAI:
@@ -128,16 +129,20 @@ def translate_text_deepl(text: str, target_lang: str) -> str:
     if not settings.DEEPL_API_KEY:
         raise RuntimeError("DEEPL_API_KEY ontbreekt in .env")
 
-    resp = requests.post(
-        "https://api-free.deepl.com/v2/translate",
-        data={
-            "auth_key": settings.DEEPL_API_KEY,
-            "text": text,
-            "target_lang": DEEPL_LANG_MAP[target_lang],
-        },
-        timeout=60,
-    )
-    resp.raise_for_status()
+    try:
+        resp = requests.post(
+            "https://api-free.deepl.com/v2/translate",
+            data={
+                "auth_key": settings.DEEPL_API_KEY,
+                "text": text,
+                "target_lang": DEEPL_LANG_MAP[target_lang],
+            },
+            timeout=60,
+        )
+        resp.raise_for_status()
+    except requests.RequestException as exc:
+        raise RuntimeError(f"DeepL-vertaling voor {target_lang} mislukt: {exc}") from exc
+
     data = resp.json()
     return data["translations"][0]["text"]
 
@@ -154,32 +159,53 @@ def translate_text_ai(text: str, target_lang: str) -> str:
     }.get(target_lang, target_lang)
     client = get_openai_client()
 
-    response = client.responses.create(
-        model="gpt-4o-mini",
-        instructions=f"Je bent een professionele vertaler. Vertaal exact naar {lang_name}. Geen uitleg, enkel de vertaling.",
-        input=text,
-    )
+    try:
+        response = client.responses.create(
+            model="gpt-4o-mini",
+            instructions=(
+                f"Je bent een professionele vertaler. Vertaal exact naar {lang_name}. Geen uitleg, enkel de vertaling."
+            ),
+            input=text,
+        )
+    except Exception as exc:
+        raise RuntimeError(f"AI-vertaling voor {lang_name} mislukt: {exc}") from exc
+
     return response.output_text
 
 
 def translate_segments(
     sentence_pairs: List[Segment], target_langs: List[str]
-) -> Dict[str, List[TranslationSegment]]:
+) -> Tuple[Dict[str, List[TranslationSegment]], List[str]]:
     """
     Vertaal alle segmenten naar alle geselecteerde talen.
     max 2 talen volgens jouw wens.
+    
+    Retourneert een tuple met (geslaagde vertalingen, waarschuwingen).
     """
     result: Dict[str, List[TranslationSegment]] = {}
+    warnings: List[str] = []
 
     for lang in target_langs:
         lang = lang.lower()
         translated_list: List[TranslationSegment] = []
 
         for seg in sentence_pairs:
-            if lang in SUPPORTED_DEEPL:
-                translated_text = translate_text_deepl(seg.text, lang)
-            else:
-                translated_text = translate_text_ai(seg.text, lang)
+            try:
+                if lang in SUPPORTED_DEEPL:
+                    translated_text = translate_text_deepl(seg.text, lang)
+                else:
+                    translated_text = translate_text_ai(seg.text, lang)
+            except RuntimeError as exc:
+                warnings.append(f"Vertaling mislukt voor {lang}: {exc}")
+                translated_list = []
+                break
+            except Exception as exc:
+                warnings.append(
+                    f"Vertaling mislukt voor {lang}: onverwachte fout ({exc})."
+                )
+                logger.exception("Vertaling mislukt voor %s", lang)
+                translated_list = []
+                break
 
             translated_list.append(
                 TranslationSegment(
@@ -189,9 +215,10 @@ def translate_segments(
                     language=lang,
                 )
             )
-        result[lang] = translated_list
-
-    return result
+            if translated_list:
+                result[lang] = translated_list
+    
+        return result, warnings
 
 
 # ---------- VTT ondertitels ----------
@@ -249,15 +276,20 @@ def _phonetic_for_lingala_tshiluba(text: str, lang: str) -> str:
     lang_name = "Lingala" if lang == "ln" else "Tshiluba"
     client = get_openai_client()
 
-    response = client.responses.create(
-        model="gpt-4o-mini",
-        instructions=(
-            f"Zet deze {lang_name}-tekst om naar een fonetische versie met Latijnse letters "
-            f"zodat een TTS-stem het begrijpelijk kan uitspreken. Verander niets aan de betekenis. "
-            f"Geen uitleg, alleen de fonetisch herschreven tekst."
-        ),
-        input=text,
-    )
+    try:
+        response = client.responses.create(
+            model="gpt-4o-mini",
+            instructions=(
+                f"Zet deze {lang_name}-tekst om naar een fonetische versie met Latijnse letters "
+                f"zodat een TTS-stem het begrijpelijk kan uitspreken. Verander niets aan de betekenis. "
+                f"Geen uitleg, alleen de fonetisch herschreven tekst."
+            ),
+            input=text,
+        )
+    except Exception as exc:
+        raise RuntimeError(
+            f"Fonettische omzetting voor {lang_name} mislukt: {exc}"
+        ) from exc
     return response.output_text
 
 
@@ -294,7 +326,10 @@ async def tts_for_language(text: str, lang: str) -> bytes:
         tts_text = text
 
     # 3. edge-tts async helper aanroepen
-    return await _edge_tts_to_bytes(tts_text, voice)
+    try:
+        return await _edge_tts_to_bytes(tts_text, voice)
+    except Exception as exc:
+        raise RuntimeError(f"TTS-generatie mislukt voor {lang}: {exc}") from exc
 
 
 
