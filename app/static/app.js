@@ -1,3 +1,25 @@
+function filenameWithoutExtension(filename) {
+    if (typeof filename !== "string") {
+        return "video";
+    }
+    const lastDot = filename.lastIndexOf(".");
+    if (lastDot <= 0) {
+        return filename;
+    }
+    return filename.slice(0, lastDot);
+}
+
+function createDownloadLink(text, href, downloadName) {
+    const link = document.createElement("a");
+    link.className = "download-link";
+    link.href = href;
+    link.textContent = text;
+    if (downloadName) {
+        link.setAttribute("download", downloadName);
+    }
+    return link;
+}
+
 async function fetchVideos() {
     const res = await fetch("/api/videos");
     const videos = await res.json();
@@ -5,11 +27,11 @@ async function fetchVideos() {
     container.innerHTML = "";
 
     if (videos.length === 0) {
-        container.textContent = "Nog geen verwerkte video’s.";
+        container.textContent = " videos have been processed yet";
         return;
     }
 
-    videos.forEach(video => {
+    videos.forEach((video) => {
         const div = document.createElement("div");
         div.className = "video-item";
 
@@ -17,34 +39,124 @@ async function fetchVideos() {
         title.textContent = video.filename;
         div.appendChild(title);
 
-        const subLabel = document.createElement("div");
-        subLabel.textContent = "Ondertitels: " + (video.available_subtitles.join(", ") || "geen");
-        div.appendChild(subLabel);
+        const summary = document.createElement("div");
+        summary.className = "video-summary";
+        const subtitlesText =
+            video.available_subtitles && video.available_subtitles.length > 0
+                ? video.available_subtitles.join(", ")
+                : "none";
+        const dubsText =
+            video.available_dubs && video.available_dubs.length > 0
+                ? video.available_dubs.join(", ")
+                : "none";
+        const audioText =
+            video.available_audio && video.available_audio.length > 0
+                ? video.available_audio.join(", ")
+                : "none";
+        summary.textContent = `Subtitles: ${subtitlesText} | Dubbed videos: ${dubsText} | Dubbed audio: ${audioText}`;
+        div.appendChild(summary);
 
-        const dubLabel = document.createElement("div");
-        dubLabel.textContent = "Dubs: " + (video.available_dubs.join(", ") || "geen");
-        div.appendChild(dubLabel);
+        const controls = document.createElement("div");
+        controls.className = "video-controls";
 
-        if (video.available_subtitles.length > 0) {
+        const playOriginalBtn = document.createElement("button");
+        playOriginalBtn.textContent = "Play original";
+        playOriginalBtn.onclick = () => playVideo(video, { mode: "original" });
+        controls.appendChild(playOriginalBtn);
+
+        if (video.available_subtitles && video.available_subtitles.length > 0) {
             const btnSubs = document.createElement("button");
-            btnSubs.textContent = "Afspelen met ondertitels";
+            btnSubs.textContent = "Play with subtitle";
             btnSubs.onclick = () => playVideo(video, { mode: "subs" });
-            div.appendChild(btnSubs);
+            controls.appendChild(btnSubs);
         }
 
-        if (video.available_dubs.length > 0) {
+        if (video.available_dubs && video.available_dubs.length > 0) {
             const dubWrapper = document.createElement("div");
             dubWrapper.className = "dub-buttons";
             video.available_dubs.forEach((lang) => {
                 const btnDub = document.createElement("button");
-                btnDub.textContent = `Afspelen met dubbing (${lang})`;
+                btnDub.textContent = `Play dubbed (${lang})`;
                 btnDub.onclick = () => playVideo(video, { mode: "dub", lang });
                 dubWrapper.appendChild(btnDub);
+                
             });
-            div.appendChild(dubWrapper);
+            controls.appendChild(dubWrapper);
         }
-    
 
+        div.appendChild(controls);
+
+        const downloads = document.createElement("div");
+        downloads.className = "download-links";
+
+        const baseName = filenameWithoutExtension(video.filename);
+
+        downloads.appendChild(
+            createDownloadLink(
+                "Download original video",
+                `/videos/${video.id}/original`,
+                video.filename || "video"
+            )
+        );
+
+        if (video.available_subtitles && video.available_subtitles.length > 0) {
+            video.available_subtitles.forEach((lang) => {
+                const group = document.createElement("div");
+                group.className = "download-group";
+
+                group.appendChild(
+                    createDownloadLink(
+                        `Download subtitles (${lang})`,
+                        `/videos/${video.id}/subs/${lang}`,
+                        `${baseName}_${lang}.vtt`
+                    )
+                );
+
+                group.appendChild(
+                    createDownloadLink(
+                        `Download video + subtitles (${lang})`,
+                        `/videos/${video.id}/package/${lang}`,
+                        `${baseName}_${lang}_subtitles.zip`
+                    )
+                );
+
+                if (video.available_audio && video.available_audio.includes(lang)) {
+                    group.appendChild(
+                        createDownloadLink(
+                            `Download dub audio (${lang})`,
+                            `/videos/${video.id}/audio/${lang}`,
+                            `${baseName}_dub_${lang}.mp3`
+                        )
+                    );
+                    group.appendChild(
+                        createDownloadLink(
+                            `Download video + subtitles + audio (${lang})`,
+                            `/videos/${video.id}/package/${lang}?include_audio=true`,
+                            `${baseName}_${lang}_with_audio.zip`
+                        )
+                    );
+                }
+
+                downloads.appendChild(group);
+            });
+        }
+
+        if (video.available_audio && video.available_audio.length > 0) {
+            const audioOnly = video.available_audio.filter(
+                (lang) => !video.available_subtitles || !video.available_subtitles.includes(lang)
+            );
+            audioOnly.forEach((lang) => {
+                downloads.appendChild(
+                    createDownloadLink(
+                        `Download dub audio (${lang})`,
+                        `/videos/${video.id}/audio/${lang}`,
+                        `${baseName}_dub_${lang}.mp3`
+                    )
+                );
+            });
+        }
+
+        div.appendChild(downloads);
         container.appendChild(div);
     });
 }
@@ -79,15 +191,15 @@ async function playVideo(video, options = {}) {
     clearSubtitleOverlay();
 
     if (mode === "subs") {
-            if (!video.available_subtitles || video.available_subtitles.length === 0) {
-            infoEl.textContent = "Geen ondertitels beschikbaar.";
+        if (!video.available_subtitles || video.available_subtitles.length === 0) {
+            infoEl.textContent = "No subtitles available.";
         } else {
             try {
                 const subtitles = await Promise.all(
                     video.available_subtitles.map(async (lang) => {
                         const res = await fetch(`/videos/${video.id}/subs/${lang}`);
                         if (!res.ok) {
-                            throw new Error(`Kon ondertitels voor ${lang} niet laden.`);
+                            throw new Error(`Could not load subtitles for ${lang}`);
                         }
                         const text = await res.text();
                         return { lang, cues: parseVtt(text) };
@@ -142,22 +254,22 @@ async function playVideo(video, options = {}) {
                     clearSubtitleOverlay();
                 };
 
-                infoEl.textContent = `Afspelen met ondertitels (${video.available_subtitles.join(", ")})`;
+                infoEl.textContent = `Playing with subtitles (${video.available_subtitles.join(", ")})`;
             } catch (err) {
                 console.error(err);
-                infoEl.textContent = "Fout bij het laden van ondertitels.";
+                infoEl.textContent = "Failed to load subtitles.";
             }
         }
     } else if (mode === "dub") {
         const selectedLang = options.lang || (video.available_dubs ? video.available_dubs[0] : null);
         if (!selectedLang) {
-            infoEl.textContent = "Geen dubbing beschikbaar.";
+            infoEl.textContent = "No dubbing available";
         } else {
             videoEl.src = `/videos/${video.id}/dub/${selectedLang}`;
             infoEl.textContent = `Afspelen met dubbing (${selectedLang})`;
         }
     } else {
-        infoEl.textContent = "Afspelen zonder extra's.";
+        infoEl.textContent = "Playing original track.";
     }
 
     videoEl.load();
@@ -229,13 +341,13 @@ document.getElementById("upload-form").addEventListener("submit", async (e) => {
     e.preventDefault();
     const form = e.target;
     const statusEl = document.getElementById("upload-status");
-    statusEl.textContent = "Bezig met uploaden en verwerken... Dit kan even duren.";
+    statusEl.textContent = "Uploading and processing... This may take a while";
 
     const formData = new FormData(form);
     const checkedLangs = [...form.querySelectorAll("input[name='languages']:checked")];
 
     if (checkedLangs.length === 0 || checkedLangs.length > 2) {
-        alert("Selecteer 1 of 2 talen.");
+        alert("Please select one or two target languages.");
         return;
     }
 
@@ -255,7 +367,7 @@ document.getElementById("upload-form").addEventListener("submit", async (e) => {
         statusEl.innerHTML = "";
 
         const successMsg = document.createElement("div");
-        successMsg.textContent = `Verwerking klaar voor video-id: ${data.id}`;
+        successMsg.textContent = `Processing finished for video id: ${data.id}`;
         statusEl.appendChild(successMsg);
 
         if (Array.isArray(data.warnings) && data.warnings.length > 0) {
@@ -263,7 +375,7 @@ document.getElementById("upload-form").addEventListener("submit", async (e) => {
             warningBlock.className = "status-warning";
 
             const warningTitle = document.createElement("strong");
-            warningTitle.textContent = "Waarschuwingen:";
+            warningTitle.textContent = "Warning:";
             warningBlock.appendChild(warningTitle);
 
             const warningList = document.createElement("ul");
