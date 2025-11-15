@@ -15,6 +15,13 @@ import edge_tts
 _openai_client: Optional[OpenAI] = None
 logger = logging.getLogger(__name__)
 
+# Whisper verwacht audio chunks als 16 kHz mono PCM. Bij het opsplitsen
+# hercoderen we daarom altijd naar deze instellingen. De bitrate daarvan is
+# 16.000 samples * 2 bytes = 32.000 bytes per seconde (256 kbit/s). Zelfs als
+# de oorspronkelijke video een lagere bitrate heeft, moeten we hiermee
+# rekening houden zodat chunks onder de 25 MB limiet blijven.
+PCM16_MONO_16KHZ_BYTES_PER_SECOND = 16000 * 2
+
 
 def get_openai_client() -> OpenAI:
     """Return a lazily initialised OpenAI client.
@@ -119,6 +126,14 @@ def _select_chunk_duration(
         default_seconds = 600
 
     bytes_per_second = file_size_bytes / duration_seconds
+    
+    # Tijdens het segmenteren re-encoderen we naar 16 kHz mono PCM. Wanneer het
+    # bronbestand een lagere bitrate heeft zou een eenvoudige verhouding
+    # chunks kunnen opleveren die alsnog groter dan 25 MB zijn. Door rekening te
+    # houden met de feitelijke bitrate van de uiteindelijke chunks, kiezen we
+    # een conservatieve waarde en voorkomen we Whisper uploads die sneuvelen op
+    # de limiet.
+    bytes_per_second = max(bytes_per_second, PCM16_MONO_16KHZ_BYTES_PER_SECOND)
     if bytes_per_second <= 0:
         return default_seconds
 
