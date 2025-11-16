@@ -5,8 +5,8 @@ Deze app laat je:
 - audio transcriberen via Whisper (OpenAI)
 - zinnen per 2 groeperen met timestamps
 - vertalen naar max. 2 gekozen talen (via DeepL of AI)
-- ondertitels (VTT) genereren
-- optioneel: dubbing (audio vervangen) via TTS
+- ondertitels (VTT) genereren, inclusief een gecombineerde download voor twee talen
+- optioneel: dubbing (audio vervangen) via TTS en directe download van de nieuwe video (geen losse audiobestanden meer)
 - video’s bekijken in een eenvoudige bibliotheek
 
 ## Installatie
