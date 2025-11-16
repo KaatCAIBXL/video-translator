@@ -243,7 +243,10 @@ async def process_video_job(
         for lang, segs in translations.items():
             temp_audio_path: Optional[Path] = None
             try:
-                await generate_dub_audio(segs, lang, dub_audio_path)
+                with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as tmp:
+                    temp_audio_path = Path(tmp.name)
+
+                await generate_dub_audio(segs, lang, temp_audio_path)
                 dub_video_path = video_dir / f"video_dub_{lang}.mp4"
                 await run_in_threadpool(
                     replace_video_audio, video_path, temp_audio_path, dub_video_path
