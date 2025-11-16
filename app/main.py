@@ -230,7 +230,7 @@ async def process_video_job(
             original_language=original_lang,
         )
 
-     except RuntimeError as exc:
+    except RuntimeError as exc:
         logger.warning("Error while processing job %s: %s", video_id, exc)
         job_store.mark_failed(
             video_id,
