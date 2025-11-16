@@ -60,7 +60,7 @@ def _build_ffmpeg_cmd(*args: str) -> List[str]:
     return cmd
 
 def extract_audio(video_path: Path, audio_path: Path):
-     """Extract audio from video using ffmpeg."""
+    """Extract audio from video using ffmpeg."""
 
     cmd = _build_ffmpeg_cmd(
         "-i",
