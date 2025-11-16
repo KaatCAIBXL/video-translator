@@ -20,6 +20,94 @@ function createDownloadLink(text, href, downloadName) {
     return link;
 }
 
+function sleep(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function renderWarnings(container, warnings) {
+    if (!Array.isArray(warnings) || warnings.length === 0) {
+        return;
+    }
+
+    const warningBlock = document.createElement("div");
+    warningBlock.className = "status-warning";
+
+    const warningTitle = document.createElement("strong");
+    warningTitle.textContent = warnings.length === 1 ? "Warning:" : "Warnings:";
+    warningBlock.appendChild(warningTitle);
+
+    const warningList = document.createElement("ul");
+    warnings.forEach((msg) => {
+        const li = document.createElement("li");
+        li.textContent = msg;
+        warningList.appendChild(li);
+    });
+    warningBlock.appendChild(warningList);
+
+    container.appendChild(warningBlock);
+}
+
+async function pollJobStatus(jobId, statusEl) {
+    const pollIntervalMs = 3000;
+    const timeoutMs = 10 * 60 * 1000; // 10 minuten
+    const start = Date.now();
+    const progressEl = document.createElement("div");
+    progressEl.textContent = `Job ${jobId} is pending...`;
+    statusEl.appendChild(progressEl);
+
+    while (true) {
+        let job;
+        try {
+            const res = await fetch(`/api/jobs/${jobId}`);
+            if (!res.ok) {
+                throw new Error(`status ${res.status}`);
+            }
+            job = await res.json();
+        } catch (err) {
+            progressEl.className = "status-error";
+            progressEl.textContent = `Unable to check job status: ${err.message}`;
+            return;
+        }
+
+        if (job.status === "completed") {
+            statusEl.innerHTML = "";
+            const successMsg = document.createElement("div");
+            successMsg.className = "status-success";
+            const langInfo = job.original_language
+                ? ` Detected language: ${job.original_language}.`
+                : "";
+            successMsg.textContent = `Video processed successfully.${langInfo}`;
+            statusEl.appendChild(successMsg);
+            renderWarnings(statusEl, job.warnings);
+            await fetchVideos();
+            return;
+        }
+
+        if (job.status === "failed") {
+            statusEl.innerHTML = "";
+            const errorMsg = document.createElement("div");
+            errorMsg.className = "status-error";
+            errorMsg.textContent = job.error || "Processing failed.";
+            statusEl.appendChild(errorMsg);
+            renderWarnings(statusEl, job.warnings);
+            return;
+        }
+
+        progressEl.textContent = `Job ${job.id} is ${job.status}...`;
+
+        if (Date.now() - start > timeoutMs) {
+            const timeoutMsg = document.createElement("div");
+            timeoutMsg.className = "status-warning";
+            timeoutMsg.textContent = "Processing takes longer than expected. Please check back later.";
+            statusEl.appendChild(timeoutMsg);
+            return;
+        }
+
+        await sleep(pollIntervalMs);
+    }
+}
+
+
 async function fetchVideos() {
     const container = document.getElementById("video-list");
     container.innerHTML = "";
@@ -382,30 +470,11 @@ document.getElementById("upload-form").addEventListener("submit", async (e) => {
 
         const data = await res.json();
         statusEl.innerHTML = "";
+        const queuedMsg = document.createElement("div");
+        queuedMsg.textContent = `Upload successful. Video ${data.id} is being processed...`;
+        statusEl.appendChild(queuedMsg);
 
-        const successMsg = document.createElement("div");
-        successMsg.textContent = `Processing finished for video id: ${data.id}`;
-        statusEl.appendChild(successMsg);
-
-        if (Array.isArray(data.warnings) && data.warnings.length > 0) {
-            const warningBlock = document.createElement("div");
-            warningBlock.className = "status-warning";
-
-            const warningTitle = document.createElement("strong");
-            warningTitle.textContent = "Warning:";
-            warningBlock.appendChild(warningTitle);
-
-            const warningList = document.createElement("ul");
-            data.warnings.forEach((msg) => {
-                const li = document.createElement("li");
-                li.textContent = msg;
-                warningList.appendChild(li);
-            });
-
-            warningBlock.appendChild(warningList);
-            statusEl.appendChild(warningBlock);
-        }
-        await fetchVideos();
+        await pollJobStatus(data.id, statusEl);
     } catch (err) {
         console.error(err);
         statusEl.textContent = "Onbekende fout.";
