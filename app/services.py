@@ -382,10 +382,8 @@ def _format_timestamp(seconds: float) -> str:
     return f"{h:02}:{m:02}:{s2:02}.{ms:03}"
 
 
-def generate_vtt(segments: List[TranslationSegment], out_path: Path):
-    """
-    Schrijf WebVTT bestand met de vertaalde segmenten.
-    """
+def render_vtt_content(segments: List[TranslationSegment]) -> str:
+    """Render VTT inhoud zonder het direct naar disk te schrijven."""
     lines = ["WEBVTT", ""]
     for idx, seg in enumerate(segments, start=1):
         start = _format_timestamp(seg.start)
@@ -395,7 +393,14 @@ def generate_vtt(segments: List[TranslationSegment], out_path: Path):
         lines.append(seg.text)
         lines.append("")  # lege regel
 
-    out_path.write_text("\n".join(lines), encoding="utf-8")
+    return "\n".join(lines)
+
+
+def generate_vtt(segments: List[TranslationSegment], out_path: Path):
+    """
+    Schrijf WebVTT bestand met de vertaalde segmenten.
+    """
+    out_path.write_text(render_vtt_content(segments), encoding="utf-8")
 
 
 # ---------- Dubbing (audio vervangen) ----------
