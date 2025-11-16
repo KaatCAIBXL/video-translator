@@ -495,13 +495,29 @@ async def tts_for_language(text: str, lang: str) -> bytes:
 
 
 async def generate_dub_audio(
-    translated_segments: List[TranslationSegment], lang: str
-) -> bytes:
-    """Return a single TTS track for all translated segments as raw bytes."""
+    translated_segments: List[TranslationSegment], lang: str, output_path: Path
+) -> Path:
+    """Generate a simple TTS narration track for the requested language.
 
-    with open(dub_audio_path, "wb") as f:
-    return await tts_for_language(full_text, lang)
+    The function concatenates the translated subtitle segments into a single
+    block of text, sends that to the TTS helper and writes the result to disk.
+    For now we keep the implementation straightforward so that dubs are at
+    least available, even if they are not yet perfectly time-aligned with the
+    source video.
+    """
 
+    if not translated_segments:
+        raise RuntimeError("No translated segments available for dubbing")
+
+    texts = [seg.text.strip() for seg in translated_segments if seg.text.strip()]
+    if not texts:
+        raise RuntimeError("Translated segments do not contain any text")
+
+    full_text = "\n\n".join(texts)
+    audio_bytes = await tts_for_language(full_text, lang)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_bytes(audio_bytes)
+    return output_path
 
 def replace_video_audio(
     video_path: Path, new_audio_path: Path, output_video_path: Path
