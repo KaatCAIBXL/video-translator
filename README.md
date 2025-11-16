@@ -31,3 +31,13 @@ Voor omgevingen die [Cloud Native Buildpacks](https://buildpacks.io/) gebruiken 
 Azure App Service of Azure Container Apps met source-based deployment) is een
 `Procfile` toegevoegd. Dit zorgt ervoor dat het platform de applicatie kan
 starten met het juiste commando.
+
+## Asynchrone verwerking
+
+Uploads worden onmiddellijk geaccepteerd waarna de zware stappen (ffmpeg,
+Whisper, vertaling, TTS) op de achtergrond draaien. Je krijgt direct een
+`id` terug uit `POST /api/upload` en kunt de voortgang ophalen via
+`GET /api/jobs/{id}`. De response bevat de status (`pending`, `processing`,
+`completed`, `failed`), eventuele waarschuwingen en fouten. Zodra de job is
+afgerond verschijnen de resultaten automatisch in de videolijst en kun je de
+bestaande download-endpoints blijven gebruiken.
