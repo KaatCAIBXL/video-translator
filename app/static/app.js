@@ -51,6 +51,7 @@ async function pollJobStatus(jobId, statusEl) {
     const pollIntervalMs = 3000;
     const timeoutMs = 10 * 60 * 1000; // 10 minuten
     const start = Date.now();
+    let slowProcessingWarned = false;
     const progressEl = document.createElement("div");
     progressEl.textContent = `Job ${jobId} is pending...`;
     statusEl.appendChild(progressEl);
@@ -95,12 +96,12 @@ async function pollJobStatus(jobId, statusEl) {
 
         progressEl.textContent = `Job ${job.id} is ${job.status}...`;
 
-        if (Date.now() - start > timeoutMs) {
+        if (!slowProcessingWarned && Date.now() - start > timeoutMs) {
+            slowProcessingWarned = true;
             const timeoutMsg = document.createElement("div");
             timeoutMsg.className = "status-warning";
             timeoutMsg.textContent = "Processing takes longer than expected. Please check back later.";
             statusEl.appendChild(timeoutMsg);
-            return;
         }
 
         await sleep(pollIntervalMs);
