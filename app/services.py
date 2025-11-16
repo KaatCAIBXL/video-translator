@@ -495,14 +495,12 @@ async def tts_for_language(text: str, lang: str) -> bytes:
 
 
 async def generate_dub_audio(
-    translated_segments: List[TranslationSegment], lang: str, dub_audio_path: Path
-):
-    """Generate a single TTS track for all translated segments."""
-    full_text = " ".join(seg.text for seg in translated_segments)
-    audio_bytes = await tts_for_language(full_text, lang)
+    translated_segments: List[TranslationSegment], lang: str
+) -> bytes:
+    """Return a single TTS track for all translated segments as raw bytes."""
 
     with open(dub_audio_path, "wb") as f:
-        f.write(audio_bytes)
+    return await tts_for_language(full_text, lang)
 
 
 def replace_video_audio(
