@@ -2,6 +2,7 @@ import json
 import logging
 import subprocess
 import tempfile
+import time
 from pathlib import Path
 from typing import List, Dict, Optional, Tuple
 
@@ -304,22 +305,39 @@ def translate_text_deepl(text: str, target_lang: str) -> str:
     if not settings.DEEPL_API_KEY:
         raise RuntimeError("DEEPL_API_KEY ontbreekt in .env")
 
-    try:
-        resp = requests.post(
-            "https://api-free.deepl.com/v2/translate",
-            data={
-                "auth_key": settings.DEEPL_API_KEY,
-                "text": text,
-                "target_lang": DEEPL_LANG_MAP[target_lang],
-            },
-            timeout=60,
-        )
-        resp.raise_for_status()
-    except requests.RequestException as exc:
-        raise RuntimeError(f"DeepL translation for {target_lang} failed: {exc}") from exc
+    last_exc: Optional[Exception] = None
+    backoff_seconds = 1.0
+    for attempt in range(3):
+        try:
+            resp = requests.post(
+                "https://api-free.deepl.com/v2/translate",
+                data={
+                    "auth_key": settings.DEEPL_API_KEY,
+                    "text": text,
+                    "target_lang": DEEPL_LANG_MAP[target_lang],
+                },
+                timeout=60,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            return data["translations"][0]["text"]
+        except requests.HTTPError as exc:
+            status = exc.response.status_code if exc.response else None
+            if status == 429 and attempt < 2:
+                time.sleep(backoff_seconds)
+                backoff_seconds *= 2
+                last_exc = exc
+                continue
+            raise RuntimeError(
+                f"DeepL translation for {target_lang} failed: {exc}"
+            ) from exc
+        except requests.RequestException as exc:
+            last_exc = exc
+            break
 
-    data = resp.json()
-    return data["translations"][0]["text"]
+    raise RuntimeError(
+        f"DeepL translation for {target_lang} failed: {last_exc}"
+    ) from last_exc
 
 
 def translate_text_ai(text: str, target_lang: str) -> str:
