@@ -1,8 +1,10 @@
+import asyncio
 import logging
 import os
 import tempfile
 import zipfile
 from fastapi import FastAPI, UploadFile, File, Form, Request
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -26,6 +28,7 @@ from .services import (
     load_metadata,
 )
 from .models import VideoListItem, VideoMetadata
+from .job_store import job_store, JobStatus
 from starlette.background import BackgroundTask
 
 app = FastAPI()
@@ -125,52 +128,88 @@ async def upload_video(
     audio_path = video_dir / "audio.wav"
     meta_path = video_dir / "metadata.json"
 
-    warnings: List[str] = []
-
     try:
-        # sla upload op
         with open(video_path, "wb") as f:
             shutil.copyfileobj(file.file, f)
+    except Exception:
+        logger.exception("Failed to store uploaded file")
+        return JSONResponse(
+            {"error": "Storing the uploaded video failed."}, status_code=500
+        )
 
-        # 1. audio extracten
-        extract_audio(video_path, audio_path)
+    job_store.create_job(video_id, file.filename)
 
-        # 2. whisper transcriptie
-        whisper_result = transcribe_audio_whisper(audio_path)
+    asyncio.create_task(
+        process_video_job(
+            video_id=video_id,
+            video_dir=video_dir,
+            video_path=video_path,
+            audio_path=audio_path,
+            meta_path=meta_path,
+            languages=list(languages),
+            original_filename=file.filename,
+        )
+    )
+
+    return {"id": video_id, "status": JobStatus.PENDING}
+
+
+@app.get("/api/jobs/{job_id}")
+async def get_job_status(job_id: str):
+    job = job_store.get_job(job_id)
+    if not job:
+        return JSONResponse({"error": "Job not found"}, status_code=404)
+    return job
+
+
+async def process_video_job(
+    *,
+    video_id: str,
+    video_dir: Path,
+    video_path: Path,
+    audio_path: Path,
+    meta_path: Path,
+    languages: List[str],
+    original_filename: str,
+):
+    warnings: List[str] = []
+    job_store.mark_processing(video_id)
+
+    try:
+        await run_in_threadpool(extract_audio, video_path, audio_path)
+
+        whisper_result = await run_in_threadpool(transcribe_audio_whisper, audio_path)
         original_lang = whisper_result.get("language", "unknown")
 
-        # 3. zin-paren bouwen
         sentence_pairs = build_sentence_pairs(whisper_result)
+        translations, translation_warnings = await run_in_threadpool(
+            translate_segments, sentence_pairs, languages
 
-        # 4. vertalingen
-        translations, translation_warnings = translate_segments(
-            sentence_pairs, languages
         )
         warnings.extend(translation_warnings)
 
         if not translations:
             raise RuntimeError("Translations failed for all requested languages.")
-            
-        # 5. VTT bestanden per taal
+
         for lang, segs in translations.items():
             vtt_path = video_dir / f"subs_{lang}.vtt"
-            generate_vtt(segs, vtt_path)
+            await run_in_threadpool(generate_vtt, segs, vtt_path)
 
-        # 6. optioneel: dubbings genereren (hier: meteen doen)
         for lang, segs in translations.items():
             dub_audio_path = video_dir / f"dub_{lang}.mp3"
             try:
                 await generate_dub_audio(segs, lang, dub_audio_path)
                 dub_video_path = video_dir / f"video_dub_{lang}.mp4"
-                replace_video_audio(video_path, dub_audio_path, dub_video_path)
+                await run_in_threadpool(
+                    replace_video_audio, video_path, dub_audio_path, dub_video_path
+                )
             except NotImplementedError:
-                # Als TTS nog niet geïmplementeerd is, slaan we dubbing over
                 pass
             except RuntimeError as exc:
                 warnings.append(
                     f"The dub for {lang} could not be created: {exc}"
                 )
-            except Exception as exc:
+            except Exception:
                 logger.exception("Unexpected error while creating dub for %s", lang)
                 warnings.append(
                     f"The dub for {lang} could not be created because of an unexpected error."
@@ -179,24 +218,32 @@ async def upload_video(
         # 7. metadata opslaan
         meta = VideoMetadata(
             id=video_id,
-            filename=file.filename,
+            filename=original_filename,
             original_language=original_lang,
             sentence_pairs=sentence_pairs,
             translations=translations,
         )
-        save_metadata(meta, meta_path)
-
-    except RuntimeError as exc:
-        logger.warning("Error while processing: %s", exc)
-        return JSONResponse({"error": str(exc)}, status_code=400)
-    except Exception as exc:
-        logger.exception("Unexpected error while processing")
-        return JSONResponse(
-            {"error": "Something went wrong while processing the video."},
-            status_code=500,
+        await run_in_threadpool(save_metadata, meta, meta_path)
+        job_store.mark_completed(
+            video_id,
+            warnings=warnings,
+            original_language=original_lang,
         )
 
-    return {"id": video_id, "warnings": warnings}
+     except RuntimeError as exc:
+        logger.warning("Error while processing job %s: %s", video_id, exc)
+        job_store.mark_failed(
+            video_id,
+            str(exc),
+            warnings=warnings,
+        )
+    except Exception:
+        logger.exception("Unexpected error while processing job %s", video_id)
+        job_store.mark_failed(
+            video_id,
+            "Something went wrong while processing the video.",
+            warnings=warnings,
+        )
 
 
 # ---------- video + ondertitels / dub leveren ----------
