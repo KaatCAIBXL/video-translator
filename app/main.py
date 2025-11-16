@@ -1,8 +1,8 @@
 import asyncio
 import logging
-import os
+import shutil
 import tempfile
-import zipfile
+import uuid
 from fastapi import FastAPI, UploadFile, File, Form, Request
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
@@ -11,8 +11,6 @@ from fastapi.templating import Jinja2Templates
 
 from pathlib import Path
 from typing import List, Optional, Tuple
-import shutil
-import uuid
 
 from .config import settings
 from .services import (
@@ -30,7 +28,6 @@ from .services import (
 )
 from .models import VideoListItem, VideoMetadata, TranslationSegment
 from .job_store import job_store, JobStatus
-from starlette.background import BackgroundTask
 
 app = FastAPI()
 ensure_dirs()
@@ -141,19 +138,13 @@ async def list_videos():
         for lang in meta.translations.keys():
             if (video_dir / f"video_dub_{lang}.mp4").exists():
                 dubs.append(lang)
-        audio_tracks = []
-        for lang in meta.translations.keys():
-            if (video_dir / f"dub_{lang}.mp3").exists():
-                audio_tracks.append(lang)
-
-
+        
         items.append(
             VideoListItem(
                 id=meta.id,
                 filename=meta.filename,
                 available_subtitles=subtitles,
                 available_dubs=dubs,
-                 available_audio=audio_tracks,
             )
         )
 
@@ -250,12 +241,12 @@ async def process_video_job(
             await run_in_threadpool(generate_vtt, segs, vtt_path)
 
         for lang, segs in translations.items():
-            dub_audio_path = video_dir / f"dub_{lang}.mp3"
+            temp_audio_path: Optional[Path] = None
             try:
                 await generate_dub_audio(segs, lang, dub_audio_path)
                 dub_video_path = video_dir / f"video_dub_{lang}.mp4"
                 await run_in_threadpool(
-                    replace_video_audio, video_path, dub_audio_path, dub_video_path
+                    replace_video_audio, video_path, temp_audio_path, dub_video_path
                 )
             except NotImplementedError:
                 pass
@@ -268,7 +259,10 @@ async def process_video_job(
                 warnings.append(
                     f"The dub for {lang} could not be created because of an unexpected error."
                 )
-
+            finally:
+                if temp_audio_path and temp_audio_path.exists():
+                    temp_audio_path.unlink()
+                    
         # 7. metadata opslaan
         meta = VideoMetadata(
             id=video_id,
@@ -335,25 +329,7 @@ async def get_dubbed_video(video_id: str, lang: str):
     original_path = _find_original_video(video_dir)
     base_stem = _video_base_stem(meta, dub_path if original_path is None else original_path)
     filename = f"{base_stem}_dub_{lang}.mp4"
-    return FileResponse(dub_path, filename=filename)
-
-
-@app.get("/videos/{video_id}/audio/{lang}")
-async def get_dub_audio(video_id: str, lang: str):
-    video_dir = settings.PROCESSED_DIR / video_id
-    if not video_dir.exists():
-        return JSONResponse({"error": "Video not found"}, status_code=404)
-
-    audio_path = video_dir / f"dub_{lang}.mp3"
-    if not audio_path.exists():
-        return JSONResponse({"error": "Dubbed audio not found"}, status_code=404)
-
-    meta = _load_video_metadata(video_dir)
-    original_path = _find_original_video(video_dir)
-    base_stem = _video_base_stem(meta, audio_path if original_path is None else original_path)
-    filename = f"{base_stem}_dub_{lang}.mp3"
-    return FileResponse(audio_path, filename=filename, media_type="audio/mpeg")
-        
+    return FileResponse(dub_path, filename=filename)       
 
 
 @app.get("/videos/{video_id}/subs/{lang}")
@@ -429,50 +405,3 @@ async def get_combined_subtitles(video_id: str, langs: Optional[str] = None):
         media_type="text/vtt",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
-
-
-
-@app.get("/videos/{video_id}/package/{lang}")
-async def download_video_package(video_id: str, lang: str, include_audio: bool = False):
-    video_dir = settings.PROCESSED_DIR / video_id
-    if not video_dir.exists():
-        return JSONResponse({"error": "Video not found"}, status_code=404)
-
-    original_path = _find_original_video(video_dir)
-    if original_path is None:
-        return JSONResponse({"error": "Original video not found"}, status_code=404)
-
-    subs_path = video_dir / f"subs_{lang}.vtt"
-    if not subs_path.exists():
-        return JSONResponse({"error": "Subtitles not found"}, status_code=404)
-
-    audio_path = video_dir / f"dub_{lang}.mp3"
-    if include_audio and not audio_path.exists():
-        return JSONResponse({"error": "Requested audio track not found"}, status_code=404)
-
-    meta = _load_video_metadata(video_dir)
-    original_filename = meta.filename if meta else original_path.name
-    base_stem = Path(original_filename).stem
-
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".zip") as tmp_file:
-        tmp_path = Path(tmp_file.name)
-
-    with zipfile.ZipFile(tmp_path, "w", zipfile.ZIP_DEFLATED) as archive:
-        archive.write(original_path, arcname=original_filename)
-        archive.write(subs_path, arcname=f"{base_stem}_{lang}.vtt")
-        if include_audio and audio_path.exists():
-            archive.write(audio_path, arcname=f"{base_stem}_{lang}.mp3")
-
-    package_name = (
-        f"{base_stem}_{lang}_with_audio.zip" if include_audio else f"{base_stem}_{lang}_subtitles.zip"
-    )
-
-    return FileResponse(
-        tmp_path,
-        filename=package_name,
-        media_type="application/zip",
-        background=BackgroundTask(
-            lambda path=str(tmp_path): os.path.exists(path) and os.remove(path)
-        ),
-    )
-        
