@@ -22,6 +22,19 @@ section {
     padding: 8px 12px;
 }
 
+.status-success {
+    margin-top: 8px;
+    background: #eaf7e6;
+    border-left: 4px solid #2d8a34;
+    padding: 8px 12px;
+}
+
+.status-error {
+    margin-top: 8px;
+    background: #ffe8e6;
+    border-left: 4px solid #d93025;
+    padding: 8px 12px;
+}
 .status-warning ul {
     margin: 6px 0 0 20px;
     padding: 0;
