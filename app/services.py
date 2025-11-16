@@ -293,7 +293,7 @@ DEEPL_LANG_MAP = {
 }
 
 SUPPORTED_DEEPL = set(DEEPL_LANG_MAP.keys())
-AI_ONLY_LANGS = {"ln", "lu"}  # Lingala / Tshiluba (je kan codes zelf kiezen)
+AI_ONLY_LANGS = {"ln",}  # Lingala / Tshiluba (je kan codes zelf kiezen)
 
 
 def translate_text_deepl(text: str, target_lang: str) -> str:
@@ -326,7 +326,6 @@ def translate_text_ai(text: str, target_lang: str) -> str:
     """Use OpenAI to translate into languages that DeepL does not support."""
     lang_name = {
         "ln": "Lingala",
-        "lu": "Tshiluba",
     }.get(target_lang, target_lang)
     client = get_openai_client()
 
@@ -436,28 +435,27 @@ async def _edge_tts_to_bytes(text: str, voice: str) -> bytes:
     return b"".join(audio_chunks)
 
 
-def _phonetic_for_lingala_tshiluba(text: str, lang: str) -> str:
+def _phonetic_for_lingala(text: str) -> str:
     """
-    Maak een fonetische versie van de tekst voor Lingala / Tshiluba.
+    Maak een fonetische versie van de tekst voor Lingala.
     We gebruiken OpenAI om syllabes/klanken zo te herschrijven dat
     een TTS-stem ze verstaanbaar uitspreekt.
     """
-    lang_name = "Lingala" if lang == "ln" else "Tshiluba"
     client = get_openai_client()
 
     try:
         response = client.responses.create(
             model="gpt-4o-mini",
             instructions=(
-                f"Zet deze {lang_name}-tekst om naar een fonetische versie met Latijnse letters "
-                f"zodat een TTS-stem het begrijpelijk kan uitspreken. Verander niets aan de betekenis. "
-                f"Geen uitleg, alleen de fonetisch herschreven tekst."
+                  "Zet deze Lingala-tekst om naar een fonetische versie met Latijnse letters "
+                "zodat een TTS-stem het begrijpelijk kan uitspreken. Verander niets aan de betekenis. "
+                "Geen uitleg, alleen de fonetisch herschreven tekst."
             ),
             input=text,
         )
     except Exception as exc:
         raise RuntimeError(
-            f"Phonetic conversion for {lang_name} failed: {exc}"
+            f"Phonetic conversion for Lingala failed: {exc}"
         ) from exc
     return response.output_text
 
@@ -476,15 +474,14 @@ async def tts_for_language(text: str, lang: str) -> bytes:
         # Voor Lingala/Tshiluba kiezen we bv. een Franse stem
         # (omdat die vaak beter met Afrikaanse namen/klanken omgaat)
         "ln": "fr-FR-DeniseNeural",
-        "lu": "fr-FR-DeniseNeural",
     }
 
     lang = lang.lower()
     voice = voice_map.get(lang, "en-US-GuyNeural")
 
     # 2. Fonetik stap voor ln/lu
-    if lang in ["ln", "lu"]:
-        phonetic_text = _phonetic_for_lingala_tshiluba(text, lang)
+    if lang == "ln":
+        phonetic_text = _phonetic_for_lingala(text)
         tts_text = phonetic_text
     else:
         tts_text = text
