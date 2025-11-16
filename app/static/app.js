@@ -102,20 +102,11 @@ async function fetchVideos() {
 
         const baseName = filenameWithoutExtension(video.filename);
 
-        downloads.appendChild(
-            createDownloadLink(
-                "Download original video",
-                `/videos/${video.id}/original`,
-                video.filename || "video"
-            )
-        );
+       
 
         if (video.available_subtitles && video.available_subtitles.length > 0) {
             video.available_subtitles.forEach((lang) => {
-                const group = document.createElement("div");
-                group.className = "download-group";
-
-                group.appendChild(
+                downloads.appendChild(
                     createDownloadLink(
                         `Download subtitles (${lang})`,
                         `/videos/${video.id}/subs/${lang}`,
@@ -123,48 +114,23 @@ async function fetchVideos() {
                     )
                 );
 
-                group.appendChild(
-                    createDownloadLink(
-                        `Download video + subtitles (${lang})`,
-                        `/videos/${video.id}/package/${lang}`,
-                        `${baseName}_${lang}_subtitles.zip`
-                    )
-                );
-
-                if (video.available_audio && video.available_audio.includes(lang)) {
-                    group.appendChild(
-                        createDownloadLink(
-                            `Download dub audio (${lang})`,
-                            `/videos/${video.id}/audio/${lang}`,
-                            `${baseName}_dub_${lang}.mp3`
-                        )
-                    );
-                    group.appendChild(
-                        createDownloadLink(
-                            `Download video + subtitles + audio (${lang})`,
-                            `/videos/${video.id}/package/${lang}?include_audio=true`,
-                            `${baseName}_${lang}_with_audio.zip`
-                        )
-                    );
-                }
-
-                downloads.appendChild(group);
             });
-        }
 
-        if (video.available_audio && video.available_audio.length > 0) {
-            const audioOnly = video.available_audio.filter(
-                (lang) => !video.available_subtitles || !video.available_subtitles.includes(lang)
-            );
-            audioOnly.forEach((lang) => {
+           if (video.available_subtitles.length > 1) {
+                const langParam = video.available_subtitles.join(",");
+                const combinedLabel = video.available_subtitles
+                    .map((code) => code.toUpperCase())
+                    .join(" + ");
                 downloads.appendChild(
                     createDownloadLink(
-                        `Download dub audio (${lang})`,
-                        `/videos/${video.id}/audio/${lang}`,
-                        `${baseName}_dub_${lang}.mp3`
+                        `Download subtitles (${combinedLabel})`,
+                        `/videos/${video.id}/subs/combined?langs=${encodeURIComponent(langParam)}`,
+                        `${baseName}_${video.available_subtitles.join("_")}_combined.vtt`
                     )
                 );
-            });
+            }
+        } else {
+            downloads.textContent = "No subtitles available for download.";
         }
 
         div.appendChild(downloads);
