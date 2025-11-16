@@ -5,12 +5,12 @@ import tempfile
 import zipfile
 from fastapi import FastAPI, UploadFile, File, Form, Request
 from fastapi.concurrency import run_in_threadpool
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Tuple
 import shutil
 import uuid
 
@@ -22,12 +22,13 @@ from .services import (
     build_sentence_pairs,
     translate_segments,
     generate_vtt,
+    render_vtt_content,
     generate_dub_audio,
     replace_video_audio,
     save_metadata,
     load_metadata,
 )
-from .models import VideoListItem, VideoMetadata
+from .models import VideoListItem, VideoMetadata, TranslationSegment
 from .job_store import job_store, JobStatus
 from starlette.background import BackgroundTask
 
@@ -57,6 +58,59 @@ def _find_original_video(video_dir: Path) -> Optional[Path]:
         if candidate.name.startswith("original"):
             return candidate
     return None
+
+def _build_combined_segments(meta: VideoMetadata, languages: List[str]) -> List[TranslationSegment]:
+    """Combineer twee vertaalde subtitle-sporen tot gedeelde segmenten."""
+
+    if len(languages) < 2:
+        raise ValueError("At least two languages are required to build a combined subtitle track")
+
+    cleaned_langs: List[str] = []
+    segments_by_lang: List[Tuple[str, List[TranslationSegment]]] = []
+
+    for lang in languages:
+        normalized = lang.lower().strip()
+        if not normalized or normalized in cleaned_langs:
+            continue
+        if normalized not in meta.translations:
+            raise ValueError(f"Subtitles for '{normalized}' are not available")
+        cleaned_langs.append(normalized)
+        segments_by_lang.append((normalized, meta.translations[normalized]))
+
+    if len(cleaned_langs) < 2:
+        raise ValueError("Subtitles for two different languages are required")
+
+    max_len = max((len(segs) for _, segs in segments_by_lang), default=0)
+    combined: List[TranslationSegment] = []
+
+    for idx in range(max_len):
+        start: Optional[float] = None
+        end: Optional[float] = None
+        text_lines: List[str] = []
+
+        for lang_code, segs in segments_by_lang:
+            if idx >= len(segs):
+                continue
+            seg = segs[idx]
+            start = seg.start if start is None else min(start, seg.start)
+            end = seg.end if end is None else max(end, seg.end)
+            clean_text = " ".join(seg.text.replace("\r", " ").split())
+            text_lines.append(f"{lang_code.upper()}: {clean_text}")
+
+        if not text_lines or start is None or end is None:
+            continue
+
+        combined.append(
+            TranslationSegment(
+                start=start,
+                end=end,
+                text="\n".join(text_lines),
+                language="+".join(cleaned_langs),
+            )
+        )
+
+    return combined
+
 
 
 
@@ -317,6 +371,65 @@ async def get_subtitles(video_id: str, lang: str):
     base_stem = _video_base_stem(meta, subs_path if original_path is None else original_path)
     filename = f"{base_stem}_{lang}.vtt"
     return FileResponse(subs_path, media_type="text/vtt", filename=filename)
+    
+@app.get("/videos/{video_id}/subs/combined")
+async def get_combined_subtitles(video_id: str, langs: Optional[str] = None):
+    video_dir = settings.PROCESSED_DIR / video_id
+    if not video_dir.exists():
+        return JSONResponse({"error": "Video not found"}, status_code=404)
+
+    meta = _load_video_metadata(video_dir)
+    if meta is None or not meta.translations:
+        return JSONResponse({"error": "No subtitles available"}, status_code=404)
+
+    if langs:
+        requested = [part.strip().lower() for part in langs.split(",") if part.strip()]
+    else:
+        requested = list(meta.translations.keys())[:2]
+
+    deduped: List[str] = []
+    for code in requested:
+        if code not in deduped:
+            deduped.append(code)
+
+    if len(deduped) < 2:
+        return JSONResponse(
+            {"error": "Please provide two subtitle languages for a combined download"},
+            status_code=400,
+        )
+
+    if len(deduped) > 2:
+        return JSONResponse(
+            {"error": "Only two subtitle languages can be combined"},
+            status_code=400,
+        )
+
+    missing = [code for code in deduped if code not in meta.translations]
+    if missing:
+        return JSONResponse(
+            {"error": f"Subtitles not found for: {', '.join(missing)}"},
+            status_code=404,
+        )
+
+    try:
+        combined_segments = _build_combined_segments(meta, deduped)
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
+
+    if not combined_segments:
+        return JSONResponse({"error": "No subtitle segments available"}, status_code=404)
+
+    content = render_vtt_content(combined_segments)
+    base_stem = Path(meta.filename).stem if meta.filename else video_dir.name
+    suffix = "_".join(deduped)
+    filename = f"{base_stem}_{suffix}_combined.vtt"
+
+    return PlainTextResponse(
+        content,
+        media_type="text/vtt",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
 
 
 @app.get("/videos/{video_id}/package/{lang}")
