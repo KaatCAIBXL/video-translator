@@ -148,11 +148,7 @@ async function fetchVideos() {
             video.available_dubs && video.available_dubs.length > 0
                 ? video.available_dubs.join(", ")
                 : "none";
-        const audioText =
-            video.available_audio && video.available_audio.length > 0
-                ? video.available_audio.join(", ")
-                : "none";
-        summary.textContent = `Subtitles: ${subtitlesText} | Dubbed videos: ${dubsText} | Dubbed audio: ${audioText}`;
+        summary.textContent = `Subtitles: ${subtitlesText} | Dubbed videos: ${dubsText}`;
         div.appendChild(summary);
 
         const controls = document.createElement("div");
