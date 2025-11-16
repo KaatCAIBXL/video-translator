@@ -50,21 +50,30 @@ def ensure_dirs():
     settings.UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
     settings.PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
 
+def _build_ffmpeg_cmd(*args: str) -> List[str]:
+    """Return a base ffmpeg command with optional hwaccel flags."""
+
+    cmd = ["ffmpeg", "-y"]
+    if settings.FFMPEG_HWACCEL_ARGS:
+        cmd.extend(settings.FFMPEG_HWACCEL_ARGS)
+    cmd.extend(args)
+    return cmd
 
 def extract_audio(video_path: Path, audio_path: Path):
-    """
-    Extract audio from video using ffmpeg.
-    """
-    cmd = [
-        "ffmpeg",
-        "-y",
-        "-i", str(video_path),
+     """Extract audio from video using ffmpeg."""
+
+    cmd = _build_ffmpeg_cmd(
+        "-i",
+        str(video_path),
         "-vn",
-        "-acodec", "pcm_s16le",
-        "-ar", "16000",
-        "-ac", "1",
+        "-acodec",
+        "pcm_s16le",
+        "-ar",
+        "16000",
+        "-ac",
+        "1",
         str(audio_path),
-    ]
+    )
     subprocess.run(cmd, check=True)
 
 
@@ -141,11 +150,19 @@ def _select_chunk_duration(
     return max(1, chunk_seconds)
 
 
+def _max_upload_bytes() -> int:
+    configured = settings.WHISPER_MAX_UPLOAD_MB
+    if configured <= 0:
+        return 24 * 1024 * 1024
+    return configured * 1024 * 1024
+
+
 def transcribe_audio_whisper(audio_path: Path) -> Dict:
     """Transcribe audio with Whisper, chunking long files transparently."""
     
     client = get_openai_client()
-    max_bytes = 24 * 1024 * 1024  # iets onder de 25 MB limiet van Whisper
+    max_bytes = _max_upload_bytes()
+
 
     if audio_path.stat().st_size <= max_bytes:
         return _transcribe_whisper_file(client, audio_path)
@@ -162,11 +179,13 @@ def transcribe_audio_whisper(audio_path: Path) -> Dict:
         default_seconds=600,
     )
 
+    approx_single_chunk = max_bytes / PCM16_MONO_16KHZ_BYTES_PER_SECOND
+
 
     logger.info(
-        "Audio file %s is larger than %d MB, splitting into %d second chunks before Whisper processing",
-        audio_path,
+        "Audio file %s is larger than %d MB (~%.1f s @16kHz PCM). Splitting into %d second chunks before Whisper processing",
         max_bytes // (1024 * 1024),
+        approx_single_chunk,
         segment_seconds,
     )
 
@@ -181,9 +200,7 @@ def transcribe_audio_whisper(audio_path: Path) -> Dict:
 
         try:
             subprocess.run(
-                [
-                    "ffmpeg",
-                    "-y",
+                    _build_ffmpeg_cmd(
                     "-i",
                     str(audio_path),
                     "-acodec",
@@ -193,13 +210,13 @@ def transcribe_audio_whisper(audio_path: Path) -> Dict:
                     "-ac",
                     "1",
                     # Door opnieuw te encoderen naar 16 kHz mono PCM houden we de
-                    # chunks gegarandeerd onder de 25 MB limiet van Whisper.
+                    # chunks gegarandeerd onder de limiet van Whisper.
                     "-f",
                     "segment",
                     "-segment_time",
                     str(segment_seconds),
                     str(chunk_pattern),
-                ],
+                    ),
                 check=True,
             )
         except subprocess.CalledProcessError as exc:
