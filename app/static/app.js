@@ -215,7 +215,7 @@ async function fetchVideos() {
             });
         }
 
-           if (video.available_combined_subtitles && video.available_combined_subtitles.length > 0) {
+        if (video.available_combined_subtitles && video.available_combined_subtitles.length > 0) {
             video.available_combined_subtitles.forEach((entry) => {
                 const langs = entry.split("+").map((code) => code.trim()).filter(Boolean);
                 if (langs.length < 2) {
@@ -225,7 +225,7 @@ async function fetchVideos() {
                 const combinedLabel = langs.map((code) => code.toUpperCase()).join(" + ");
                 downloads.appendChild(
                     createDownloadLink(
-                        `Télécharger les sous-titres combinés (${lang.toUpperCase()})`,
+                        `Télécharger les sous-titres combinés (${combinedLabel})`,
                         `/videos/${video.id}/subs/combined?langs=${encodeURIComponent(langParam)}`,
                         `${baseName}_${langs.join("_")}_combined.vtt`
                     )
