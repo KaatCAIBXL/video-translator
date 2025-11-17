@@ -33,7 +33,7 @@ function renderWarnings(container, warnings) {
     warningBlock.className = "status-warning";
 
     const warningTitle = document.createElement("strong");
-    warningTitle.textContent = warnings.length === 1 ? "Warning:" : "Warnings:";
+    warningTitle.textContent = warnings.length === 1 ? "Avertissement :" : "Avertissements :";
     warningBlock.appendChild(warningTitle);
 
     const warningList = document.createElement("ul");
@@ -53,7 +53,7 @@ async function pollJobStatus(jobId, statusEl) {
     const start = Date.now();
     let slowProcessingWarned = false;
     const progressEl = document.createElement("div");
-    progressEl.textContent = `Job ${jobId} is pending...`;
+    progressEl.textContent = `La tâche ${jobId} est en attente...`;
     statusEl.appendChild(progressEl);
 
     while (true) {
@@ -66,7 +66,7 @@ async function pollJobStatus(jobId, statusEl) {
             job = await res.json();
         } catch (err) {
             progressEl.className = "status-error";
-            progressEl.textContent = `Unable to check job status: ${err.message}`;
+            progressEl.textContent = `Impossible de vérifier l'état ${err.message}`;
             return;
         }
 
@@ -75,9 +75,9 @@ async function pollJobStatus(jobId, statusEl) {
             const successMsg = document.createElement("div");
             successMsg.className = "status-success";
             const langInfo = job.original_language
-                ? ` Detected language: ${job.original_language}.`
+                ? `Langue détectée: ${job.original_language}.`
                 : "";
-            successMsg.textContent = `Video processed successfully.${langInfo}`;
+            successMsg.textContent = `Vidéo traitée avec succès.${langInfo}`;
             statusEl.appendChild(successMsg);
             renderWarnings(statusEl, job.warnings);
             await fetchVideos();
@@ -88,19 +88,19 @@ async function pollJobStatus(jobId, statusEl) {
             statusEl.innerHTML = "";
             const errorMsg = document.createElement("div");
             errorMsg.className = "status-error";
-            errorMsg.textContent = job.error || "Processing failed.";
+            errorMsg.textContent = job.error || "Le traitement a échoué.";
             statusEl.appendChild(errorMsg);
             renderWarnings(statusEl, job.warnings);
             return;
         }
 
-        progressEl.textContent = `Job ${job.id} is ${job.status}...`;
+        progressEl.textContent = `Tâche ${job.id} :${job.status}...`;
 
         if (!slowProcessingWarned && Date.now() - start > timeoutMs) {
             slowProcessingWarned = true;
             const timeoutMsg = document.createElement("div");
             timeoutMsg.className = "status-warning";
-            timeoutMsg.textContent = "Processing takes longer than expected. Please check back later.";
+            timeoutMsg.textContent = "Le traitement est plus long que prévu. Merci de revenir un peu plus tard";
             statusEl.appendChild(timeoutMsg);
         }
 
@@ -121,7 +121,7 @@ async function fetchVideos() {
         videos = await res.json();
     } catch (error) {
         console.error("Failed to load processed videos", error);
-        container.textContent = "Unable to load the processed videos right now.";
+        container.textContent = "Impossible de charger la liste des vidéos pour le moment.";
         return;
     }
 
@@ -143,26 +143,40 @@ async function fetchVideos() {
         summary.className = "video-summary";
         const subtitlesText =
             video.available_subtitles && video.available_subtitles.length > 0
-                ? video.available_subtitles.join(", ")
-                : "none";
+             ? video.available_subtitles.map((code) => code.toUpperCase()).join(", ")
+                : "aucun";
+        const combinedText =
+            video.available_combined_subtitles && video.available_combined_subtitles.length > 0
+                ? video.available_combined_subtitles
+                      .map((entry) => entry.toUpperCase().replace(/\+/g, " + "))
+                      .join(", ")
+                : "aucun";
+        const audioDubText =
+            video.available_dub_audios && video.available_dub_audios.length > 0
+                ? video.available_dub_audios.map((code) => code.toUpperCase()).join(", ")
+                : "aucun";   
         const dubsText =
             video.available_dubs && video.available_dubs.length > 0
-                ? video.available_dubs.join(", ")
-                : "none";
-        summary.textContent = `Subtitles: ${subtitlesText} | Dubbed videos: ${dubsText}`;
+                ? video.available_dubs.map((code) => code.toUpperCase()).join(", ")
+                : "aucun";
+        summary.textContent =
+            `Sous-titres : ${subtitlesText} | ` +
+            `Sous-titres combinés : ${combinedText} | ` +
+            `Audio doublé : ${audioDubText} | ` +
+            `Vidéos doublées : ${dubsText}`;
         div.appendChild(summary);
 
         const controls = document.createElement("div");
         controls.className = "video-controls";
 
         const playOriginalBtn = document.createElement("button");
-        playOriginalBtn.textContent = "Play original";
+        playOriginalBtn.textContent = "Lecture originale";
         playOriginalBtn.onclick = () => playVideo(video, { mode: "original" });
         controls.appendChild(playOriginalBtn);
 
         if (video.available_subtitles && video.available_subtitles.length > 0) {
             const btnSubs = document.createElement("button");
-            btnSubs.textContent = "Play with subtitle";
+            btnSubs.textContent = "Lecture avec sous-titres";
             btnSubs.onclick = () => playVideo(video, { mode: "subs" });
             controls.appendChild(btnSubs);
         }
@@ -172,7 +186,7 @@ async function fetchVideos() {
             dubWrapper.className = "dub-buttons";
             video.available_dubs.forEach((lang) => {
                 const btnDub = document.createElement("button");
-                btnDub.textContent = `Play dubbed (${lang})`;
+                btnDub.textContent = `Lecture doublée (${lang.toUpperCase()})`;
                 btnDub.onclick = () => playVideo(video, { mode: "dub", lang });
                 dubWrapper.appendChild(btnDub);
                 
@@ -186,36 +200,53 @@ async function fetchVideos() {
         downloads.className = "download-links";
 
         const baseName = filenameWithoutExtension(video.filename);
-
-       
+        
 
         if (video.available_subtitles && video.available_subtitles.length > 0) {
             video.available_subtitles.forEach((lang) => {
                 downloads.appendChild(
                     createDownloadLink(
-                        `Download subtitles (${lang})`,
+                        `Télécharger les sous-titres (${lang.toUpperCase()})`,
                         `/videos/${video.id}/subs/${lang}`,
                         `${baseName}_${lang}.vtt`
                     )
                 );
 
             });
+        }
 
-           if (video.available_subtitles.length > 1) {
-                const langParam = video.available_subtitles.join(",");
-                const combinedLabel = video.available_subtitles
-                    .map((code) => code.toUpperCase())
-                    .join(" + ");
+           if (video.available_combined_subtitles && video.available_combined_subtitles.length > 0) {
+            video.available_combined_subtitles.forEach((entry) => {
+                const langs = entry.split("+").map((code) => code.trim()).filter(Boolean);
+                if (langs.length < 2) {
+                    return;
+                }
+                const langParam = langs.join(",");
+                const combinedLabel = langs.map((code) => code.toUpperCase()).join(" + ");
                 downloads.appendChild(
                     createDownloadLink(
-                        `Download subtitles (${combinedLabel})`,
+                        `Télécharger les sous-titres combinés (${lang.toUpperCase()})`,
                         `/videos/${video.id}/subs/combined?langs=${encodeURIComponent(langParam)}`,
-                        `${baseName}_${video.available_subtitles.join("_")}_combined.vtt`
+                        `${baseName}_${langs.join("_")}_combined.vtt`
                     )
                 );
-            }
-        } else {
-            downloads.textContent = "No subtitles available for download.";
+            });
+        }
+
+        if (video.available_dub_audios && video.available_dub_audios.length > 0) {
+            video.available_dub_audios.forEach((lang) => {
+                downloads.appendChild(
+                    createDownloadLink(
+                        `Télécharger l'audio doublé (${lang.toUpperCase()})`,
+                        `/videos/${video.id}/dub-audio/${lang}`,
+                        `${baseName}_dub_${lang}.mp3`
+                    )
+                );
+            });
+        }
+
+        if (!downloads.hasChildNodes()) {
+            downloads.textContent = "Aucun téléchargement disponible.";
         }
 
         div.appendChild(downloads);
@@ -233,7 +264,7 @@ let currentSubtitleCleanup = null;
 
 const videoEl = document.getElementById("video-player");
 const videoContainer = document.getElementById("video-container");
-let pendingContainerFullscreen = false;
+const fullscreenButton = document.getElementById("fullscreen-button")
 
 function clearSubtitleOverlay() {
     const overlay = document.getElementById("subtitle-overlay");
@@ -241,43 +272,31 @@ function clearSubtitleOverlay() {
     overlay.classList.add("hidden");
 }
 
-function switchToContainerFullscreen() {
+function requestContainerFullscreen() {
     if (!videoContainer || !videoContainer.requestFullscreen) {
-        pendingContainerFullscreen = false;
-        return;
+        return Promise.reject(new Error("Fullscreen API non disponible"));
     }
-
-    videoContainer
-        .requestFullscreen()
-        .catch(() => {
-            pendingContainerFullscreen = false;
-        })
-        .then(() => {
-            pendingContainerFullscreen = false;
-        });
+    return videoContainer.requestFullscreen();
 }
 
 function handleFullscreenChange() {
     const fullscreenElement = document.fullscreenElement;
-
-    if (fullscreenElement === videoEl) {
-        if (!document.exitFullscreen) {
-            pendingContainerFullscreen = false;
-            return;
-        }
-
-        pendingContainerFullscreen = true;
-        document.exitFullscreen().catch(() => {
-            pendingContainerFullscreen = false;
-        });
-    } else if (!fullscreenElement && pendingContainerFullscreen) {
-        switchToContainerFullscreen();
-    } else if (fullscreenElement !== videoContainer) {
-        pendingContainerFullscreen = false;
+    if (fullscreenElement === videoEl && document.exitFullscreen) {
+        document
+            .exitFullscreen()
+            .then(() => requestContainerFullscreen())
+            .catch(() => {});
     }
 }
 
 document.addEventListener("fullscreenchange", handleFullscreenChange);
+
+if (fullscreenButton) {
+    fullscreenButton.addEventListener("click", () => {
+        requestContainerFullscreen().catch(() => {});
+    });
+}
+
 async function playVideo(video, options = {}) {
     const infoEl = document.getElementById("player-info");
     const overlay = document.getElementById("subtitle-overlay");
@@ -294,14 +313,14 @@ async function playVideo(video, options = {}) {
 
     if (mode === "subs") {
         if (!video.available_subtitles || video.available_subtitles.length === 0) {
-            infoEl.textContent = "No subtitles available.";
+            infoEl.textContent = "Aucun sous-titre disponible.";
         } else {
             try {
                 const subtitles = await Promise.all(
                     video.available_subtitles.map(async (lang) => {
                         const res = await fetch(`/videos/${video.id}/subs/${lang}`);
                         if (!res.ok) {
-                            throw new Error(`Could not load subtitles for ${lang}`);
+                            throw new Error(`Impossible de charger les sous-titres pour ${lang}`);
                         }
                         const text = await res.text();
                         return { lang, cues: parseVtt(text) };
@@ -356,22 +375,24 @@ async function playVideo(video, options = {}) {
                     clearSubtitleOverlay();
                 };
 
-                infoEl.textContent = `Playing with subtitles (${video.available_subtitles.join(", ")})`;
+                infoEl.textContent = `Lecture avec sous-titres (${video.available_subtitles
+                    .map((code) => code.toUpperCase())
+                    .join(", ")})`;
             } catch (err) {
                 console.error(err);
-                infoEl.textContent = "Failed to load subtitles.";
+                infoEl.textContent = "Impossible de charger les sous-titres.";
             }
         }
     } else if (mode === "dub") {
         const selectedLang = options.lang || (video.available_dubs ? video.available_dubs[0] : null);
         if (!selectedLang) {
-            infoEl.textContent = "No dubbing available";
+            infoEl.textContent = "Aucun doublage disponible.";
         } else {
             videoEl.src = `/videos/${video.id}/dub/${selectedLang}`;
-            infoEl.textContent = `Afspelen met dubbing (${selectedLang})`;
+            infoEl.textContent = `Lecture avec doublage (${selectedLang.toUpperCase()})`;
         }
     } else {
-        infoEl.textContent = "Playing original track.";
+        infoEl.textContent = "Lecture de la piste originale.";
     }
 
     videoEl.load();
@@ -443,13 +464,19 @@ document.getElementById("upload-form").addEventListener("submit", async (e) => {
     e.preventDefault();
     const form = e.target;
     const statusEl = document.getElementById("upload-status");
-    statusEl.textContent = "Uploading and processing... This may take a while";
+    statusEl.textContent = "Téléversement et traitement en cours... Cela peut prendre un moment.";
 
     const formData = new FormData(form);
     const checkedLangs = [...form.querySelectorAll("input[name='languages']:checked")];
+    const checkedOptions = [...form.querySelectorAll("input[name='process_options']:checked")];
 
     if (checkedLangs.length === 0 || checkedLangs.length > 2) {
-        alert("Please select one or two target languages.");
+        alert("Veuillez sélectionner une ou deux langues cibles.");
+        return;
+    }
+
+    if (checkedOptions.length === 0) {
+        alert("Veuillez sélectionner au moins une option de traitement.");
         return;
     }
 
@@ -461,20 +488,20 @@ document.getElementById("upload-form").addEventListener("submit", async (e) => {
 
         if (!res.ok) {
             const err = await res.json();
-            statusEl.textContent = "Fout: " + (err.error || res.statusText);
+            statusEl.textContent = "Erreur : " + (err.error || res.statusText);
             return;
         }
 
         const data = await res.json();
         statusEl.innerHTML = "";
         const queuedMsg = document.createElement("div");
-        queuedMsg.textContent = `Upload successful. Video ${data.id} is being processed...`;
+        queuedMsg.textContent = `Téléversement réussi. La vidéo ${data.id} est en cours de traitement...`;
         statusEl.appendChild(queuedMsg);
 
         await pollJobStatus(data.id, statusEl);
     } catch (err) {
         console.error(err);
-        statusEl.textContent = "Onbekende fout.";
+        statusEl.textContent = "Erreur inconnue.";
     }
 });
 
