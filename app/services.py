@@ -300,7 +300,7 @@ def translate_text_deepl(text: str, target_lang: str) -> str:
     for attempt in range(3):
         try:
             resp = requests.post(
-                "https://api-free.deepl.com/v2/translate",
+                "https://api.deepl.com/v2/translate",
                 data={
                     "auth_key": settings.DEEPL_API_KEY,
                     "text": text,
