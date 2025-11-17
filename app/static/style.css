@@ -67,6 +67,13 @@ button {
     margin-right: 10px;
     margin-top: 5px;
 }
+#player-actions {
+    margin-top: 10px;
+}
+
+#player-actions button {
+    margin-top: 0;
+}
 #video-container {
     position: relative;
     display: inline-block;
