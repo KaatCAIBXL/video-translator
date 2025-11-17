@@ -10,7 +10,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from .config import settings
 from .services import (
@@ -37,6 +37,13 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 templates = Jinja2Templates(directory=str(BASE_DIR / "app" / "templates"))
 LANGUAGE_OPTIONS = get_language_options()
 ALLOWED_LANGUAGE_CODES = {opt.code for opt in LANGUAGE_OPTIONS}
+PROCESS_OPTIONS = {
+    "subs_per_language",
+    "subs_combined",
+    "dub_audio",
+    "dub_video",
+}
+DEFAULT_PROCESS_OPTIONS = list(PROCESS_OPTIONS)
 
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "app" / "static")), name="static")
 
@@ -59,7 +66,10 @@ def _find_original_video(video_dir: Path) -> Optional[Path]:
             return candidate
     return None
 
-def _build_combined_segments(meta: VideoMetadata, languages: List[str]) -> List[TranslationSegment]:
+def _build_combined_segments(
+    translations: Dict[str, List[TranslationSegment]],
+    languages: List[str],
+) -> List[TranslationSegment]:
     """Combineer twee vertaalde subtitle-sporen tot gedeelde segmenten."""
 
     if len(languages) < 2:
@@ -72,10 +82,10 @@ def _build_combined_segments(meta: VideoMetadata, languages: List[str]) -> List[
         normalized = lang.lower().strip()
         if not normalized or normalized in cleaned_langs:
             continue
-        if normalized not in meta.translations:
+        if normalized not in translations:
             raise ValueError(f"Subtitles for '{normalized}' are not available")
         cleaned_langs.append(normalized)
-        segments_by_lang.append((normalized, meta.translations[normalized]))
+        segments_by_lang.append((normalized, translations[normalized]))
 
     if len(cleaned_langs) < 2:
         raise ValueError("Subtitles for two different languages are required")
@@ -111,6 +121,23 @@ def _build_combined_segments(meta: VideoMetadata, languages: List[str]) -> List[
 
     return combined
 
+def _combined_subtitle_filename(languages: List[str]) -> str:
+    safe = "_".join(lang.lower().strip() for lang in languages if lang.strip())
+    return f"subs_combined_{safe}.vtt"
+
+
+def _combined_subtitle_key(path: Path) -> Optional[str]:
+    stem = path.stem
+    prefix = "subs_combined_"
+    if not stem.startswith(prefix):
+        return None
+    suffix = stem[len(prefix) :]
+    if not suffix:
+        return None
+    parts = [part for part in suffix.split("_") if part]
+    if len(parts) < 2:
+        return None
+    return "+".join(parts)
 
 
 
@@ -140,13 +167,34 @@ async def list_videos():
         if meta is None:
             continue
 
-        subtitles = list(meta.translations.keys())
+        subtitles = [
+            lang
+            for lang in meta.translations.keys()
+            if (video_dir / f"subs_{lang}.vtt").exists()
+        ]
 
-        # beschikbare dubs: check of er een video_dub_{lang}.mp4 is
-        dubs = []
-        for lang in meta.translations.keys():
-            if (video_dir / f"video_dub_{lang}.mp4").exists():
-                dubs.append(lang)
+        dubs = [
+            lang
+            for lang in meta.translations.keys()
+            if (video_dir / f"video_dub_{lang}.mp4").exists()
+        ]
+
+        dub_audios = [
+            lang
+            for lang in meta.translations.keys()
+            if (video_dir / f"dub_audio_{lang}.mp3").exists()
+        ]
+
+        combined = []
+        for combined_file in video_dir.glob("subs_combined_*.vtt"):
+            key = _combined_subtitle_key(combined_file)
+            if key:
+                combined.append(key)
+
+        subtitles.sort()
+        dubs.sort()
+        dub_audios.sort()
+        combined.sort()
         
         items.append(
             VideoListItem(
@@ -154,6 +202,8 @@ async def list_videos():
                 filename=meta.filename,
                 available_subtitles=subtitles,
                 available_dubs=dubs,
+                available_dub_audios=dub_audios,
+                available_combined_subtitles=combined,
             )
         )
 
@@ -165,6 +215,7 @@ async def list_videos():
 @app.post("/api/upload")
 async def upload_video(
     languages: List[str] = Form(...),  # max. 2 talen aanvinken in frontend
+    process_options: Optional[List[str]] = Form(None),
     file: UploadFile = File(...)
 ):
     normalized_langs = [lang.lower() for lang in languages]
@@ -186,6 +237,33 @@ async def upload_video(
             status_code=400,
         )
 
+    if process_options is None:
+        normalized_options = list(DEFAULT_PROCESS_OPTIONS)
+    else:
+        normalized_options = []
+        for option in process_options:
+            cleaned = option.lower().strip()
+            if not cleaned or cleaned in normalized_options:
+                continue
+            normalized_options.append(cleaned)
+
+        if not normalized_options:
+            return JSONResponse(
+                {"error": "Please select at least one processing option"},
+                status_code=400,
+            )
+
+    invalid_options = [opt for opt in normalized_options if opt not in PROCESS_OPTIONS]
+    if invalid_options:
+        return JSONResponse(
+            {
+                "error": (
+                    "Unsupported processing options requested: "
+                    + ", ".join(sorted(set(invalid_options)))
+                )
+            },
+            status_code=400,
+        )
 
     video_id = str(uuid.uuid4())
     ext = Path(file.filename).suffix
@@ -216,6 +294,7 @@ async def upload_video(
             meta_path=meta_path,
             languages=list(normalized_langs),
             original_filename=file.filename,
+            process_options=normalized_options,
         )
     )
 
@@ -239,8 +318,15 @@ async def process_video_job(
     meta_path: Path,
     languages: List[str],
     original_filename: str,
+    process_options: List[str],
 ):
     warnings: List[str] = []
+    options_set = set(process_options or DEFAULT_PROCESS_OPTIONS)
+    create_subtitles = "subs_per_language" in options_set
+    create_combined = "subs_combined" in options_set
+    create_dub_audio = "dub_audio" in options_set
+    create_dub_video = "dub_video" in options_set
+    needs_dub_assets = create_dub_audio or create_dub_video
     job_store.mark_processing(video_id)
 
     try:
@@ -259,35 +345,60 @@ async def process_video_job(
         if not translations:
             raise RuntimeError("Translations failed for all requested languages.")
 
-        for lang, segs in translations.items():
-            vtt_path = video_dir / f"subs_{lang}.vtt"
-            await run_in_threadpool(generate_vtt, segs, vtt_path)
+        if create_subtitles:
+            for lang, segs in translations.items():
+                vtt_path = video_dir / f"subs_{lang}.vtt"
+                await run_in_threadpool(generate_vtt, segs, vtt_path)
 
-        for lang, segs in translations.items():
-            temp_audio_path: Optional[Path] = None
-            try:
-                with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as tmp:
-                    temp_audio_path = Path(tmp.name)
+        if create_combined:
+            if len(languages) < 2:
+                warnings.append("Combined subtitles require two target languages.")
+            else:
+                try:
+                    combined_segments = _build_combined_segments(translations, languages)
+                except ValueError as exc:
+                    warnings.append(str(exc))
+                else:
+                    combined_path = video_dir / _combined_subtitle_filename(languages)
+                    content = render_vtt_content(combined_segments)
+                    combined_path.write_text(content, encoding="utf-8")
 
-                await generate_dub_audio(segs, lang, temp_audio_path)
-                dub_video_path = video_dir / f"video_dub_{lang}.mp4"
-                await run_in_threadpool(
-                    replace_video_audio, video_path, temp_audio_path, dub_video_path
-                )
-            except NotImplementedError:
-                pass
-            except RuntimeError as exc:
-                warnings.append(
-                    f"The dub for {lang} could not be created: {exc}"
-                )
-            except Exception:
-                logger.exception("Unexpected error while creating dub for %s", lang)
-                warnings.append(
-                    f"The dub for {lang} could not be created because of an unexpected error."
-                )
-            finally:
-                if temp_audio_path and temp_audio_path.exists():
-                    temp_audio_path.unlink()
+        if needs_dub_assets:
+            for lang, segs in translations.items():
+                temp_audio_path: Optional[Path] = None
+                try:
+                    if create_dub_audio:
+                        audio_path_target = video_dir / f"dub_audio_{lang}.mp3"
+                    else:
+                        tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3")
+                        temp_audio_path = Path(tmp.name)
+                        audio_path_target = temp_audio_path
+
+                    await generate_dub_audio(segs, lang, audio_path_target)
+
+                    if create_dub_video:
+                        dub_video_path = video_dir / f"video_dub_{lang}.mp4"
+                        await run_in_threadpool(
+                            replace_video_audio,
+                            video_path,
+                            audio_path_target,
+                            dub_video_path,
+                        )
+                except NotImplementedError:
+                    pass
+                except RuntimeError as exc:
+                    warnings.append(
+                        f"The dub for {lang} could not be created: {exc}"
+                    )
+                except Exception:
+                    logger.exception("Unexpected error while creating dub for %s", lang)
+                    warnings.append(
+                        f"The dub for {lang} could not be created because of an unexpected error."
+                    )
+                finally:
+                    if (not create_dub_audio) and temp_audio_path and temp_audio_path.exists():
+                        temp_audio_path.unlink()
+            
                     
         # 7. metadata opslaan
         meta = VideoMetadata(
@@ -357,6 +468,21 @@ async def get_dubbed_video(video_id: str, lang: str):
     filename = f"{base_stem}_dub_{lang}.mp4"
     return FileResponse(dub_path, filename=filename)       
 
+@app.get("/videos/{video_id}/dub-audio/{lang}")
+async def get_dub_audio(video_id: str, lang: str):
+    video_dir = settings.PROCESSED_DIR / video_id
+    if not video_dir.exists():
+        return JSONResponse({"error": "Video not found"}, status_code=404)
+
+    audio_path = video_dir / f"dub_audio_{lang}.mp3"
+    if not audio_path.exists():
+        return JSONResponse({"error": "Dub audio not found"}, status_code=404)
+
+    meta = _load_video_metadata(video_dir)
+    original_path = _find_original_video(video_dir)
+    base_stem = _video_base_stem(meta, audio_path if original_path is None else original_path)
+    filename = f"{base_stem}_dub_{lang}.mp3"
+    return FileResponse(audio_path, media_type="audio/mpeg", filename=filename)
 
 @app.get("/videos/{video_id}/subs/{lang}")
 async def get_subtitles(video_id: str, lang: str):
@@ -413,8 +539,16 @@ async def get_combined_subtitles(video_id: str, langs: Optional[str] = None):
             status_code=404,
         )
 
+    stored_path = video_dir / _combined_subtitle_filename(deduped)
+    base_stem = Path(meta.filename).stem if meta.filename else video_dir.name
+    suffix = "_".join(deduped)
+    filename = f"{base_stem}_{suffix}_combined.vtt"
+
+    if stored_path.exists():
+        return FileResponse(stored_path, media_type="text/vtt", filename=filename)
+        
     try:
-        combined_segments = _build_combined_segments(meta, deduped)
+        combined_segments = _build_combined_segments(meta.translations, deduped)
     except ValueError as exc:
         return JSONResponse({"error": str(exc)}, status_code=400)
 
@@ -422,9 +556,6 @@ async def get_combined_subtitles(video_id: str, langs: Optional[str] = None):
         return JSONResponse({"error": "No subtitle segments available"}, status_code=404)
 
     content = render_vtt_content(combined_segments)
-    base_stem = Path(meta.filename).stem if meta.filename else video_dir.name
-    suffix = "_".join(deduped)
-    filename = f"{base_stem}_{suffix}_combined.vtt"
 
     return PlainTextResponse(
         content,
