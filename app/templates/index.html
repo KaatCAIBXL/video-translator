@@ -24,13 +24,13 @@
              {% endfor %}
              <p class="language-hint">Les langues marquées d'un * utilisent le traducteur IA, les autres passent par DeepL.</p>
          </fieldset>
-         <fieldset>
-             <legend>Options de traitement</legend>
-             <label>
-                 <input type="checkbox" name="process_options" value="subs_per_language" checked>
-                 Sous-titres séparés par langue
-             </label>
-             <label>
+        <fieldset>
+            <legend>Options de traitement</legend>
+            <label>
+                <input type="checkbox" name="process_options" value="subs_per_language" checked>
+                Sous-titres séparés par langue
+            </label>
+            <label>
                  <input type="checkbox" name="process_options" value="subs_combined" checked>
                  Sous-titres combinés
              </label>
@@ -42,10 +42,27 @@
                  <input type="checkbox" name="process_options" value="dub_video" checked>
                  Vidéo avec doublage audio
              </label>
-             <p class="language-hint">Décochez les options inutiles pour éviter un traitement superflu.</p>
-         </fieldset>
-         <button type="submit">Téléverser et traiter</button>
-     </form>
+            <p class="language-hint">Décochez les options inutiles pour éviter un traitement superflu.</p>
+        </fieldset>
+        <fieldset>
+            <legend>Synchronisation du doublage</legend>
+            <label>
+                Vitesse relative de la voix TTS
+                <input
+                    type="number"
+                    name="tts_speed_multiplier"
+                    value="1.05"
+                    min="0.8"
+                    max="1.2"
+                    step="0.01"
+                >
+            </label>
+            <p class="language-hint">
+                1,00 = vitesse normale. Augmentez légèrement (ex. 1,05) pour que la voix doublée démarre plus tôt.
+            </p>
+        </fieldset>
+        <button type="submit">Téléverser et traiter</button>
+    </form>
      <div id="upload-status"></div>
  </section>
  
