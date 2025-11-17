@@ -18,6 +18,8 @@ from .services import (
     extract_audio,
     transcribe_audio_whisper,
     build_sentence_pairs,
+    build_sentence_segments,
+    pair_translation_segments,
     translate_segments,
     generate_vtt,
     render_vtt_content,
@@ -85,7 +87,9 @@ def _build_combined_segments(
         if normalized not in translations:
             raise ValueError(f"Subtitles for '{normalized}' are not available")
         cleaned_langs.append(normalized)
-        segments_by_lang.append((normalized, translations[normalized]))
+        paired_segments = pair_translation_segments(translations[normalized])
+        segments_by_lang.append((normalized, paired_segments))
+
 
     if len(cleaned_langs) < 2:
         raise ValueError("Subtitles for two different languages are required")
@@ -344,9 +348,10 @@ async def process_video_job(
         whisper_result = await run_in_threadpool(transcribe_audio_whisper, audio_path)
         original_lang = whisper_result.get("language", "unknown")
 
+        sentence_segments = build_sentence_segments(whisper_result)
         sentence_pairs = build_sentence_pairs(whisper_result)
         translations, translation_warnings = await run_in_threadpool(
-            translate_segments, sentence_pairs, languages
+            translate_segments, sentence_segments, languages
 
         )
         warnings.extend(translation_warnings)
@@ -357,7 +362,8 @@ async def process_video_job(
         if create_subtitles:
             for lang, segs in translations.items():
                 vtt_path = video_dir / f"subs_{lang}.vtt"
-                await run_in_threadpool(generate_vtt, segs, vtt_path)
+                paired_segments = pair_translation_segments(segs)
+                await run_in_threadpool(generate_vtt, paired_segments, vtt_path)
 
         if create_combined:
             if len(languages) < 2:
