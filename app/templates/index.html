@@ -16,12 +16,13 @@
         </label>
         <fieldset>
             <legend>Target languages (max. 2)</legend>
-            <label><input type="checkbox" name="languages" value="es"> Spanish </label>
-            <label><input type="checkbox" name="languages" value="en"> English </label>
-            <label><input type="checkbox" name="languages" value="nl"> Dutch </label>
-            <label><input type="checkbox" name="languages" value="pt"> Portuguese </label>
-            <label><input type="checkbox" name="languages" value="fi"> Finnish </label>
-            <label><input type="checkbox" name="languages" value="ln"> Lingala </label>
+            {% for lang in available_languages %}
+            <label>
+                <input type="checkbox" name="languages" value="{{ lang.code }}">
+                {{ lang.label }}{% if lang.provider == "ai" %}*{% endif %}
+            </label>
+            {% endfor %}
+            <p class="language-hint">Talen met een * gebruiken de AI-vertaler, de rest gaat via DeepL.</p>
         </fieldset>
         <button type="submit">Upload & process</button>
     </form>
