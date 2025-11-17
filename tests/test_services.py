@@ -1,6 +1,10 @@
 from pathlib import Path
 import sys
+from types import SimpleNamespace
+
+import httpx
 import pytest
+from openai import InternalServerError
 
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
@@ -106,3 +110,66 @@ def test_build_combined_segments_requires_two_languages():
 
     with pytest.raises(ValueError):
         _build_combined_segments(meta, ["en"])
+def _build_dummy_client(create_fn):
+    return SimpleNamespace(
+        audio=SimpleNamespace(
+            transcriptions=SimpleNamespace(create=create_fn)
+        )
+    )
+
+
+def _make_internal_error():
+    return InternalServerError(
+        "boom",
+        response=httpx.Response(500, request=httpx.Request("POST", "https://api.openai.com")),
+        body=None,
+    )
+
+
+def test_transcribe_whisper_file_retries_on_internal_error(tmp_path, monkeypatch):
+    audio_path = tmp_path / "sample.wav"
+    audio_path.write_bytes(b"dummy")
+
+    attempts = {"count": 0}
+
+    def fake_create(*args, **kwargs):
+        attempts["count"] += 1
+        if attempts["count"] < 3:
+            raise _make_internal_error()
+
+        class DummyResponse:
+            def to_dict(self):
+                return {"text": "ok"}
+
+        return DummyResponse()
+
+    client = _build_dummy_client(fake_create)
+    monkeypatch.setattr(services, "_TRANSCRIBE_MAX_ATTEMPTS", 3)
+    monkeypatch.setattr(services, "_TRANSCRIBE_INITIAL_BACKOFF", 0)
+    monkeypatch.setattr(services.time, "sleep", lambda *_: None)
+
+    result = services._transcribe_whisper_file(client, audio_path)
+
+    assert result["text"] == "ok"
+    assert attempts["count"] == 3
+
+
+def test_transcribe_whisper_file_raises_after_retries(tmp_path, monkeypatch):
+    audio_path = tmp_path / "sample.wav"
+    audio_path.write_bytes(b"dummy")
+
+    attempts = {"count": 0}
+
+    def fake_create(*args, **kwargs):
+        attempts["count"] += 1
+        raise _make_internal_error()
+
+    client = _build_dummy_client(fake_create)
+    monkeypatch.setattr(services, "_TRANSCRIBE_MAX_ATTEMPTS", 2)
+    monkeypatch.setattr(services, "_TRANSCRIBE_INITIAL_BACKOFF", 0)
+    monkeypatch.setattr(services.time, "sleep", lambda *_: None)
+
+    with pytest.raises(RuntimeError):
+        services._transcribe_whisper_file(client, audio_path)
+
+    assert attempts["count"] == 2
