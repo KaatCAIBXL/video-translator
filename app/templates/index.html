@@ -1,52 +1,84 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>Video  Translation</title>
-    <link rel="stylesheet" href="/static/style.css">
-</head>
-<body>
-<h1>Video Translation & TTS</h1>
-
-<section id="upload">
-    <h2>Upload a new video</h2>
-    <form id="upload-form">
-        <label>Video file:
-            <input type="file" name="file" accept="video/*" required>
-        </label>
-        <fieldset>
-            <legend>Target languages (max. 2)</legend>
-            {% for lang in available_languages %}
-            <label>
-                <input type="checkbox" name="languages" value="{{ lang.code }}">
-                {{ lang.label }}{% if lang.provider == "ai" %}*{% endif %}
-            </label>
-            {% endfor %}
-            <p class="language-hint">Talen met een * gebruiken de AI-vertaler, de rest gaat via DeepL.</p>
-        </fieldset>
-        <button type="submit">Upload & process</button>
-    </form>
-    <div id="upload-status"></div>
-</section>
-
-<hr>
-
-<section id="library">
-    <h2>Processed videos</h2>
-    <div id="video-list"></div>
-</section>
-
-<section id="player">
-    <h2>Player</h2>
-    <div id="video-container">
-        <video id="video-player" controls width="800">
-            Your browser does not support the video tag.
-        </video>
-        <div id="subtitle-overlay" class="hidden"></div>
-    </div>
-    <div id="player-info"></div>
-</section>
-
-<script src="/static/app.js"></script>
-</body>
-</html>
+ (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
+diff --git a/app/templates/index.html b/app/templates/index.html
+index d55be0ed932fde26468d254c72cba0f635fc00e0..79935a344959e2ab095d678efb6767004a7b6a86 100644
+--- a/app/templates/index.html
++++ b/app/templates/index.html
+@@ -1,52 +1,75 @@
+ <!DOCTYPE html>
++<html lang="fr">
+ <head>
+     <meta charset="UTF-8">
++    <title>Traduction et doublage vidéo</title>
+     <link rel="stylesheet" href="/static/style.css">
+ </head>
+ <body>
++<h1>Traduction et doublage vidéo</h1>
+ 
+ <section id="upload">
++    <h2>Télécharger une nouvelle vidéo</h2>
+     <form id="upload-form">
++        <label>Fichier vidéo :
+             <input type="file" name="file" accept="video/*" required>
+         </label>
+         <fieldset>
++            <legend>Langues cibles (max. 2)</legend>
+             {% for lang in available_languages %}
+             <label>
+                 <input type="checkbox" name="languages" value="{{ lang.code }}">
+                 {{ lang.label }}{% if lang.provider == "ai" %}*{% endif %}
+             </label>
+             {% endfor %}
++            <p class="language-hint">Les langues marquées d'un * utilisent le traducteur IA, les autres passent par DeepL.</p>
+         </fieldset>
++        <fieldset>
++            <legend>Options de traitement</legend>
++            <label>
++                <input type="checkbox" name="process_options" value="subs_per_language" checked>
++                Sous-titres séparés par langue
++            </label>
++            <label>
++                <input type="checkbox" name="process_options" value="subs_combined" checked>
++                Sous-titres combinés
++            </label>
++            <label>
++                <input type="checkbox" name="process_options" value="dub_audio" checked>
++                Audio de doublage (MP3)
++            </label>
++            <label>
++                <input type="checkbox" name="process_options" value="dub_video" checked>
++                Vidéo avec doublage audio
++            </label>
++            <p class="language-hint">Décochez les options inutiles pour éviter un traitement superflu.</p>
++        </fieldset>
++        <button type="submit">Téléverser et traiter</button>
+     </form>
+     <div id="upload-status"></div>
+ </section>
+ 
+ <hr>
+ 
+ <section id="library">
++    <h2>Vidéos traitées</h2>
+     <div id="video-list"></div>
+ </section>
+ 
+ <section id="player">
++    <h2>Lecteur</h2>
+     <div id="video-container">
+         <video id="video-player" controls width="800">
++            Votre navigateur ne supporte pas la balise vidéo.
+         </video>
+         <div id="subtitle-overlay" class="hidden"></div>
+     </div>
++    <div id="player-actions">
++        <button type="button" id="fullscreen-button">[ ] Plein écran</button>
++    </div>
+     <div id="player-info"></div>
+ </section>
+ 
+ <script src="/static/app.js"></script>
+ </body>
+ </html>
+ 
+EOF
+)
