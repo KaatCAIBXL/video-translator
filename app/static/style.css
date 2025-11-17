@@ -2,6 +2,44 @@ body {
     font-family: sans-serif;
     margin: 20px;
 }
+
+.file-upload {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 16px;
+}
+
+.file-upload-label {
+    font-weight: 600;
+}
+
+.file-upload-input {
+    position: absolute;
+    left: -9999px;
+}
+
+.file-upload-trigger {
+    background-color: #1976d2;
+    color: #fff;
+    padding: 8px 16px;
+    border-radius: 4px;
+    cursor: pointer;
+    border: none;
+    font-size: 0.95rem;
+    text-decoration: none;
+}
+
+.file-upload-trigger:hover,
+.file-upload-trigger:focus {
+    background-color: #145ca5;
+}
+
+.file-upload-name {
+    font-style: italic;
+    color: #444;
+}
 fieldset label {
     display: inline-block;
     margin-right: 12px;
