@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import List, Dict, Optional, Tuple
 
 import requests
-from openai import OpenAI
+from openai import InternalServerError, OpenAI, RateLimitError
 
 from .config import settings
 from .models import Segment, TranslationSegment, VideoMetadata
@@ -15,6 +15,9 @@ from .languages import DEEPL_LANG_MAP, SUPPORTED_DEEPL, LANGUAGE_LABELS
 import edge_tts
 
 _openai_client: Optional[OpenAI] = None
+_TRANSCRIBE_MAX_ATTEMPTS = 3
+_TRANSCRIBE_INITIAL_BACKOFF = 1.0
+_RETRYABLE_WHISPER_ERRORS = (InternalServerError, RateLimitError)
 logger = logging.getLogger(__name__)
 
 # Whisper verwacht audio chunks als 16 kHz mono PCM. Bij het opsplitsen
@@ -81,13 +84,40 @@ def extract_audio(video_path: Path, audio_path: Path):
 
 # ---------- Whisper transcriptie ----------
 def _transcribe_whisper_file(client: OpenAI, path: Path) -> Dict:
-    with open(path, "rb") as f:
-        transcription = client.audio.transcriptions.create(
-            model="whisper-1",
-            file=f,
-            response_format="verbose_json",
-        )
-    return transcription.to_dict()
+    attempts = max(1, _TRANSCRIBE_MAX_ATTEMPTS)
+    backoff = max(0.0, _TRANSCRIBE_INITIAL_BACKOFF)
+    last_exc: Optional[Exception] = None
+
+    for attempt in range(1, attempts + 1):
+        try:
+            with open(path, "rb") as f:
+                transcription = client.audio.transcriptions.create(
+                    model="whisper-1",
+                    file=f,
+                    response_format="verbose_json",
+                )
+            return transcription.to_dict()
+        except _RETRYABLE_WHISPER_ERRORS as exc:
+            last_exc = exc
+            logger.warning(
+                "Whisper transcription attempt %d/%d failed: %s",
+                attempt,
+                attempts,
+                exc,
+            )
+            if attempt == attempts:
+                break
+            if backoff > 0:
+                time.sleep(backoff)
+                backoff *= 2
+        except Exception:
+            raise
+
+    raise RuntimeError(
+        "Whisper transcription failed after multiple OpenAI API errors"
+    ) from last_exc
+
+    
 
 
 def _get_audio_duration(audio_path: Path) -> float:
