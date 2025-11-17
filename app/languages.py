@@ -13,16 +13,14 @@ class LanguageOption:
 
 
 LANGUAGE_LABELS: Dict[str, str] = {
-    "en": "English",
-    "nl": "Dutch",
-    "es": "Spanish",
-    "fr": "French",
-    "de": "German",
-    "it": "Italian",
-    "sv": "Swedish",
-    "pt-pt": "Portuguese (Portugal)",
-    "pt-br": "Portuguese (Brazil)",
-    "fi": "Finnish",
+    "en": "Anglais",
+    "nl": "Néerlandais",
+    "es": "Espagnol",
+    "fr": "Français",
+    "sv": "Suédois",
+    "pt-pt": "Portugais (Angola/Portugal)",
+    "pt-br": "Portugais (Brésil)",
+    "fi": "Finnois",
     "ln": "Lingala",
 }
 
@@ -31,8 +29,6 @@ DEEPL_LANG_MAP: Dict[str, str] = {
     "nl": "NL",
     "es": "ES",
     "fr": "FR",
-    "de": "DE",
-    "it": "IT",
     "sv": "SV",
     "pt-pt": "PT-PT",
     "pt-br": "PT-BR",
@@ -45,9 +41,7 @@ AVAILABLE_LANGUAGE_CODES: List[str] = [
     "en",
     "nl",
     "fr",
-    "de",
     "es",
-    "it",
     "sv",
     "pt-br",
     "pt-pt",
