@@ -1,5 +1,6 @@
-from pydantic import BaseModel
-from typing import List, Dict, Optional
+from typing import Dict, List
+
+from pydantic import BaseModel, Field
 
 class Segment(BaseModel):
     start: float
@@ -19,5 +20,7 @@ class VideoMetadata(BaseModel):
 class VideoListItem(BaseModel):
     id: str
     filename: str
-    available_subtitles: List[str]
-    available_dubs: List[str]
+    available_subtitles: List[str] = Field(default_factory=list)
+    available_dubs: List[str] = Field(default_factory=list)
+    available_dub_audios: List[str] = Field(default_factory=list)
+    available_combined_subtitles: List[str] = Field(default_factory=list)
