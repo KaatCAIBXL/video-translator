@@ -11,6 +11,7 @@ from openai import OpenAI
 
 from .config import settings
 from .models import Segment, TranslationSegment, VideoMetadata
+from .languages import DEEPL_LANG_MAP, SUPPORTED_DEEPL, LANGUAGE_LABELS
 import edge_tts
 
 _openai_client: Optional[OpenAI] = None
@@ -285,17 +286,6 @@ def build_sentence_pairs(whisper_result: Dict) -> List[Segment]:
 
 # ---------- Vertaling ----------
 
-DEEPL_LANG_MAP = {
-    "es": "ES",
-    "en": "EN",
-    "nl": "NL",
-    "pt": "PT-PT",  # of PT-BR naar keuze
-    "fi": "FI",
-}
-
-SUPPORTED_DEEPL = set(DEEPL_LANG_MAP.keys())
-AI_ONLY_LANGS = {"ln",}  # Lingala / Tshiluba (je kan codes zelf kiezen)
-
 
 def translate_text_deepl(text: str, target_lang: str) -> str:
     """
@@ -323,11 +313,21 @@ def translate_text_deepl(text: str, target_lang: str) -> str:
             return data["translations"][0]["text"]
         except requests.HTTPError as exc:
             status = exc.response.status_code if exc.response else None
-            if status == 429 and attempt < 2:
-                time.sleep(backoff_seconds)
-                backoff_seconds *= 2
+            if status == 429:
+                # Free DeepL accounts raken snel tegen de limieten aan. We proberen
+                # nog een keer met een korte backoff en geven daarna een duidelijke
+                # foutmelding zodat de gebruiker weet wat er aan de hand is.
+            
                 last_exc = exc
-                continue
+                if attempt < 2:
+                    time.sleep(backoff_seconds)
+                    backoff_seconds *= 2
+                    continue
+                raise RuntimeError(
+                    "DeepL translation limit reached (HTTP 429). "
+                    "Wacht even of schakel over op een betalende DeepL licentie."
+                ) from exc
+                
             raise RuntimeError(
                 f"DeepL translation for {target_lang} failed: {exc}"
             ) from exc
@@ -342,9 +342,7 @@ def translate_text_deepl(text: str, target_lang: str) -> str:
 
 def translate_text_ai(text: str, target_lang: str) -> str:
     """Use OpenAI to translate into languages that DeepL does not support."""
-    lang_name = {
-        "ln": "Lingala",
-    }.get(target_lang, target_lang)
+    lang_name = LANGUAGE_LABELS.get(target_lang, target_lang)
     client = get_openai_client()
 
     try:
@@ -486,7 +484,12 @@ async def tts_for_language(text: str, lang: str) -> bytes:
         "nl": "nl-NL-MaartenNeural",
         "en": "en-US-GuyNeural",
         "es": "es-ES-AlvaroNeural",
-        "pt": "pt-BR-AntonioNeural",
+        "it": "it-IT-GiuseppeNeural",
+        "fr": "fr-FR-HenriNeural",
+        "de": "de-DE-ConradNeural",
+        "sv": "sv-SE-MattiasNeural",
+        "pt-br": "pt-BR-AntonioNeural",
+        "pt-pt": "pt-PT-DuarteNeural",
         "fi": "fi-FI-HarriNeural",
 
         # Voor Lingala/Tshiluba kiezen we bv. een Franse stem
