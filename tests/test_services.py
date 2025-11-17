@@ -88,7 +88,7 @@ def test_build_combined_segments_merges_languages_in_order():
         },
     )
 
-    combined = _build_combined_segments(meta, ["en", "nl"])
+    combined = _build_combined_segments(meta.translations, ["en", "nl"])
 
     assert len(combined) == 2
     assert combined[0].text == "EN: Hello world\nNL: Hallo wereld"
@@ -109,7 +109,7 @@ def test_build_combined_segments_requires_two_languages():
     )
 
     with pytest.raises(ValueError):
-        _build_combined_segments(meta, ["en"])
+        _build_combined_segments(meta.translations, ["en"])
 def _build_dummy_client(create_fn):
     return SimpleNamespace(
         audio=SimpleNamespace(
@@ -173,3 +173,8 @@ def test_transcribe_whisper_file_raises_after_retries(tmp_path, monkeypatch):
         services._transcribe_whisper_file(client, audio_path)
 
     assert attempts["count"] == 2
+
+def test_edge_rate_from_speed_handles_small_adjustments():
+    assert services._edge_rate_from_speed(1.05) == "+5%"
+    assert services._edge_rate_from_speed(0.97) == "-3%"
+    assert services._edge_rate_from_speed(1.0) is None
