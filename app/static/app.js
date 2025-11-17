@@ -459,6 +459,19 @@ function timestampToSeconds(raw) {
         parseFloat(seconds)
     );
 }
+const fileInput = document.getElementById("video-file");
+const fileNameLabel = document.getElementById("selected-file-name");
+if (fileInput && fileNameLabel) {
+    const defaultLabel = fileNameLabel.textContent || "Aucun fichier sélectionné";
+    const updateFileLabel = () => {
+        if (fileInput.files && fileInput.files.length > 0) {
+            fileNameLabel.textContent = fileInput.files[0].name;
+        } else {
+            fileNameLabel.textContent = defaultLabel;
+        }
+    };
+    fileInput.addEventListener("change", updateFileLabel);
+}
 
 document.getElementById("upload-form").addEventListener("submit", async (e) => {
     e.preventDefault();
