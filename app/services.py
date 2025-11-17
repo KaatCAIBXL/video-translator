@@ -467,11 +467,33 @@ def generate_vtt(segments: List[TranslationSegment], out_path: Path):
 
 # ---------- Dubbing (audio vervangen) ----------
 
-async def _edge_tts_to_bytes(text: str, voice: str) -> bytes:
+def _edge_rate_from_speed(speed_multiplier: float) -> Optional[str]:
+    """Map a numeric speed multiplier to an Edge TTS rate string."""
+
+    if speed_multiplier <= 0:
+        return None
+
+    delta_pct = (speed_multiplier - 1.0) * 100.0
+    if abs(delta_pct) < 0.5:
+        return None
+
+    clamped = max(min(delta_pct, 100.0), -50.0)
+    rounded = int(round(clamped))
+    if rounded == 0:
+        return None
+
+    return f"{rounded:+d}%"
+
+
+async def _edge_tts_to_bytes(text: str, voice: str, rate: Optional[str] = None) -> bytes:
     """
     Helper: roept edge-tts aan en geeft audio terug als bytes.
     """
-    communicate = edge_tts.Communicate(text=text, voice=voice)
+    kwargs = {"text": text, "voice": voice}
+    if rate:
+        kwargs["rate"] = rate
+
+    communicate = edge_tts.Communicate(**kwargs)
     audio_chunks = []
 
     async for chunk in communicate.stream():
@@ -506,7 +528,7 @@ def _phonetic_for_lingala(text: str) -> str:
     return response.output_text
 
 
-async def tts_for_language(text: str, lang: str) -> bytes:
+async def tts_for_language(text: str, lang: str, speed_multiplier: float = 1.0) -> bytes:
     """Generate TTS audio for the requested language."""
 
     # 1. stem per taal
@@ -538,15 +560,20 @@ async def tts_for_language(text: str, lang: str) -> bytes:
         tts_text = text
 
     # 3. edge-tts async helper aanroepen
+    rate = _edge_rate_from_speed(speed_multiplier)
+    
     try:
-        return await _edge_tts_to_bytes(tts_text, voice)
+        return await _edge_tts_to_bytes(tts_text, voice, rate=rate)
     except Exception as exc:
         raise RuntimeError(f"TTS-generatie mislukt voor {lang}: {exc}") from exc
 
 
 
 async def generate_dub_audio(
-    translated_segments: List[TranslationSegment], lang: str, output_path: Path
+    translated_segments: List[TranslationSegment],
+    lang: str,
+    output_path: Path,
+    speed_multiplier: float = 1.0,
 ) -> Path:
     """Generate a simple TTS narration track for the requested language.
 
@@ -565,7 +592,7 @@ async def generate_dub_audio(
         raise RuntimeError("Translated segments do not contain any text")
 
     full_text = "\n\n".join(texts)
-    audio_bytes = await tts_for_language(full_text, lang)
+    audio_bytes = await tts_for_language(full_text, lang, speed_multiplier=speed_multiplier)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_bytes(audio_bytes)
     return output_path
