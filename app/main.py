@@ -26,6 +26,7 @@ from .services import (
     save_metadata,
     load_metadata,
 )
+from .languages import get_language_options
 from .models import VideoListItem, VideoMetadata, TranslationSegment
 from .job_store import job_store, JobStatus
 
@@ -34,6 +35,8 @@ ensure_dirs()
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 templates = Jinja2Templates(directory=str(BASE_DIR / "app" / "templates"))
+LANGUAGE_OPTIONS = get_language_options()
+ALLOWED_LANGUAGE_CODES = {opt.code for opt in LANGUAGE_OPTIONS}
 
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "app" / "static")), name="static")
 
@@ -115,7 +118,13 @@ def _build_combined_segments(meta: VideoMetadata, languages: List[str]) -> List[
 
 @app.get("/")
 async def index(request: Request):
-    return templates.TemplateResponse("index.html", {"request": request})
+    return templates.TemplateResponse(
+        "index.html",
+        {
+            "request": request,
+            "available_languages": LANGUAGE_OPTIONS,
+        },
+    )
 
 
 # ---------- API: lijst video's ----------
@@ -158,11 +167,25 @@ async def upload_video(
     languages: List[str] = Form(...),  # max. 2 talen aanvinken in frontend
     file: UploadFile = File(...)
 ):
-    if len(languages) == 0 or len(languages) > 2:
+    normalized_langs = [lang.lower() for lang in languages]
+
+    if len(normalized_langs) == 0 or len(normalized_langs) > 2:
         return JSONResponse(
             {"error": "Please select one or two target languages"},
             status_code=400,
         )
+    invalid = [lang for lang in normalized_langs if lang not in ALLOWED_LANGUAGE_CODES]
+    if invalid:
+        return JSONResponse(
+            {
+                "error": (
+                    "Unsupported language codes requested: "
+                    + ", ".join(sorted(set(invalid)))
+                )
+            },
+            status_code=400,
+        )
+
 
     video_id = str(uuid.uuid4())
     ext = Path(file.filename).suffix
@@ -191,7 +214,7 @@ async def upload_video(
             video_path=video_path,
             audio_path=audio_path,
             meta_path=meta_path,
-            languages=list(languages),
+            languages=list(normalized_langs),
             original_filename=file.filename,
         )
     )
