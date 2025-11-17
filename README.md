@@ -52,15 +52,19 @@ De uploadpagina haalt zijn checkboxen uit `app/languages.py`. Daar staan:
 - `LANGUAGE_LABELS`: hoe elke code als leesbare naam wordt getoond.
 - `DEEPL_LANG_MAP`: vertaling van taalcode naar DeepL-doelcode.
 
-Standaard toont het uploadformulier slechts een compacte set talen die we in de
-workflow nodig hebben: Engels, Nederlands, Frans, Duits, Spaans, Italiaans en
-Zweeds. Portugees is opgesplitst in twee aparte keuzes (Portugal en Brazilië)
-zodat je gericht het juiste accent kunt kiezen.
+Standaard toont het uploadformulier een compacte set talen die we in de
+workflow nodig hebben: Engels, Nederlands, Frans, Spaans, Zweeds, Fins en
+Portugees (Brazilië/Portugal). Daarbovenop kun je AI-vertalingen inschakelen
+voor Lingala, Tshiluba, Kikongo (Kituba) en Malagasy.
 
 Voeg je hier een DeepL-taal aan toe, dan verschijnt die automatisch in de
 frontend en worden vertalingen via DeepL uitgevoerd. Laat je een code buiten
 `DEEPL_LANG_MAP`, dan valt de app terug op de AI-vertaler. Op die manier kun je
 desgewenst alsnog extra talen inschakelen zonder het frontend aan te passen.
+
+Sommige talen zijn bewust beperkt tot alleen ondertitels. De verzameling
+`LANGUAGES_WITHOUT_DUBBING` in `app/languages.py` bepaalt welke talen geen TTS
+ontvangen. Standaard vallen Lingala, Tshiluba, Kikongo en Malagasy hieronder.
 
 
 ## Asynchrone verwerking
