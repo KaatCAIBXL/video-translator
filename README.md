@@ -7,6 +7,7 @@ Deze app laat je:
 - vertalen naar max. 2 gekozen talen (via DeepL of AI)
 - ondertitels (VTT) genereren, inclusief een gecombineerde download voor twee talen
 - optioneel: dubbing (audio vervangen) via TTS en directe download van de nieuwe video (geen losse audiobestanden meer)
+- instelbare TTS-snelheid per upload om dubbing net iets sneller of trager te laten klinken
 - video’s bekijken in een eenvoudige bibliotheek
 
 ## Installatie
