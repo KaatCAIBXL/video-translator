@@ -286,35 +286,94 @@ def transcribe_audio_whisper(audio_path: Path) -> Dict:
         "language": detected_language or "unknown",
     }
 
-def build_sentence_pairs(whisper_result: Dict) -> List[Segment]:
-    """
-    Neem Whisper 'segments' en groepeer per 2 'zinnen' (segments).
-    start = start van eerste, end = end van laatste.
-    """
-    segments = whisper_result.get("segments", [])
-    pairs: List[Segment] = []
+def build_sentence_segments(whisper_result: Dict) -> List[Segment]:
+    """Maak losse Whisper-segmenten met start/stop tijden."""
 
-    buffer = []
+    segments: List[Segment] = []
+    for raw in whisper_result.get("segments", []):
+        text = (raw.get("text") or "").strip()
+        if not text:
+            continue
+        start = float(raw.get("start", 0.0))
+        end = float(raw.get("end", start))
+        segments.append(Segment(start=start, end=end, text=text))
+
+    return segments
+
+
+def _pair_segments(segments: List[Segment]) -> List[Segment]:
+    """Groepeer algemene segmenten per twee."""
+
+    pairs: List[Segment] = []
+    buffer: List[Segment] = []
+
     for seg in segments:
         buffer.append(seg)
         if len(buffer) == 2:
-            start = buffer[0]["start"]
-            end = buffer[-1]["end"]
-            text = " ".join(s["text"].strip() for s in buffer)
+            start = buffer[0].start
+            end = buffer[-1].end
+            text = " ".join(s.text.strip() for s in buffer if s.text)
             pairs.append(Segment(start=start, end=end, text=text))
             buffer = []
 
     # Als laatste segment overblijft:
     if buffer:
-        start = buffer[0]["start"]
-        end = buffer[-1]["end"]
-        text = " ".join(s["text"].strip() for s in buffer)
+        start = buffer[0].start
+        end = buffer[-1].end
+        text = " ".join(s.text.strip() for s in buffer if s.text)
         pairs.append(Segment(start=start, end=end, text=text))
 
     return pairs
 
 
 # ---------- Vertaling ----------
+def pair_translation_segments(
+    segments: List[TranslationSegment],
+) -> List[TranslationSegment]:
+    """Groepeer vertaalde segmenten per twee voor we VTT's schrijven."""
+
+    if not segments:
+        return []
+
+    pairs: List[TranslationSegment] = []
+    buffer: List[TranslationSegment] = []
+
+    for seg in segments:
+        if not seg.text or not seg.text.strip():
+            continue
+        buffer.append(seg)
+        if len(buffer) == 2:
+            start = buffer[0].start
+            end = buffer[-1].end
+            text = " ".join(s.text.strip() for s in buffer if s.text)
+            language = buffer[0].language
+            pairs.append(
+                TranslationSegment(
+                    start=start,
+                    end=end,
+                    text=text,
+                    language=language,
+                )
+            )
+            buffer = []
+
+    if buffer:
+        start = buffer[0].start
+        end = buffer[-1].end
+        text = " ".join(s.text.strip() for s in buffer if s.text)
+        language = buffer[0].language
+        pairs.append(
+            TranslationSegment(start=start, end=end, text=text, language=language)
+        )
+
+    return pairs
+
+
+def build_sentence_pairs(whisper_result: Dict) -> List[Segment]:
+    """Maak paren van Whisper-segmenten voor metadata en subtitles."""
+
+    return _pair_segments(build_sentence_segments(whisper_result))
+
 
 
 def translate_text_deepl(text: str, target_lang: str) -> str:
