@@ -78,12 +78,16 @@ def test_build_combined_segments_merges_languages_in_order():
         sentence_pairs=[],
         translations={
             "en": [
-                TranslationSegment(start=0.0, end=1.5, text="Hello world", language="en"),
-                TranslationSegment(start=2.0, end=3.5, text="How are you?", language="en"),
+                TranslationSegment(start=0.0, end=0.7, text="Hello", language="en"),
+                TranslationSegment(start=0.7, end=1.5, text="world", language="en"),
+                TranslationSegment(start=2.0, end=2.6, text="How are", language="en"),
+                TranslationSegment(start=2.6, end=3.5, text="you?", language="en"),
             ],
             "nl": [
-                TranslationSegment(start=0.0, end=1.6, text="Hallo\nwereld", language="nl"),
-                TranslationSegment(start=2.0, end=3.2, text="Hoe gaat het?", language="nl"),
+                TranslationSegment(start=0.0, end=0.8, text="Hallo", language="nl"),
+                TranslationSegment(start=0.8, end=1.6, text="wereld", language="nl"),
+                TranslationSegment(start=2.0, end=2.5, text="Hoe gaat", language="nl"),
+                TranslationSegment(start=2.5, end=3.2, text="het?", language="nl"),
             ],
         },
     )
@@ -178,3 +182,19 @@ def test_edge_rate_from_speed_handles_small_adjustments():
     assert services._edge_rate_from_speed(1.05) == "+5%"
     assert services._edge_rate_from_speed(0.97) == "-3%"
     assert services._edge_rate_from_speed(1.0) is None
+
+def test_pair_translation_segments_groups_every_two():
+    segments = [
+        TranslationSegment(start=0.0, end=0.5, text="Hello", language="en"),
+        TranslationSegment(start=0.5, end=1.0, text="world", language="en"),
+        TranslationSegment(start=1.5, end=2.0, text="Bye", language="en"),
+    ]
+
+    grouped = services.pair_translation_segments(segments)
+
+    assert len(grouped) == 2
+    assert grouped[0].text == "Hello world"
+    assert grouped[0].start == 0.0
+    assert grouped[0].end == 1.0
+    assert grouped[0].language == "en"
+    assert grouped[1].text == "Bye"
