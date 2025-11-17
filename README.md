@@ -32,6 +32,36 @@ Azure App Service of Azure Container Apps met source-based deployment) is een
 `Procfile` toegevoegd. Dit zorgt ervoor dat het platform de applicatie kan
 starten met het juiste commando.
 
+## DeepL limieten
+
+Gebruik je de gratis DeepL API, dan geldt er een strak tarief op het aantal
+tekens dat je maandelijks mag vertalen. Zodra dit limiet is bereikt, antwoordt
+de API met `HTTP 429 (Too Many Requests)` en mislukt de vertaling. De app geeft
+nu expliciet aan dat de DeepL-limiet is geraakt zodat je weet dat je ofwel even
+moet wachten tot de volgende maand of moet overschakelen naar een betalende
+licentie. Heb je een betaald (API Pro) abonnement, dan hoef je verder niets aan
+de code te veranderen: vul enkel je nieuwe API-sleutel in en de app blijft
+werken met hetzelfde eindpunt, maar zonder de krappe maandlimiet.
+
+## Extra talen toevoegen
+
+De uploadpagina haalt zijn checkboxen uit `app/languages.py`. Daar staan:
+
+- `AVAILABLE_LANGUAGE_CODES`: de volgorde waarin talen worden weergegeven.
+- `LANGUAGE_LABELS`: hoe elke code als leesbare naam wordt getoond.
+- `DEEPL_LANG_MAP`: vertaling van taalcode naar DeepL-doelcode.
+
+Standaard toont het uploadformulier slechts een compacte set talen die we in de
+workflow nodig hebben: Engels, Nederlands, Frans, Duits, Spaans, Italiaans en
+Zweeds. Portugees is opgesplitst in twee aparte keuzes (Portugal en Brazilië)
+zodat je gericht het juiste accent kunt kiezen.
+
+Voeg je hier een DeepL-taal aan toe, dan verschijnt die automatisch in de
+frontend en worden vertalingen via DeepL uitgevoerd. Laat je een code buiten
+`DEEPL_LANG_MAP`, dan valt de app terug op de AI-vertaler. Op die manier kun je
+desgewenst alsnog extra talen inschakelen zonder het frontend aan te passen.
+
+
 ## Asynchrone verwerking
 
 Uploads worden onmiddellijk geaccepteerd waarna de zware stappen (ffmpeg,
