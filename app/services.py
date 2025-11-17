@@ -575,26 +575,78 @@ async def generate_dub_audio(
     output_path: Path,
     speed_multiplier: float = 1.0,
 ) -> Path:
-    """Generate a simple TTS narration track for the requested language.
+    """Generate a TTS narration track that matches the source timings.
 
-    The function concatenates the translated subtitle segments into a single
-    block of text, sends that to the TTS helper and writes the result to disk.
-    For now we keep the implementation straightforward so that dubs are at
-    least available, even if they are not yet perfectly time-aligned with the
-    source video.
+    Every translated segment is converted to speech individually. Each piece of
+    audio is delayed so that it starts at the exact same timestamp as the
+    corresponding original segment. This keeps the dubbed narration aligned
+    with the original pacing while still allowing the speech to end slightly
+    earlier when necessary.
     """
 
     if not translated_segments:
         raise RuntimeError("No translated segments available for dubbing")
 
-    texts = [seg.text.strip() for seg in translated_segments if seg.text.strip()]
-    if not texts:
+    # Ensure we process the segments in chronological order and skip empty
+    # entries up front.
+    filtered_segments = [
+        seg for seg in sorted(translated_segments, key=lambda s: s.start)
+        if seg.text and seg.text.strip()
+    ]
+
+    if not filtered_segments:
         raise RuntimeError("Translated segments do not contain any text")
 
-    full_text = "\n\n".join(texts)
-    audio_bytes = await tts_for_language(full_text, lang, speed_multiplier=speed_multiplier)
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_bytes(audio_bytes)
+    with tempfile.TemporaryDirectory(prefix="dub_segments_") as tmpdir:
+        segment_audio: List[Tuple[Path, int]] = []
+
+        for idx, seg in enumerate(filtered_segments):
+            audio_bytes = await tts_for_language(
+                seg.text.strip(), lang, speed_multiplier=speed_multiplier
+            )
+            segment_path = Path(tmpdir) / f"segment_{idx}.mp3"
+            segment_path.write_bytes(audio_bytes)
+            delay_ms = max(0, int(round(seg.start * 1000)))
+            segment_audio.append((segment_path, delay_ms))
+
+        if not segment_audio:
+            raise RuntimeError("Failed to create any TTS segments for dubbing")
+
+        ffmpeg_cmd = ["ffmpeg", "-y"]
+        for path, _ in segment_audio:
+            ffmpeg_cmd.extend(["-i", str(path)])
+
+        filter_parts: List[str] = []
+        mix_inputs: List[str] = []
+        for idx, (_, delay_ms) in enumerate(segment_audio):
+            label = f"a{idx}"
+            filter_parts.append(
+                f"[{idx}:a]adelay={delay_ms}|{delay_ms}[{label}]"
+            )
+            mix_inputs.append(f"[{label}]")
+
+        mix_filter = "".join(mix_inputs) + f"amix=inputs={len(mix_inputs)}:normalize=0[aout]"
+        filter_parts.append(mix_filter)
+
+        filter_complex = "; ".join(filter_parts)
+        ffmpeg_cmd.extend(
+            [
+                "-filter_complex",
+                filter_complex,
+                "-map",
+                "[aout]",
+                "-c:a",
+                "mp3",
+                str(output_path),
+            ]
+        )
+
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+
+        try:
+            subprocess.run(ffmpeg_cmd, check=True)
+        except subprocess.CalledProcessError as exc:
+            raise RuntimeError(f"Dub audio compositing failed: {exc}") from exc
     return output_path
 
 def replace_video_audio(
