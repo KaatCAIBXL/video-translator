@@ -216,6 +216,7 @@ async def list_videos():
 async def upload_video(
     languages: List[str] = Form(...),  # max. 2 talen aanvinken in frontend
     process_options: Optional[List[str]] = Form(None),
+    tts_speed_multiplier: float = Form(1.0),
     file: UploadFile = File(...)
 ):
     normalized_langs = [lang.lower() for lang in languages]
@@ -265,6 +266,12 @@ async def upload_video(
             status_code=400,
         )
 
+    if tts_speed_multiplier <= 0.5 or tts_speed_multiplier > 1.5:
+        return JSONResponse(
+            {"error": "The TTS speed multiplier must be between 0.5 and 1.5."},
+            status_code=400,
+        )
+        
     video_id = str(uuid.uuid4())
     ext = Path(file.filename).suffix
     video_dir = settings.PROCESSED_DIR / video_id
@@ -295,6 +302,7 @@ async def upload_video(
             languages=list(normalized_langs),
             original_filename=file.filename,
             process_options=normalized_options,
+            tts_speed_multiplier=tts_speed_multiplier,
         )
     )
 
@@ -319,6 +327,7 @@ async def process_video_job(
     languages: List[str],
     original_filename: str,
     process_options: List[str],
+    tts_speed_multiplier: float,
 ):
     warnings: List[str] = []
     options_set = set(process_options or DEFAULT_PROCESS_OPTIONS)
@@ -374,7 +383,12 @@ async def process_video_job(
                         temp_audio_path = Path(tmp.name)
                         audio_path_target = temp_audio_path
 
-                    await generate_dub_audio(segs, lang, audio_path_target)
+                    await generate_dub_audio(
+                        segs,
+                        lang,
+                        audio_path_target,
+                        speed_multiplier=tts_speed_multiplier,
+                    )
 
                     if create_dub_video:
                         dub_video_path = video_dir / f"video_dub_{lang}.mp4"
