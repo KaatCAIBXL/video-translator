@@ -14,6 +14,12 @@ if str(ROOT_DIR) not in sys.path:
 from app import services
 from app.main import _build_combined_segments
 from app.models import TranslationSegment, VideoMetadata
+import edge_tts
+
+
+@pytest.fixture
+def anyio_backend():
+    return "asyncio"
 
 
 def test_select_chunk_duration_prefers_calculated_value():
@@ -198,3 +204,35 @@ def test_pair_translation_segments_groups_every_two():
     assert grouped[0].end == 1.0
     assert grouped[0].language == "en"
     assert grouped[1].text == "Bye"
+
+@pytest.mark.anyio
+async def test_tts_for_language_falls_back_to_next_voice(monkeypatch):
+    attempts = []
+
+    async def fake_edge_tts(text, voice, rate=None):
+        attempts.append((text, voice, rate))
+        if len(attempts) == 1:
+            raise edge_tts.exceptions.NoAudioReceived("no audio")
+        return b"ok"
+
+    monkeypatch.setattr(services, "_edge_tts_to_bytes", fake_edge_tts)
+
+    audio = await services.tts_for_language("Hallo", "nl", speed_multiplier=1.0)
+
+    assert audio == b"ok"
+    assert attempts[0][1] == "nl-NL-MaartenNeural"
+    assert attempts[1][1] == "nl-NL-ColetteNeural"
+
+
+@pytest.mark.anyio
+async def test_tts_for_language_raises_after_all_voices_fail(monkeypatch):
+    async def fake_edge_wrapper(*args, **kwargs):
+        raise edge_tts.exceptions.NoAudioReceived("no audio")
+
+    monkeypatch.setattr(services, "_edge_tts_to_bytes", fake_edge_wrapper)
+
+    with pytest.raises(RuntimeError) as exc:
+        await services.tts_for_language("Hallo", "nl")
+
+    assert "TTS-generatie mislukt" in str(exc.value)
+
