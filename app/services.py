@@ -13,12 +13,36 @@ from .config import settings
 from .models import Segment, TranslationSegment, VideoMetadata
 from .languages import DEEPL_LANG_MAP, SUPPORTED_DEEPL, LANGUAGE_LABELS
 import edge_tts
+from edge_tts import exceptions as edge_tts_exceptions
 
 _openai_client: Optional[OpenAI] = None
 _TRANSCRIBE_MAX_ATTEMPTS = 3
 _TRANSCRIBE_INITIAL_BACKOFF = 1.0
 _RETRYABLE_WHISPER_ERRORS = (InternalServerError, RateLimitError)
 logger = logging.getLogger(__name__)
+
+DEFAULT_TTS_VOICE = "en-US-GuyNeural"
+VOICE_PREFERENCES: Dict[str, Tuple[str, ...]] = {
+    "nl": (
+        "nl-NL-MaartenNeural",
+        "nl-NL-ColetteNeural",
+        "nl-BE-ArnaudNeural",
+    ),
+    "en": (DEFAULT_TTS_VOICE,),
+    "es": ("es-ES-AlvaroNeural",),
+    "it": ("it-IT-GiuseppeNeural",),
+    "fr": ("fr-FR-HenriNeural",),
+    "de": ("de-DE-ConradNeural",),
+    "sv": ("sv-SE-MattiasNeural",),
+    "pt-br": ("pt-BR-AntonioNeural",),
+    "pt-pt": ("pt-PT-DuarteNeural",),
+    "fi": ("fi-FI-HarriNeural",),
+
+    # Voor Lingala/Tshiluba kiezen we bv. een Franse stem
+    # (omdat die vaak beter met Afrikaanse namen/klanken omgaat)
+    "ln": ("fr-FR-DeniseNeural",),
+}
+
 
 # Whisper verwacht audio chunks als 16 kHz mono PCM. Bij het opsplitsen
 # hercoderen we daarom altijd naar deze instellingen. De bitrate daarvan is
@@ -590,26 +614,10 @@ def _phonetic_for_lingala(text: str) -> str:
 async def tts_for_language(text: str, lang: str, speed_multiplier: float = 1.0) -> bytes:
     """Generate TTS audio for the requested language."""
 
-    # 1. stem per taal
-    voice_map = {
-        "nl": "nl-NL-MaartenNeural",
-        "en": "en-US-GuyNeural",
-        "es": "es-ES-AlvaroNeural",
-        "it": "it-IT-GiuseppeNeural",
-        "fr": "fr-FR-HenriNeural",
-        "de": "de-DE-ConradNeural",
-        "sv": "sv-SE-MattiasNeural",
-        "pt-br": "pt-BR-AntonioNeural",
-        "pt-pt": "pt-PT-DuarteNeural",
-        "fi": "fi-FI-HarriNeural",
-
-        # Voor Lingala/Tshiluba kiezen we bv. een Franse stem
-        # (omdat die vaak beter met Afrikaanse namen/klanken omgaat)
-        "ln": "fr-FR-DeniseNeural",
-    }
+    
 
     lang = lang.lower()
-    voice = voice_map.get(lang, "en-US-GuyNeural")
+    voices = VOICE_PREFERENCES.get(lang, (DEFAULT_TTS_VOICE,))
 
     # 2. Fonetik stap voor ln/lu
     if lang == "ln":
@@ -620,11 +628,25 @@ async def tts_for_language(text: str, lang: str, speed_multiplier: float = 1.0) 
 
     # 3. edge-tts async helper aanroepen
     rate = _edge_rate_from_speed(speed_multiplier)
-    
-    try:
-        return await _edge_tts_to_bytes(tts_text, voice, rate=rate)
-    except Exception as exc:
-        raise RuntimeError(f"TTS-generatie mislukt voor {lang}: {exc}") from exc
+
+    last_exc: Optional[Exception] = None
+    for voice in voices:
+        try:
+            return await _edge_tts_to_bytes(tts_text, voice, rate=rate)
+        except edge_tts_exceptions.NoAudioReceived as exc:
+            last_exc = exc
+            logger.warning(
+                "Edge TTS leverde geen audio voor stem %s (%s), probeer fallback",
+                voice,
+                lang,
+            )
+            continue
+        except Exception as exc:
+            raise RuntimeError(f"TTS-generatie mislukt voor {lang}: {exc}") from exc
+
+    error = last_exc or RuntimeError("No audio received from edge-tts")
+    raise RuntimeError(f"TTS-generatie mislukt voor {lang}: {error}") from error
+
 
 
 
