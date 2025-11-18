@@ -18,10 +18,13 @@ LANGUAGE_LABELS: Dict[str, str] = {
     "es": "Espagnol",
     "fr": "Français",
     "sv": "Suédois",
+    "fi": "Finnois",
     "pt-pt": "Portugais (Angola/Portugal)",
     "pt-br": "Portugais (Brésil)",
-    "fi": "Finnois",
     "ln": "Lingala",
+    "lua": "Tshiluba",
+    "kg": "Kikongo (Kituba)",
+    "mg": "Malagasy",
 }
 
 DEEPL_LANG_MAP: Dict[str, str] = {
@@ -30,6 +33,7 @@ DEEPL_LANG_MAP: Dict[str, str] = {
     "es": "ES",
     "fr": "FR",
     "sv": "SV",
+    "fi": "FI",
     "pt-pt": "PT-PT",
     "pt-br": "PT-BR",
 }
@@ -43,10 +47,17 @@ AVAILABLE_LANGUAGE_CODES: List[str] = [
     "fr",
     "es",
     "sv",
+    "fi",
     "pt-br",
     "pt-pt",
+    "ln",
+    "lua",
+    "kg",
+    "mg",
 ]
 
+
+LANGUAGES_WITHOUT_DUBBING = {"ln", "lua", "kg", "mg"}
 
 def get_language_options() -> List[LanguageOption]:
     options: List[LanguageOption] = []
