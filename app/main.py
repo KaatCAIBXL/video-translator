@@ -28,7 +28,12 @@ from .services import (
     save_metadata,
     load_metadata,
 )
-from .languages import get_language_options
+
+from .languages import (
+    get_language_options,
+    LANGUAGES_WITHOUT_DUBBING,
+    LANGUAGE_LABELS,
+)
 from .models import VideoListItem, VideoMetadata, TranslationSegment
 from .job_store import job_store, JobStatus
 
@@ -380,6 +385,12 @@ async def process_video_job(
 
         if needs_dub_assets:
             for lang, segs in translations.items():
+                if lang in LANGUAGES_WITHOUT_DUBBING:
+                    label = LANGUAGE_LABELS.get(lang, lang.upper())
+                    warnings.append(
+                        f"Dubbing is voorlopig niet beschikbaar voor {label}."
+                    )
+                    continue
                 temp_audio_path: Optional[Path] = None
                 try:
                     if create_dub_audio:
