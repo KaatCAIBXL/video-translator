@@ -1,5 +1,6 @@
 import json
 import logging
+import math
 import subprocess
 import tempfile
 import time
@@ -104,6 +105,51 @@ def extract_audio(video_path: Path, audio_path: Path):
         str(audio_path),
     )
     subprocess.run(cmd, check=True)
+
+# ---------- Audio metadata helpers ----------
+
+def get_audio_stream_start_offset(video_path: Path) -> float:
+    """Bepaal de offset van de eerste audiostream in de originele video."""
+
+    try:
+        result = subprocess.run(
+            [
+                "ffprobe",
+                "-v",
+                "error",
+                "-select_streams",
+                "a:0",
+                "-show_entries",
+                "stream=start_time",
+                "-of",
+                "default=noprint_wrappers=1:nokey=1",
+                str(video_path),
+            ],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+    except subprocess.CalledProcessError as exc:
+        logger.warning(
+            "Kon audio-offset voor %s niet bepalen: %s", video_path, exc
+        )
+        return 0.0
+
+    value = result.stdout.strip()
+    if not value:
+        return 0.0
+
+    try:
+        offset = float(value)
+    except ValueError:
+        return 0.0
+
+    if not math.isfinite(offset):
+        return 0.0
+
+    return max(0.0, offset)
+
+
 
 
 # ---------- Whisper transcriptie ----------
@@ -310,16 +356,25 @@ def transcribe_audio_whisper(audio_path: Path) -> Dict:
         "language": detected_language or "unknown",
     }
 
-def build_sentence_segments(whisper_result: Dict) -> List[Segment]:
+def build_sentence_segments(
+    whisper_result: Dict, base_offset: float = 0.0
+) -> List[Segment]:
     """Maak losse Whisper-segmenten met start/stop tijden."""
 
     segments: List[Segment] = []
+    offset = float(base_offset or 0.0)
+    
     for raw in whisper_result.get("segments", []):
         text = (raw.get("text") or "").strip()
         if not text:
             continue
-        start = float(raw.get("start", 0.0))
-        end = float(raw.get("end", start))
+
+        raw_start = float(raw.get("start", 0.0))
+        raw_end = float(raw.get("end", raw_start))
+
+        start = raw_start + offset
+        end = raw_end + offset
+
         segments.append(Segment(start=start, end=end, text=text))
 
     return segments
@@ -393,10 +448,12 @@ def pair_translation_segments(
     return pairs
 
 
-def build_sentence_pairs(whisper_result: Dict) -> List[Segment]:
+def build_sentence_pairs(whisper_result: Dict, base_offset: float = 0.0) -> List[Segment]:
     """Maak paren van Whisper-segmenten voor metadata en subtitles."""
 
-    return _pair_segments(build_sentence_segments(whisper_result))
+    return _pair_segments(
+        build_sentence_segments(whisper_result, base_offset=base_offset)
+    )
 
 
 
