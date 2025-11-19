@@ -704,6 +704,20 @@ async def tts_for_language(text: str, lang: str, speed_multiplier: float = 1.0) 
     error = last_exc or RuntimeError("No audio received from edge-tts")
     raise RuntimeError(f"TTS-generatie mislukt voor {lang}: {error}") from error
 
+def _calculate_leading_delay_adjustment(
+    delays_ms: List[int], required_silence_ms: int
+) -> int:
+    """Return extra delay to guarantee at least ``required_silence_ms`` silence."""
+
+    if not delays_ms or required_silence_ms <= 0:
+        return 0
+
+    first_delay = min(delays_ms)
+    if first_delay >= required_silence_ms:
+        return 0
+
+    return required_silence_ms - first_delay
+
 
 
 
@@ -712,6 +726,7 @@ async def generate_dub_audio(
     lang: str,
     output_path: Path,
     speed_multiplier: float = 1.0,
+    leading_silence: float = 0.0,
 ) -> Path:
     """Generate a TTS narration track that matches the source timings.
 
@@ -735,8 +750,12 @@ async def generate_dub_audio(
     if not filtered_segments:
         raise RuntimeError("Translated segments do not contain any text")
 
+    required_silence_ms = max(0, int(round((leading_silence or 0.0) * 1000)))
+
+
     with tempfile.TemporaryDirectory(prefix="dub_segments_") as tmpdir:
         segment_audio: List[Tuple[Path, int]] = []
+        segment_delays: List[int] = []
 
         for idx, seg in enumerate(filtered_segments):
             audio_bytes = await tts_for_language(
@@ -746,9 +765,14 @@ async def generate_dub_audio(
             segment_path.write_bytes(audio_bytes)
             delay_ms = max(0, int(round(seg.start * 1000)))
             segment_audio.append((segment_path, delay_ms))
+            segment_delays.append(delay_ms)
 
         if not segment_audio:
             raise RuntimeError("Failed to create any TTS segments for dubbing")
+
+        extra_delay_ms = _calculate_leading_delay_adjustment(
+            segment_delays, required_silence_ms
+        )
 
         ffmpeg_cmd = ["ffmpeg", "-y"]
         for path, _ in segment_audio:
@@ -760,6 +784,7 @@ async def generate_dub_audio(
             label = f"a{idx}"
             filter_parts.append(
                 f"[{idx}:a]adelay={delay_ms}|{delay_ms}[{label}]"
+                f"[{idx}:a]adelay={delay_ms + extra_delay_ms}|{delay_ms + extra_delay_ms}[{label}]"
             )
             mix_inputs.append(f"[{label}]")
 
