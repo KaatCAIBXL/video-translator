@@ -27,6 +27,7 @@ from .services import (
     replace_video_audio,
     save_metadata,
     load_metadata,
+    get_audio_stream_start_offset,
 )
 
 from .languages import (
@@ -347,14 +348,29 @@ async def process_video_job(
     needs_dub_assets = create_dub_audio or create_dub_video
     job_store.mark_processing(video_id)
 
+    audio_offset = 0.0
+    try:
+        audio_offset = await run_in_threadpool(
+            get_audio_stream_start_offset, video_path
+        )
+    except Exception:
+        logger.warning(
+            "Kon audio-offset niet bepalen voor %s, ga verder met 0", video_id
+        )
+
+    
     try:
         await run_in_threadpool(extract_audio, video_path, audio_path)
 
         whisper_result = await run_in_threadpool(transcribe_audio_whisper, audio_path)
         original_lang = whisper_result.get("language", "unknown")
 
-        sentence_segments = build_sentence_segments(whisper_result)
-        sentence_pairs = build_sentence_pairs(whisper_result)
+        sentence_segments = build_sentence_segments(
+            whisper_result, base_offset=audio_offset
+        )
+        sentence_pairs = build_sentence_pairs(
+            whisper_result, base_offset=audio_offset
+        )
         translations, translation_warnings = await run_in_threadpool(
             translate_segments, sentence_segments, languages
 
