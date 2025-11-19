@@ -75,6 +75,34 @@ def test_render_vtt_content_preserves_multiline_segments():
     assert rendered.startswith("WEBVTT")
     assert "Line 1\nLine 2" in rendered
 
+def test_build_sentence_segments_applies_base_offset():
+    whisper = {
+        "segments": [
+            {"start": 1.0, "end": 2.0, "text": "Hallo"},
+            {"start": 2.0, "end": 3.0, "text": "wereld"},
+        ]
+    }
+
+    segments = services.build_sentence_segments(whisper, base_offset=2.5)
+
+    assert len(segments) == 2
+    assert segments[0].start == pytest.approx(3.5)
+    assert segments[1].end == pytest.approx(5.5)
+
+
+def test_build_sentence_pairs_propagates_offset():
+    whisper = {
+        "segments": [
+            {"start": 1.0, "end": 2.0, "text": "Hallo"},
+            {"start": 2.5, "end": 3.0, "text": "wereld"},
+        ]
+    }
+
+    pairs = services.build_sentence_pairs(whisper, base_offset=1.0)
+
+    assert len(pairs) == 1
+    assert pairs[0].start == pytest.approx(2.0)
+    assert pairs[0].end == pytest.approx(4.0)
 
 def test_build_combined_segments_merges_languages_in_order():
     meta = VideoMetadata(
@@ -120,6 +148,18 @@ def test_build_combined_segments_requires_two_languages():
 
     with pytest.raises(ValueError):
         _build_combined_segments(meta.translations, ["en"])
+def test_get_audio_stream_start_offset_parses_ffprobe(monkeypatch):
+    class DummyResult:
+        stdout = "1.75\n"
+
+    def fake_run(*args, **kwargs):
+        return DummyResult()
+
+    monkeypatch.setattr(services.subprocess, "run", fake_run)
+
+    offset = services.get_audio_stream_start_offset(Path("video.mp4"))
+
+    assert offset == pytest.approx(1.75)
 def _build_dummy_client(create_fn):
     return SimpleNamespace(
         audio=SimpleNamespace(
