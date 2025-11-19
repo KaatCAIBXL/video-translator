@@ -29,7 +29,12 @@ VOICE_PREFERENCES: Dict[str, Tuple[str, ...]] = {
         "nl-NL-ColetteNeural",
         "nl-BE-ArnaudNeural",
     ),
-    "en": (DEFAULT_TTS_VOICE,),
+    "en": (
+        DEFAULT_TTS_VOICE,
+        "en-US-JennyNeural",
+        "en-GB-RyanNeural",
+        "en-AU-WilliamNeural",
+    ),
     "es": ("es-ES-AlvaroNeural",),
     "it": ("it-IT-GiuseppeNeural",),
     "fr": ("fr-FR-HenriNeural",),
