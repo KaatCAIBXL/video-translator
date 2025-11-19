@@ -160,6 +160,26 @@ def test_get_audio_stream_start_offset_parses_ffprobe(monkeypatch):
     offset = services.get_audio_stream_start_offset(Path("video.mp4"))
 
     assert offset == pytest.approx(1.75)
+
+def test_calculate_leading_delay_adjustment_adds_missing_silence():
+    delays = [0, 500]
+
+    extra = services._calculate_leading_delay_adjustment(delays, 1500)
+
+    assert extra == 1500 - min(delays)
+
+
+def test_calculate_leading_delay_adjustment_no_change_when_silence_present():
+    delays = [2000, 2500]
+
+    extra = services._calculate_leading_delay_adjustment(delays, 1500)
+
+    assert extra == 0
+
+
+def test_calculate_leading_delay_adjustment_handles_empty_segments():
+    assert services._calculate_leading_delay_adjustment([], 1000) == 0
+
 def _build_dummy_client(create_fn):
     return SimpleNamespace(
         audio=SimpleNamespace(
