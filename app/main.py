@@ -421,6 +421,7 @@ async def process_video_job(
                         lang,
                         audio_path_target,
                         speed_multiplier=tts_speed_multiplier,
+                        leading_silence=audio_offset,
                     )
 
                     if create_dub_video:
