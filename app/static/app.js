@@ -112,29 +112,7 @@ async function pollJobStatus(jobId, statusEl) {
 }
 
 
-async function fetchVideos() {
-    const container = document.getElementById("video-list");
-    container.innerHTML = "";
-    let videos = [];
-    try {
-        const res = await fetch("/api/videos");
-        if (!res.ok) {
-            throw new Error(`Request failed with status ${res.status}`);
-        }
-        videos = await res.json();
-    } catch (error) {
-        console.error("Failed to load processed videos", error);
-        container.textContent = "Impossible de charger la liste des vidéos pour le moment.";
-        return;
-    }
-
-    if (!Array.isArray(videos) || videos.length === 0) {
-        container.textContent = "No videos have been processed yet.";
-
-        return;
-    }
-
-    videos.forEach((video) => {
+function createVideoItem(video) {
         const div = document.createElement("div");
         div.className = "video-item";
         if (video.is_private) {
@@ -149,13 +127,6 @@ async function fetchVideos() {
             privateBadge.textContent = " [PRIVÉ]";
             privateBadge.style.color = "#ffc107";
             title.appendChild(privateBadge);
-        }
-        if (video.folder_path) {
-            const folderBadge = document.createElement("span");
-            folderBadge.textContent = ` [${video.folder_path}]`;
-            folderBadge.style.color = "#6c757d";
-            folderBadge.style.fontSize = "0.8em";
-            title.appendChild(folderBadge);
         }
         div.appendChild(title);
         
@@ -232,11 +203,34 @@ async function fetchVideos() {
         playOriginalBtn.onclick = () => playVideo(video, { mode: "original" });
         controls.appendChild(playOriginalBtn);
 
+        // Subtitle selection
         if (video.available_subtitles && video.available_subtitles.length > 0) {
-            const btnSubs = document.createElement("button");
-            btnSubs.textContent = "Lecture avec sous-titres";
-            btnSubs.onclick = () => playVideo(video, { mode: "subs" });
-            controls.appendChild(btnSubs);
+            if (isEditor) {
+                // Editors: simple button
+                const btnSubs = document.createElement("button");
+                btnSubs.textContent = "Lecture avec sous-titres";
+                btnSubs.onclick = () => playVideo(video, { mode: "subs" });
+                controls.appendChild(btnSubs);
+            } else {
+                // Viewers: subtitle selection dropdown
+                const subtitleSelect = document.createElement("select");
+                subtitleSelect.innerHTML = "<option value=''>Sans sous-titres</option>";
+                video.available_subtitles.forEach((lang) => {
+                    const option = document.createElement("option");
+                    option.value = lang;
+                    option.textContent = `Sous-titres (${lang.toUpperCase()})`;
+                    subtitleSelect.appendChild(option);
+                });
+                subtitleSelect.onchange = () => {
+                    const selectedLang = subtitleSelect.value;
+                    if (selectedLang) {
+                        playVideo(video, { mode: "subs", lang: selectedLang });
+                    } else {
+                        playVideo(video, { mode: "original" });
+                    }
+                };
+                controls.appendChild(subtitleSelect);
+            }
         }
 
         if (video.available_dubs && video.available_dubs.length > 0) {
@@ -308,7 +302,168 @@ async function fetchVideos() {
         }
 
         div.appendChild(downloads);
-        container.appendChild(div);
+        return div;
+}
+
+function buildFolderTree(videos, folders) {
+    // Build folder structure
+    const tree = {};
+    const rootVideos = [];
+    
+    // Helper to get or create folder node
+    function getOrCreateFolder(path) {
+        const parts = path.split('/').filter(p => p);
+        let current = tree;
+        let fullPath = '';
+        
+        parts.forEach((part, index) => {
+            fullPath = fullPath ? `${fullPath}/${part}` : part;
+            if (!current[part]) {
+                // Find folder info
+                const folderInfo = folders.find(f => f.path === fullPath);
+                current[part] = {
+                    type: 'folder',
+                    name: part,
+                    path: fullPath,
+                    isPrivate: folderInfo ? folderInfo.is_private : false,
+                    children: {},
+                    videos: []
+                };
+            }
+            current = current[part].children;
+        });
+        
+        // Return the folder node
+        let node = tree;
+        parts.forEach(part => {
+            if (node[part]) {
+                node = node[part];
+            }
+        });
+        return node;
+    }
+    
+    // Add folders to tree (create structure)
+    folders.forEach(folder => {
+        getOrCreateFolder(folder.path);
+    });
+    
+    // Add videos to tree
+    videos.forEach(video => {
+        if (video.folder_path) {
+            const folderNode = getOrCreateFolder(video.folder_path);
+            if (folderNode && folderNode.videos) {
+                folderNode.videos.push(video);
+            }
+        } else {
+            rootVideos.push(video);
+        }
+    });
+    
+    return { tree, rootVideos };
+}
+
+function renderFolder(folderData, container, level = 0) {
+    const folderDiv = document.createElement("div");
+    folderDiv.className = "folder-item";
+    folderDiv.style.marginLeft = `${level * 20}px`;
+    folderDiv.style.marginBottom = "10px";
+    
+    const folderHeader = document.createElement("div");
+    folderHeader.style.cursor = "pointer";
+    folderHeader.style.padding = "5px";
+    folderHeader.style.backgroundColor = "#f0f0f0";
+    folderHeader.style.border = "1px solid #ccc";
+    folderHeader.style.borderRadius = "3px";
+    
+    const folderIcon = document.createElement("span");
+    folderIcon.textContent = "📁 ";
+    folderIcon.style.marginRight = "5px";
+    folderHeader.appendChild(folderIcon);
+    
+    const folderName = document.createElement("span");
+    folderName.textContent = folderData.name;
+    if (folderData.isPrivate) {
+        folderName.innerHTML += " <span style='color: #ffc107;'>[PRIVÉ]</span>";
+    }
+    folderHeader.appendChild(folderName);
+    
+    const contentDiv = document.createElement("div");
+    contentDiv.className = "folder-content";
+    contentDiv.style.display = "none";
+    contentDiv.style.marginLeft = "20px";
+    contentDiv.style.marginTop = "5px";
+    
+    let isExpanded = false;
+    folderHeader.addEventListener("click", () => {
+        isExpanded = !isExpanded;
+        contentDiv.style.display = isExpanded ? "block" : "none";
+        folderIcon.textContent = isExpanded ? "📂 " : "📁 ";
+    });
+    
+    // Render subfolders
+    Object.values(folderData.children).forEach(child => {
+        if (child.type === 'folder') {
+            renderFolder(child, contentDiv, level + 1);
+        }
+    });
+    
+    // Render videos in this folder
+    folderData.videos.forEach(video => {
+        const videoDiv = createVideoItem(video);
+        contentDiv.appendChild(videoDiv);
+    });
+    
+    folderDiv.appendChild(folderHeader);
+    folderDiv.appendChild(contentDiv);
+    container.appendChild(folderDiv);
+}
+
+async function fetchVideos() {
+    const container = document.getElementById("video-list");
+    container.innerHTML = "";
+    
+    let videos = [];
+    let folders = [];
+    
+    try {
+        const videosRes = await fetch("/api/videos");
+        if (!videosRes.ok) {
+            throw new Error(`Request failed with status ${videosRes.status}`);
+        }
+        videos = await videosRes.json();
+        
+        if (isEditor) {
+            const foldersRes = await fetch("/api/folders");
+            if (foldersRes.ok) {
+                folders = await foldersRes.json();
+            }
+        }
+    } catch (error) {
+        console.error("Failed to load processed videos", error);
+        container.textContent = "Impossible de charger la liste des vidéos pour le moment.";
+        return;
+    }
+
+    if (!Array.isArray(videos) || videos.length === 0) {
+        container.textContent = "Aucune vidéo n'a encore été traitée.";
+        return;
+    }
+
+    // Build folder tree
+    const { tree, rootVideos } = buildFolderTree(videos, folders);
+    
+    // Render root folders
+    Object.values(tree).forEach(folderData => {
+        if (folderData.type === 'folder') {
+            renderFolder(folderData, container, 0);
+        }
+    });
+    
+    // Render root videos (videos without folder)
+    rootVideos.forEach(video => {
+        const videoDiv = createVideoItem(video);
+        container.appendChild(videoDiv);
     });
 }
 
