@@ -207,10 +207,10 @@ function createVideoItem(video) {
         if (video.available_subtitles && video.available_subtitles.length > 0) {
             if (isEditor) {
                 // Editors: simple button
-                const btnSubs = document.createElement("button");
-                btnSubs.textContent = "Lecture avec sous-titres";
-                btnSubs.onclick = () => playVideo(video, { mode: "subs" });
-                controls.appendChild(btnSubs);
+            const btnSubs = document.createElement("button");
+            btnSubs.textContent = "Lecture avec sous-titres";
+            btnSubs.onclick = () => playVideo(video, { mode: "subs" });
+            controls.appendChild(btnSubs);
             } else {
                 // Viewers: subtitle selection dropdown
                 const subtitleSelect = document.createElement("select");
@@ -326,6 +326,7 @@ function buildFolderTree(videos, folders) {
                     name: part,
                     path: fullPath,
                     isPrivate: folderInfo ? folderInfo.is_private : false,
+                    color: folderInfo ? (folderInfo.color || "#f0f0f0") : "#f0f0f0",
                     children: {},
                     videos: []
                 };
@@ -372,7 +373,7 @@ function renderFolder(folderData, container, level = 0) {
     const folderHeader = document.createElement("div");
     folderHeader.style.cursor = "pointer";
     folderHeader.style.padding = "5px";
-    folderHeader.style.backgroundColor = "#f0f0f0";
+    folderHeader.style.backgroundColor = folderData.color || "#f0f0f0";
     folderHeader.style.border = "1px solid #ccc";
     folderHeader.style.borderRadius = "3px";
     folderHeader.style.display = "flex";
@@ -424,6 +425,17 @@ function renderFolder(folderData, container, level = 0) {
             uploadVideoToFolder(folderData.path);
         };
         folderControls.appendChild(uploadBtn);
+        
+        // Change color button
+        const colorBtn = document.createElement("button");
+        colorBtn.textContent = "Changer couleur";
+        colorBtn.style.fontSize = "0.8em";
+        colorBtn.style.padding = "3px 8px";
+        colorBtn.onclick = (e) => {
+            e.stopPropagation();
+            changeFolderColor(folderData.path, folderData.color || "#f0f0f0");
+        };
+        folderControls.appendChild(colorBtn);
         
         folderHeader.appendChild(folderControls);
     }
@@ -909,18 +921,88 @@ async function uploadVideoToFolder(folderPath) {
     input.click();
 }
 
+async function changeFolderColor(folderPath, currentColor) {
+    const colorInput = document.createElement("input");
+    colorInput.type = "color";
+    colorInput.value = currentColor;
+    
+    const colorDialog = document.createElement("div");
+    colorDialog.style.position = "fixed";
+    colorDialog.style.top = "50%";
+    colorDialog.style.left = "50%";
+    colorDialog.style.transform = "translate(-50%, -50%)";
+    colorDialog.style.backgroundColor = "white";
+    colorDialog.style.padding = "20px";
+    colorDialog.style.border = "2px solid #ccc";
+    colorDialog.style.borderRadius = "5px";
+    colorDialog.style.zIndex = "10000";
+    colorDialog.style.boxShadow = "0 4px 6px rgba(0,0,0,0.1)";
+    
+    const colorLabel = document.createElement("label");
+    colorLabel.textContent = "Choisissez une nouvelle couleur:";
+    colorLabel.style.display = "block";
+    colorLabel.style.marginBottom = "10px";
+    colorDialog.appendChild(colorLabel);
+    colorDialog.appendChild(colorInput);
+    
+    const colorButtons = document.createElement("div");
+    colorButtons.style.display = "flex";
+    colorButtons.style.gap = "10px";
+    colorButtons.style.marginTop = "15px";
+    
+    const colorOkBtn = document.createElement("button");
+    colorOkBtn.textContent = "OK";
+    colorOkBtn.onclick = async () => {
+        const selectedColor = colorInput.value;
+        document.body.removeChild(colorDialog);
+        
+        try {
+            const formData = new FormData();
+            formData.append("color", selectedColor);
+            
+            const res = await fetch(`/api/folders/${encodeURIComponent(folderPath)}/color`, {
+                method: "PUT",
+                body: formData,
+            });
+            
+            if (!res.ok) {
+                const err = await res.json();
+                alert("Erreur : " + (err.error || res.statusText));
+                return;
+            }
+            
+            alert("Couleur mise à jour avec succès!");
+            fetchVideos();
+        } catch (err) {
+            console.error(err);
+            alert("Erreur lors de la mise à jour de la couleur.");
+        }
+    };
+    
+    const colorCancelBtn = document.createElement("button");
+    colorCancelBtn.textContent = "Annuler";
+    colorCancelBtn.onclick = () => {
+        document.body.removeChild(colorDialog);
+    };
+    
+    colorButtons.appendChild(colorOkBtn);
+    colorButtons.appendChild(colorCancelBtn);
+    colorDialog.appendChild(colorButtons);
+    document.body.appendChild(colorDialog);
+}
+
 // Upload form handler (only for editors)
 const uploadForm = document.getElementById("upload-form");
 if (uploadForm && isEditor) {
     uploadForm.addEventListener("submit", async (e) => {
-        e.preventDefault();
-        const form = e.target;
-        const statusEl = document.getElementById("upload-status");
-        statusEl.textContent = "Téléversement et traitement en cours... Cela peut prendre un moment.";
+    e.preventDefault();
+    const form = e.target;
+    const statusEl = document.getElementById("upload-status");
+    statusEl.textContent = "Téléversement et traitement en cours... Cela peut prendre un moment.";
 
-        const formData = new FormData(form);
-        const checkedLangs = [...form.querySelectorAll("input[name='languages']:checked")];
-        const checkedOptions = [...form.querySelectorAll("input[name='process_options']:checked")];
+    const formData = new FormData(form);
+    const checkedLangs = [...form.querySelectorAll("input[name='languages']:checked")];
+    const checkedOptions = [...form.querySelectorAll("input[name='process_options']:checked")];
         
         // Add folder path and privacy
         const folderPath = document.getElementById("folder-path-input")?.value || "";
@@ -930,40 +1012,40 @@ if (uploadForm && isEditor) {
         }
         formData.append("is_private", isPrivate);
 
-        if (checkedLangs.length === 0 || checkedLangs.length > 2) {
-            alert("Veuillez sélectionner une ou deux langues cibles.");
+    if (checkedLangs.length === 0 || checkedLangs.length > 2) {
+        alert("Veuillez sélectionner une ou deux langues cibles.");
+        return;
+    }
+
+    if (checkedOptions.length === 0) {
+        alert("Veuillez sélectionner au moins une option de traitement.");
+        return;
+    }
+
+    try {
+        const res = await fetch("/api/upload", {
+            method: "POST",
+            body: formData,
+        });
+
+        if (!res.ok) {
+            const err = await res.json();
+            statusEl.textContent = "Erreur : " + (err.error || res.statusText);
             return;
         }
 
-        if (checkedOptions.length === 0) {
-            alert("Veuillez sélectionner au moins une option de traitement.");
-            return;
-        }
+        const data = await res.json();
+        statusEl.innerHTML = "";
+        const queuedMsg = document.createElement("div");
+        queuedMsg.textContent = `Téléversement réussi. La vidéo ${data.id} est en cours de traitement...`;
+        statusEl.appendChild(queuedMsg);
 
-        try {
-            const res = await fetch("/api/upload", {
-                method: "POST",
-                body: formData,
-            });
-
-            if (!res.ok) {
-                const err = await res.json();
-                statusEl.textContent = "Erreur : " + (err.error || res.statusText);
-                return;
-            }
-
-            const data = await res.json();
-            statusEl.innerHTML = "";
-            const queuedMsg = document.createElement("div");
-            queuedMsg.textContent = `Téléversement réussi. La vidéo ${data.id} est en cours de traitement...`;
-            statusEl.appendChild(queuedMsg);
-
-            await pollJobStatus(data.id, statusEl);
-        } catch (err) {
-            console.error(err);
-            statusEl.textContent = "Erreur inconnue.";
-        }
-    });
+        await pollJobStatus(data.id, statusEl);
+    } catch (err) {
+        console.error(err);
+        statusEl.textContent = "Erreur inconnue.";
+    }
+});
 }
 
 // Folder management (editors only)
@@ -976,28 +1058,77 @@ if (isEditor) {
             
             const isPrivate = confirm("Voulez-vous rendre ce dossier privé?");
             
-            try {
-                const formData = new FormData();
-                formData.append("folder_path", folderPath);
-                formData.append("is_private", isPrivate);
+            // Color picker
+            const colorInput = document.createElement("input");
+            colorInput.type = "color";
+            colorInput.value = "#f0f0f0";
+            colorInput.style.margin = "10px";
+            
+            const colorDialog = document.createElement("div");
+            colorDialog.style.position = "fixed";
+            colorDialog.style.top = "50%";
+            colorDialog.style.left = "50%";
+            colorDialog.style.transform = "translate(-50%, -50%)";
+            colorDialog.style.backgroundColor = "white";
+            colorDialog.style.padding = "20px";
+            colorDialog.style.border = "2px solid #ccc";
+            colorDialog.style.borderRadius = "5px";
+            colorDialog.style.zIndex = "10000";
+            colorDialog.style.boxShadow = "0 4px 6px rgba(0,0,0,0.1)";
+            
+            const colorLabel = document.createElement("label");
+            colorLabel.textContent = "Choisissez une couleur pour le dossier:";
+            colorLabel.style.display = "block";
+            colorLabel.style.marginBottom = "10px";
+            colorDialog.appendChild(colorLabel);
+            colorDialog.appendChild(colorInput);
+            
+            const colorButtons = document.createElement("div");
+            colorButtons.style.display = "flex";
+            colorButtons.style.gap = "10px";
+            colorButtons.style.marginTop = "15px";
+            
+            const colorOkBtn = document.createElement("button");
+            colorOkBtn.textContent = "OK";
+            colorOkBtn.onclick = async () => {
+                const selectedColor = colorInput.value;
+                document.body.removeChild(colorDialog);
                 
-                const res = await fetch("/api/folders", {
-                    method: "POST",
-                    body: formData,
-                });
-                
-                if (!res.ok) {
-                    const err = await res.json();
-                    alert("Erreur : " + (err.error || res.statusText));
-                    return;
+                try {
+                    const formData = new FormData();
+                    formData.append("folder_path", folderPath);
+                    formData.append("is_private", isPrivate);
+                    formData.append("color", selectedColor);
+                    
+                    const res = await fetch("/api/folders", {
+                        method: "POST",
+                        body: formData,
+                    });
+                    
+                    if (!res.ok) {
+                        const err = await res.json();
+                        alert("Erreur : " + (err.error || res.statusText));
+                        return;
+                    }
+                    
+                    alert("Dossier créé avec succès!");
+                    fetchVideos();
+                } catch (err) {
+                    console.error(err);
+                    alert("Erreur lors de la création du dossier.");
                 }
-                
-                alert("Dossier créé avec succès!");
-                fetchVideos();
-            } catch (err) {
-                console.error(err);
-                alert("Erreur lors de la création du dossier.");
-            }
+            };
+            
+            const colorCancelBtn = document.createElement("button");
+            colorCancelBtn.textContent = "Annuler";
+            colorCancelBtn.onclick = () => {
+                document.body.removeChild(colorDialog);
+            };
+            
+            colorButtons.appendChild(colorOkBtn);
+            colorButtons.appendChild(colorCancelBtn);
+            colorDialog.appendChild(colorButtons);
+            document.body.appendChild(colorDialog);
         });
     }
 }

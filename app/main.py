@@ -751,7 +751,7 @@ async def get_combined_subtitles(request: Request, video_id: str, langs: Optiona
 # ---------- Folder management (editors only) ----------
 
 @app.post("/api/folders")
-async def create_folder(request: Request, folder_path: str = Form(...), is_private: bool = Form(False)):
+async def create_folder(request: Request, folder_path: str = Form(...), is_private: bool = Form(False), color: Optional[str] = Form(None)):
     """Create a new folder."""
     if not is_editor(request):
         return JSONResponse({"error": "Seuls les éditeurs peuvent créer des dossiers."}, status_code=403)
@@ -760,12 +760,23 @@ async def create_folder(request: Request, folder_path: str = Form(...), is_priva
     if not folder_path:
         return JSONResponse({"error": "Le chemin du dossier ne peut pas être vide."}, status_code=400)
     
+    # Validate color (hex color code)
+    folder_color = "#f0f0f0"  # default gray
+    if color:
+        color = color.strip()
+        if color.startswith("#") and len(color) == 7:
+            try:
+                int(color[1:], 16)  # Validate hex
+                folder_color = color
+            except ValueError:
+                pass
+    
     folder_dir = settings.PROCESSED_DIR / folder_path
     try:
         folder_dir.mkdir(parents=True, exist_ok=True)
-        # Save privacy info
+        # Save privacy and color info
         info_path = folder_dir / ".folder_info.json"
-        info_data = {"is_private": is_private}
+        info_data = {"is_private": is_private, "color": folder_color}
         info_path.write_text(json.dumps(info_data, indent=2), encoding="utf-8")
         return JSONResponse({"message": "Dossier créé avec succès.", "path": folder_path})
     except Exception as e:
@@ -788,13 +799,15 @@ async def list_folders(request: Request):
                     folder_name = item.name
                     current_path = parent_path + "/" + folder_name if parent_path else folder_name
                     
-                    # Check privacy
+                    # Check privacy and color
                     info_path = item / ".folder_info.json"
                     is_private = False
+                    folder_color = "#f0f0f0"  # default gray
                     if info_path.exists():
                         try:
                             info_data = json.loads(info_path.read_text(encoding="utf-8"))
                             is_private = info_data.get("is_private", False)
+                            folder_color = info_data.get("color", "#f0f0f0")
                         except Exception:
                             pass
                     
@@ -807,6 +820,7 @@ async def list_folders(request: Request):
                         "name": folder_name,
                         "path": current_path,
                         "is_private": is_private,
+                        "color": folder_color,
                         "parent_path": parent_path,
                     })
                     
@@ -832,12 +846,58 @@ async def toggle_folder_privacy(request: Request, folder_path: str, is_private: 
     
     try:
         info_path = folder_dir / ".folder_info.json"
-        info_data = {"is_private": is_private}
+        # Preserve existing color
+        existing_color = "#f0f0f0"
+        if info_path.exists():
+            try:
+                existing_data = json.loads(info_path.read_text(encoding="utf-8"))
+                existing_color = existing_data.get("color", "#f0f0f0")
+            except Exception:
+                pass
+        info_data = {"is_private": is_private, "color": existing_color}
         info_path.write_text(json.dumps(info_data, indent=2), encoding="utf-8")
         return JSONResponse({"message": "Confidentialité du dossier mise à jour."})
     except Exception as e:
         logger.exception("Failed to update folder privacy")
         return JSONResponse({"error": f"Impossible de mettre à jour la confidentialité: {e}"}, status_code=500)
+
+@app.put("/api/folders/{folder_path:path}/color")
+async def update_folder_color(request: Request, folder_path: str, color: str = Form(...)):
+    """Update folder color."""
+    if not is_editor(request):
+        return JSONResponse({"error": "Seuls les éditeurs peuvent modifier la couleur des dossiers."}, status_code=403)
+    
+    folder_dir = settings.PROCESSED_DIR / folder_path
+    if not folder_dir.exists() or not folder_dir.is_dir():
+        return JSONResponse({"error": "Dossier non trouvé."}, status_code=404)
+    
+    # Validate color
+    folder_color = "#f0f0f0"
+    if color:
+        color = color.strip()
+        if color.startswith("#") and len(color) == 7:
+            try:
+                int(color[1:], 16)  # Validate hex
+                folder_color = color
+            except ValueError:
+                return JSONResponse({"error": "Couleur invalide. Utilisez un code hexadécimal (ex: #ffc107)."}, status_code=400)
+    
+    try:
+        info_path = folder_dir / ".folder_info.json"
+        # Preserve existing privacy
+        is_private = False
+        if info_path.exists():
+            try:
+                existing_data = json.loads(info_path.read_text(encoding="utf-8"))
+                is_private = existing_data.get("is_private", False)
+            except Exception:
+                pass
+        info_data = {"is_private": is_private, "color": folder_color}
+        info_path.write_text(json.dumps(info_data, indent=2), encoding="utf-8")
+        return JSONResponse({"message": "Couleur du dossier mise à jour."})
+    except Exception as e:
+        logger.exception("Failed to update folder color")
+        return JSONResponse({"error": f"Impossible de mettre à jour la couleur: {e}"}, status_code=500)
 
 @app.post("/api/folders/{folder_path:path}/upload")
 async def upload_video_to_folder(
