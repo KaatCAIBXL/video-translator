@@ -253,6 +253,78 @@ function createVideoItem(video) {
 
         const baseName = filenameWithoutExtension(video.filename);
         
+        // Cache video for offline playback in the app (with subtitles)
+        if ("caches" in window) {
+            const cacheVideoBtn = document.createElement("button");
+            cacheVideoBtn.textContent = "💾 Mettre en cache pour lecture hors ligne (dans l'app)";
+            cacheVideoBtn.style.marginBottom = "10px";
+            cacheVideoBtn.style.padding = "8px";
+            cacheVideoBtn.style.backgroundColor = "#17a2b8";
+            cacheVideoBtn.style.color = "white";
+            cacheVideoBtn.style.border = "none";
+            cacheVideoBtn.style.borderRadius = "3px";
+            cacheVideoBtn.style.cursor = "pointer";
+            cacheVideoBtn.onclick = async () => {
+                if (confirm("Mettre cette vidéo en cache pour lecture hors ligne dans l'application? Les sous-titres fonctionneront normalement. Cela utilisera de l'espace de stockage.")) {
+                    await preloadVideoForOffline(video.id, "original", null, video.available_subtitles || []);
+                    fetchVideos(); // Refresh to show cache status
+                }
+            };
+            downloads.appendChild(cacheVideoBtn);
+            
+            // Show cache status
+            isVideoCached(video.id, "original").then(cached => {
+                if (cached) {
+                    const cacheStatus = document.createElement("div");
+                    cacheStatus.textContent = "✓ Vidéo mise en cache - disponible hors ligne";
+                    cacheStatus.style.color = "#28a745";
+                    cacheStatus.style.fontSize = "0.9em";
+                    cacheStatus.style.marginTop = "5px";
+                    downloads.appendChild(cacheStatus);
+                }
+            });
+        }
+        
+        // Download video as file (for external use)
+        const downloadVideoBtn = document.createElement("button");
+        downloadVideoBtn.textContent = "📥 Télécharger vidéo (fichier)";
+        downloadVideoBtn.style.marginBottom = "5px";
+        downloadVideoBtn.style.padding = "8px";
+        downloadVideoBtn.style.backgroundColor = "#6c757d";
+        downloadVideoBtn.style.color = "white";
+        downloadVideoBtn.style.border = "none";
+        downloadVideoBtn.style.borderRadius = "3px";
+        downloadVideoBtn.style.cursor = "pointer";
+        downloadVideoBtn.onclick = () => {
+            const link = document.createElement("a");
+            link.href = `/videos/${video.id}/original`;
+            link.download = `${baseName}_original.mp4`;
+            link.click();
+        };
+        downloads.appendChild(downloadVideoBtn);
+        
+        // Cache dubbed videos for offline playback
+        if (video.available_dubs && video.available_dubs.length > 0 && "caches" in window) {
+            video.available_dubs.forEach((lang) => {
+                const cacheDubBtn = document.createElement("button");
+                cacheDubBtn.textContent = `💾 Mettre en cache doublage (${lang.toUpperCase()})`;
+                cacheDubBtn.style.marginBottom = "5px";
+                cacheDubBtn.style.marginRight = "5px";
+                cacheDubBtn.style.padding = "8px";
+                cacheDubBtn.style.backgroundColor = "#17a2b8";
+                cacheDubBtn.style.color = "white";
+                cacheDubBtn.style.border = "none";
+                cacheDubBtn.style.borderRadius = "3px";
+                cacheDubBtn.style.cursor = "pointer";
+                cacheDubBtn.onclick = async () => {
+                    if (confirm(`Mettre la vidéo doublée (${lang.toUpperCase()}) en cache pour lecture hors ligne?`)) {
+                        await preloadVideoForOffline(video.id, "dub", lang, video.available_subtitles || []);
+                        fetchVideos();
+                    }
+                };
+                downloads.appendChild(cacheDubBtn);
+            });
+        }
 
         if (video.available_subtitles && video.available_subtitles.length > 0) {
             video.available_subtitles.forEach((lang) => {
@@ -579,6 +651,101 @@ if (fullscreenButton) {
     });
 }
 
+// Check if video is available offline (cached)
+async function isVideoCached(videoId, mode = "original", lang = null) {
+    if (!("caches" in window)) {
+        return false;
+    }
+    
+    try {
+        const cache = await caches.open("video-cache");
+        let url;
+        if (mode === "dub" && lang) {
+            url = `/videos/${videoId}/dub/${lang}`;
+        } else {
+            url = `/videos/${videoId}/original`;
+        }
+        const cached = await cache.match(url);
+        return cached !== undefined;
+    } catch (err) {
+        return false;
+    }
+}
+
+// Preload video and subtitles for offline playback in the app
+async function preloadVideoForOffline(videoId, mode = "original", lang = null, availableSubtitles = []) {
+    if (!("caches" in window)) {
+        alert("Votre navigateur ne supporte pas le cache. La vidéo ne pourra pas être lue hors ligne.");
+        return;
+    }
+    
+    try {
+        const cache = await caches.open("video-cache");
+        let url;
+        if (mode === "dub" && lang) {
+            url = `/videos/${videoId}/dub/${lang}`;
+        } else {
+            url = `/videos/${videoId}/original`;
+        }
+        
+        // Check cache size limit
+        const estimate = await navigator.storage.estimate();
+        const available = estimate.quota - estimate.usage;
+        const minRequired = 100 * 1024 * 1024; // 100MB minimum
+        
+        if (available < minRequired) {
+            if (!confirm("Peu d'espace de stockage disponible. Voulez-vous continuer quand même?")) {
+                return;
+            }
+        }
+        
+        // Show progress
+        const progressMsg = document.createElement("div");
+        progressMsg.textContent = "Mise en cache en cours...";
+        progressMsg.style.padding = "10px";
+        progressMsg.style.backgroundColor = "#f0f0f0";
+        progressMsg.style.marginTop = "10px";
+        const infoEl = document.getElementById("player-info");
+        if (infoEl) {
+            infoEl.appendChild(progressMsg);
+        }
+        
+        // Cache video
+        const response = await fetch(url);
+        if (response.ok) {
+            await cache.put(url, response.clone());
+            
+            // Cache all available subtitles for this video
+            if (availableSubtitles && availableSubtitles.length > 0) {
+                progressMsg.textContent = "Mise en cache de la vidéo et des sous-titres...";
+                for (const subLang of availableSubtitles) {
+                    try {
+                        const subResponse = await fetch(`/videos/${videoId}/subs/${subLang}`);
+                        if (subResponse.ok) {
+                            await cache.put(`/videos/${videoId}/subs/${subLang}`, subResponse.clone());
+                        }
+                    } catch (err) {
+                        console.warn(`Failed to cache subtitles for ${subLang}:`, err);
+                    }
+                }
+            }
+            
+            if (infoEl && progressMsg.parentNode) {
+                progressMsg.remove();
+            }
+            alert("Vidéo et sous-titres mis en cache! Vous pouvez maintenant les lire hors ligne dans l'application.");
+        } else {
+            if (infoEl && progressMsg.parentNode) {
+                progressMsg.remove();
+            }
+            alert("Impossible de mettre en cache la vidéo.");
+        }
+    } catch (err) {
+        console.error("Cache error:", err);
+        alert("Erreur lors de la mise en cache: " + err.message);
+    }
+}
+
 async function playVideo(video, options = {}) {
     const infoEl = document.getElementById("player-info");
     const overlay = document.getElementById("subtitle-overlay");
@@ -589,7 +756,61 @@ async function playVideo(video, options = {}) {
     }
 
     const mode = options.mode || "original";
-    videoEl.src = `/videos/${video.id}/original`;
+    const lang = options.lang || null;
+    
+    // Determine video URL
+    let videoUrl;
+    if (mode === "dub" && lang) {
+        videoUrl = `/videos/${video.id}/dub/${lang}`;
+    } else {
+        videoUrl = `/videos/${video.id}/original`;
+    }
+    
+    // Check if video is cached for offline playback
+    const isCached = await isVideoCached(video.id, mode, lang);
+    
+    // Try to use cached version if available (works offline)
+    if (isCached && "caches" in window) {
+        try {
+            const cache = await caches.open("video-cache");
+            const cachedResponse = await cache.match(videoUrl);
+            if (cachedResponse) {
+                const blob = await cachedResponse.blob();
+                const blobUrl = URL.createObjectURL(blob);
+                videoEl.src = blobUrl;
+                infoEl.textContent = "Lecture hors ligne (mis en cache) - Les sous-titres fonctionnent normalement";
+            } else {
+                // Fallback to online if cache miss
+                videoEl.src = videoUrl;
+            }
+        } catch (err) {
+            console.error("Error loading cached video:", err);
+            // Fallback to online on error
+            videoEl.src = videoUrl;
+        }
+    } else {
+        // Use online version (will fail if offline and not cached)
+        videoEl.src = videoUrl;
+        
+        // If online fails and we have cache, try to use cache as fallback
+        videoEl.addEventListener("error", async () => {
+            if ("caches" in window) {
+                try {
+                    const cache = await caches.open("video-cache");
+                    const cachedResponse = await cache.match(videoUrl);
+                    if (cachedResponse) {
+                        const blob = await cachedResponse.blob();
+                        const blobUrl = URL.createObjectURL(blob);
+                        videoEl.src = blobUrl;
+                        infoEl.textContent = "Lecture hors ligne (mis en cache) - Les sous-titres fonctionnent normalement";
+                    }
+                } catch (err) {
+                    console.error("Error loading cached video as fallback:", err);
+                }
+            }
+        }, { once: true });
+    }
+    
     clearTracks(videoEl);
     clearSubtitleOverlay();
 
@@ -603,10 +824,32 @@ async function playVideo(video, options = {}) {
                     ? [options.lang] 
                     : video.available_subtitles;
                 
+                // Check if subtitles are cached for offline use
+                const cache = "caches" in window ? await caches.open("video-cache") : null;
+                
                 const subtitles = await Promise.all(
                     langsToLoad.map(async (lang) => {
-                        const res = await fetch(`/videos/${video.id}/subs/${lang}`);
-                        if (!res.ok) {
+                        const subUrl = `/videos/${video.id}/subs/${lang}`;
+                        
+                        // Try cache first if available
+                        let res;
+                        if (cache) {
+                            const cached = await cache.match(subUrl);
+                            if (cached) {
+                                res = cached;
+                            } else {
+                                res = await fetch(subUrl);
+                                // Cache for future offline use
+                                if (res.ok) {
+                                    await cache.put(subUrl, res.clone());
+                                    res = await cache.match(subUrl);
+                                }
+                            }
+                        } else {
+                            res = await fetch(subUrl);
+                        }
+                        
+                        if (!res || !res.ok) {
                             throw new Error(`Impossible de charger les sous-titres pour ${lang}`);
                         }
                         const text = await res.text();
