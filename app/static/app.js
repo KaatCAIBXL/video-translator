@@ -343,7 +343,7 @@ function buildFolderTree(videos, folders) {
         return node;
     }
     
-    // Add folders to tree (create structure)
+    // Add ALL folders to tree (even empty ones)
     folders.forEach(folder => {
         getOrCreateFolder(folder.path);
     });
@@ -375,18 +375,58 @@ function renderFolder(folderData, container, level = 0) {
     folderHeader.style.backgroundColor = "#f0f0f0";
     folderHeader.style.border = "1px solid #ccc";
     folderHeader.style.borderRadius = "3px";
+    folderHeader.style.display = "flex";
+    folderHeader.style.justifyContent = "space-between";
+    folderHeader.style.alignItems = "center";
+    
+    const folderLeft = document.createElement("div");
+    folderLeft.style.display = "flex";
+    folderLeft.style.alignItems = "center";
     
     const folderIcon = document.createElement("span");
     folderIcon.textContent = "📁 ";
     folderIcon.style.marginRight = "5px";
-    folderHeader.appendChild(folderIcon);
+    folderLeft.appendChild(folderIcon);
     
     const folderName = document.createElement("span");
     folderName.textContent = folderData.name;
     if (folderData.isPrivate) {
         folderName.innerHTML += " <span style='color: #ffc107;'>[PRIVÉ]</span>";
     }
-    folderHeader.appendChild(folderName);
+    folderLeft.appendChild(folderName);
+    folderHeader.appendChild(folderLeft);
+    
+    // Editor controls for folder
+    if (isEditor) {
+        const folderControls = document.createElement("div");
+        folderControls.style.display = "flex";
+        folderControls.style.gap = "5px";
+        folderControls.style.marginLeft = "10px";
+        
+        // Privacy toggle
+        const privacyBtn = document.createElement("button");
+        privacyBtn.textContent = folderData.isPrivate ? "Rendre public" : "Rendre privé";
+        privacyBtn.style.fontSize = "0.8em";
+        privacyBtn.style.padding = "3px 8px";
+        privacyBtn.onclick = (e) => {
+            e.stopPropagation();
+            toggleFolderPrivacy(folderData.path, !folderData.isPrivate);
+        };
+        folderControls.appendChild(privacyBtn);
+        
+        // Upload video button
+        const uploadBtn = document.createElement("button");
+        uploadBtn.textContent = "Télécharger vidéo";
+        uploadBtn.style.fontSize = "0.8em";
+        uploadBtn.style.padding = "3px 8px";
+        uploadBtn.onclick = (e) => {
+            e.stopPropagation();
+            uploadVideoToFolder(folderData.path);
+        };
+        folderControls.appendChild(uploadBtn);
+        
+        folderHeader.appendChild(folderControls);
+    }
     
     const contentDiv = document.createElement("div");
     contentDiv.className = "folder-content";
@@ -395,7 +435,7 @@ function renderFolder(folderData, container, level = 0) {
     contentDiv.style.marginTop = "5px";
     
     let isExpanded = false;
-    folderHeader.addEventListener("click", () => {
+    folderLeft.addEventListener("click", () => {
         isExpanded = !isExpanded;
         contentDiv.style.display = isExpanded ? "block" : "none";
         folderIcon.textContent = isExpanded ? "📂 " : "📁 ";
@@ -413,6 +453,16 @@ function renderFolder(folderData, container, level = 0) {
         const videoDiv = createVideoItem(video);
         contentDiv.appendChild(videoDiv);
     });
+    
+    // Show message if folder is empty
+    if (Object.keys(folderData.children).length === 0 && folderData.videos.length === 0) {
+        const emptyMsg = document.createElement("div");
+        emptyMsg.textContent = "Dossier vide";
+        emptyMsg.style.color = "#999";
+        emptyMsg.style.fontStyle = "italic";
+        emptyMsg.style.padding = "10px";
+        contentDiv.appendChild(emptyMsg);
+    }
     
     folderDiv.appendChild(folderHeader);
     folderDiv.appendChild(contentDiv);
@@ -800,6 +850,63 @@ async function editSubtitle(videoId, lang) {
         console.error(err);
         alert("Erreur lors de l'édition des sous-titres.");
     }
+}
+
+async function toggleFolderPrivacy(folderPath, isPrivate) {
+    try {
+        const formData = new FormData();
+        formData.append("is_private", isPrivate);
+        
+        const res = await fetch(`/api/folders/${encodeURIComponent(folderPath)}/privacy`, {
+            method: "PUT",
+            body: formData,
+        });
+        
+        if (!res.ok) {
+            const err = await res.json();
+            alert("Erreur : " + (err.error || res.statusText));
+            return;
+        }
+        
+        alert("Confidentialité du dossier mise à jour!");
+        fetchVideos();
+    } catch (err) {
+        console.error(err);
+        alert("Erreur lors de la mise à jour de la confidentialité du dossier.");
+    }
+}
+
+async function uploadVideoToFolder(folderPath) {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = "video/*";
+    input.onchange = async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        
+        try {
+            const formData = new FormData();
+            formData.append("file", file);
+            
+            const res = await fetch(`/api/folders/${encodeURIComponent(folderPath)}/upload`, {
+                method: "POST",
+                body: formData,
+            });
+            
+            if (!res.ok) {
+                const err = await res.json();
+                alert("Erreur : " + (err.error || res.statusText));
+                return;
+            }
+            
+            alert("Vidéo téléchargée avec succès!");
+            fetchVideos();
+        } catch (err) {
+            console.error(err);
+            alert("Erreur lors du téléchargement de la vidéo.");
+        }
+    };
+    input.click();
 }
 
 // Upload form handler (only for editors)

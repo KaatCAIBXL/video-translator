@@ -784,7 +784,7 @@ async def list_folders(request: Request):
                 # Check if it's a folder (not a video directory)
                 meta = _load_video_metadata(item)
                 if meta is None:
-                    # This is a folder
+                    # This is a folder (check if it has .folder_info.json or is empty)
                     folder_name = item.name
                     current_path = parent_path + "/" + folder_name if parent_path else folder_name
                     
@@ -812,9 +812,56 @@ async def list_folders(request: Request):
                     
                     # Recursively scan subfolders
                     _scan_folders(item, current_path)
+                else:
+                    # This is a video directory, check if parent is a folder
+                    # (video directories are not folders themselves)
+                    pass
     
     _scan_folders(settings.PROCESSED_DIR)
     return JSONResponse(folders)
+
+@app.put("/api/folders/{folder_path:path}/privacy")
+async def toggle_folder_privacy(request: Request, folder_path: str, is_private: bool = Form(...)):
+    """Toggle folder privacy."""
+    if not is_editor(request):
+        return JSONResponse({"error": "Seuls les éditeurs peuvent modifier la confidentialité des dossiers."}, status_code=403)
+    
+    folder_dir = settings.PROCESSED_DIR / folder_path
+    if not folder_dir.exists() or not folder_dir.is_dir():
+        return JSONResponse({"error": "Dossier non trouvé."}, status_code=404)
+    
+    try:
+        info_path = folder_dir / ".folder_info.json"
+        info_data = {"is_private": is_private}
+        info_path.write_text(json.dumps(info_data, indent=2), encoding="utf-8")
+        return JSONResponse({"message": "Confidentialité du dossier mise à jour."})
+    except Exception as e:
+        logger.exception("Failed to update folder privacy")
+        return JSONResponse({"error": f"Impossible de mettre à jour la confidentialité: {e}"}, status_code=500)
+
+@app.post("/api/folders/{folder_path:path}/upload")
+async def upload_video_to_folder(
+    request: Request,
+    folder_path: str,
+    file: UploadFile = File(...)
+):
+    """Upload a video directly to a folder without processing."""
+    if not is_editor(request):
+        return JSONResponse({"error": "Seuls les éditeurs peuvent télécharger des vidéos."}, status_code=403)
+    
+    folder_dir = settings.PROCESSED_DIR / folder_path
+    if not folder_dir.exists() or not folder_dir.is_dir():
+        return JSONResponse({"error": "Dossier non trouvé."}, status_code=404)
+    
+    try:
+        # Save video directly to folder
+        video_path = folder_dir / file.filename
+        with open(video_path, "wb") as f:
+            shutil.copyfileobj(file.file, f)
+        return JSONResponse({"message": f"Vidéo téléchargée avec succès dans {folder_path}.", "filename": file.filename})
+    except Exception as e:
+        logger.exception("Failed to upload video to folder")
+        return JSONResponse({"error": f"Impossible de télécharger la vidéo: {e}"}, status_code=500)
 
 
 # ---------- File management (editors only) ----------
