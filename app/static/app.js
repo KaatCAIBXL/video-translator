@@ -191,12 +191,8 @@ function createVideoItem(video) {
         const controls = document.createElement("div");
         controls.className = "video-controls";
 
-        const playOriginalBtn = document.createElement("button");
-        playOriginalBtn.textContent = "Lecture originale";
-        playOriginalBtn.onclick = () => playVideo(video, { mode: "original" });
-        controls.appendChild(playOriginalBtn);
-
-        // Subtitle selection with multiple checkboxes
+        // Subtitle selection with multiple checkboxes (before play button)
+        const selectedLangs = new Set();
         if (video.available_subtitles && video.available_subtitles.length > 0) {
             const subtitleWrapper = document.createElement("div");
             subtitleWrapper.style.marginTop = "10px";
@@ -206,8 +202,6 @@ function createVideoItem(video) {
             subtitleLabel.textContent = "Ondertiteling: ";
             subtitleLabel.style.marginRight = "10px";
             subtitleWrapper.appendChild(subtitleLabel);
-            
-            const selectedLangs = new Set();
             
             video.available_subtitles.forEach((lang) => {
                 const checkbox = document.createElement("input");
@@ -228,13 +222,7 @@ function createVideoItem(video) {
                     } else {
                         selectedLangs.delete(lang);
                     }
-                    
-                    // Play video with selected subtitles
-                    if (selectedLangs.size > 0) {
-                        playVideo(video, { mode: "subs", langs: Array.from(selectedLangs) });
-                    } else {
-                        playVideo(video, { mode: "original" });
-                    }
+                    // Don't auto-play - user must click play button
                 });
                 
                 subtitleWrapper.appendChild(checkbox);
@@ -243,6 +231,17 @@ function createVideoItem(video) {
             
             controls.appendChild(subtitleWrapper);
         }
+
+        const playOriginalBtn = document.createElement("button");
+        playOriginalBtn.textContent = "▶️ Play";
+        playOriginalBtn.onclick = () => {
+            if (selectedLangs.size > 0) {
+                playVideo(video, { mode: "subs", langs: Array.from(selectedLangs) });
+            } else {
+                playVideo(video, { mode: "original" });
+            }
+        };
+        controls.appendChild(playOriginalBtn);
 
         if (video.available_dubs && video.available_dubs.length > 0) {
             const dubWrapper = document.createElement("div");
@@ -1101,25 +1100,95 @@ async function editSubtitle(videoId, lang) {
         }
         
         const data = await res.json();
-        const content = prompt("Modifiez le contenu des sous-titres (format VTT):", data.content);
-        if (content === null) return;
         
-        const formData = new FormData();
-        formData.append("content", content);
+        // Create dialog with textarea for better editing experience
+        const dialog = document.createElement("div");
+        dialog.style.position = "fixed";
+        dialog.style.top = "50%";
+        dialog.style.left = "50%";
+        dialog.style.transform = "translate(-50%, -50%)";
+        dialog.style.backgroundColor = "white";
+        dialog.style.padding = "20px";
+        dialog.style.border = "2px solid #ccc";
+        dialog.style.borderRadius = "5px";
+        dialog.style.zIndex = "10000";
+        dialog.style.boxShadow = "0 4px 6px rgba(0,0,0,0.1)";
+        dialog.style.minWidth = "600px";
+        dialog.style.maxWidth = "90vw";
+        dialog.style.maxHeight = "80vh";
+        dialog.style.display = "flex";
+        dialog.style.flexDirection = "column";
         
-        const saveRes = await fetch(`/api/videos/${videoId}/subs/${lang}/edit`, {
-            method: "PUT",
-            body: formData,
-        });
+        const title = document.createElement("h3");
+        title.textContent = `Modifier les sous-titres (${lang.toUpperCase()})`;
+        title.style.marginTop = "0";
+        dialog.appendChild(title);
         
-        if (!saveRes.ok) {
-            const err = await saveRes.json();
-            alert("Erreur : " + (err.error || saveRes.statusText));
-            return;
-        }
+        const textarea = document.createElement("textarea");
+        textarea.value = data.content || "";
+        textarea.style.width = "100%";
+        textarea.style.height = "400px";
+        textarea.style.fontFamily = "monospace";
+        textarea.style.fontSize = "12px";
+        textarea.style.padding = "10px";
+        textarea.style.border = "1px solid #ccc";
+        textarea.style.borderRadius = "3px";
+        textarea.style.resize = "vertical";
+        textarea.style.flex = "1";
+        textarea.style.minHeight = "300px";
+        dialog.appendChild(textarea);
         
-        alert("Sous-titres mis à jour avec succès!");
-        fetchVideos();
+        const buttons = document.createElement("div");
+        buttons.style.display = "flex";
+        buttons.style.gap = "10px";
+        buttons.style.justifyContent = "flex-end";
+        buttons.style.marginTop = "15px";
+        
+        const cancelBtn = document.createElement("button");
+        cancelBtn.textContent = "Annuler";
+        cancelBtn.onclick = () => {
+            document.body.removeChild(dialog);
+        };
+        buttons.appendChild(cancelBtn);
+        
+        const saveBtn = document.createElement("button");
+        saveBtn.textContent = "Enregistrer";
+        saveBtn.style.backgroundColor = "#007bff";
+        saveBtn.style.color = "white";
+        saveBtn.onclick = async () => {
+            const content = textarea.value;
+            document.body.removeChild(dialog);
+            
+            const formData = new FormData();
+            formData.append("content", content);
+            
+            try {
+                const saveRes = await fetch(`/api/videos/${videoId}/subs/${lang}/edit`, {
+                    method: "PUT",
+                    body: formData,
+                });
+                
+                if (!saveRes.ok) {
+                    const err = await saveRes.json();
+                    alert("Erreur : " + (err.error || saveRes.statusText));
+                    return;
+                }
+                
+                alert("Sous-titres mis à jour avec succès!");
+                fetchVideos();
+            } catch (err) {
+                console.error(err);
+                alert("Erreur lors de l'enregistrement des sous-titres.");
+            }
+        };
+        buttons.appendChild(saveBtn);
+        
+        dialog.appendChild(buttons);
+        document.body.appendChild(dialog);
+        
+        // Focus textarea
+        textarea.focus();
+        textarea.setSelectionRange(0, 0);
     } catch (err) {
         console.error(err);
         alert("Erreur lors de l'édition des sous-titres.");
@@ -1266,14 +1335,6 @@ if (uploadForm && isEditor) {
     const checkedLangs = [...form.querySelectorAll("input[name='languages']:checked")];
     const checkedOptions = [...form.querySelectorAll("input[name='process_options']:checked")];
         
-        // Add folder path and privacy
-        const folderPath = document.getElementById("folder-path-select")?.value || "";
-        const isPrivate = document.getElementById("is-private-checkbox")?.checked || false;
-        if (folderPath) {
-            formData.append("folder_path", folderPath);
-        }
-        formData.append("is_private", isPrivate);
-
     if (checkedLangs.length === 0 || checkedLangs.length > 2) {
         alert("Veuillez sélectionner une ou deux langues cibles.");
         return;
@@ -1283,6 +1344,27 @@ if (uploadForm && isEditor) {
         alert("Veuillez sélectionner au moins une option de traitement.");
         return;
     }
+
+    // Add folder path - use folder privacy if folder is selected
+    const folderPath = document.getElementById("folder-path-select")?.value || "";
+    let isPrivate = false;
+    if (folderPath) {
+        formData.append("folder_path", folderPath);
+        // Get folder privacy from folder list
+        try {
+            const foldersRes = await fetch("/api/folders");
+            if (foldersRes.ok) {
+                const folders = await foldersRes.json();
+                const folder = folders.find(f => f.path === folderPath);
+                if (folder && folder.is_private) {
+                    isPrivate = true;
+                }
+            }
+        } catch (err) {
+            console.warn("Could not fetch folder privacy:", err);
+        }
+    }
+    formData.append("is_private", isPrivate);
 
     try {
         const res = await fetch("/api/upload", {

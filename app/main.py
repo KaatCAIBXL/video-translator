@@ -266,8 +266,18 @@ async def list_videos(request: Request):
                     info = _load_video_info(item)
                     is_private = info.get("is_private", False)
                     
-                    # Get folder path
-                    video_folder_path = info.get("folder_path") or folder_path
+                    # Get folder path - use info.json first, then calculate from directory structure
+                    video_folder_path = info.get("folder_path")
+                    if not video_folder_path and folder_path:
+                        video_folder_path = folder_path
+                    elif not video_folder_path:
+                        # Calculate from directory structure
+                        try:
+                            rel_path = item.parent.relative_to(settings.PROCESSED_DIR)
+                            if str(rel_path) != ".":
+                                video_folder_path = str(rel_path).replace("\\", "/")
+                        except ValueError:
+                            pass
                     
                     # Check if video itself is private OR if it's in a private folder
                     video_is_private = is_private or _is_folder_private(video_folder_path)
