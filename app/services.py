@@ -158,7 +158,24 @@ def get_audio_stream_start_offset(video_path: Path) -> float:
 
 
 # ---------- Whisper transcriptie ----------
-def _transcribe_whisper_file(client: OpenAI, path: Path) -> Dict:
+def _build_initial_prompt(previous_texts: List[str], max_length: int = 200) -> Optional[str]:
+    """Build an initial prompt from previous transcriptions to help Whisper with transcription."""
+    if not previous_texts:
+        return None
+    
+    # Use the last few transcriptions as context (most relevant)
+    recent_context = previous_texts[-3:] if len(previous_texts) >= 3 else previous_texts
+    prompt = " ".join(recent_context).strip()
+    
+    if len(prompt) > max_length:
+        # Take the end of the prompt (most recent context)
+        prompt = prompt[-max_length:]
+    
+    return prompt if prompt else None
+
+
+def _transcribe_whisper_file(client: OpenAI, path: Path, initial_prompt: Optional[str] = None) -> Dict:
+    """Transcribe audio file with Whisper, optionally using context from previous transcriptions."""
     attempts = max(1, _TRANSCRIBE_MAX_ATTEMPTS)
     backoff = max(0.0, _TRANSCRIBE_INITIAL_BACKOFF)
     last_exc: Optional[Exception] = None
@@ -166,11 +183,17 @@ def _transcribe_whisper_file(client: OpenAI, path: Path) -> Dict:
     for attempt in range(1, attempts + 1):
         try:
             with open(path, "rb") as f:
-                transcription = client.audio.transcriptions.create(
-                    model="whisper-1",
-                    file=f,
-                    response_format="verbose_json",
-                )
+                request_kwargs = {
+                    "model": "whisper-1",
+                    "file": f,
+                    "response_format": "verbose_json",
+                    "temperature": 0.0,  # More deterministic, better for consistent quality
+                }
+                # Use context from previous transcriptions to help Whisper
+                if initial_prompt:
+                    request_kwargs["prompt"] = initial_prompt[:200]  # Limit length
+                
+                transcription = client.audio.transcriptions.create(**request_kwargs)
             return transcription.to_dict()
         except _RETRYABLE_WHISPER_ERRORS as exc:
             last_exc = exc
@@ -272,7 +295,7 @@ def transcribe_audio_whisper(audio_path: Path) -> Dict:
 
 
     if audio_path.stat().st_size <= max_bytes:
-        return _transcribe_whisper_file(client, audio_path)
+        return _transcribe_whisper_file(client, audio_path, initial_prompt=None)
     try:
         audio_duration = _get_audio_duration(audio_path)
     except RuntimeError as exc:
@@ -335,13 +358,17 @@ def transcribe_audio_whisper(audio_path: Path) -> Dict:
                 "Splitting audio before Whisper processing failed: no chunks were produced"
             )
 
-        for chunk_path in chunk_paths:
-            chunk_result = _transcribe_whisper_file(client, chunk_path)
+        for idx, chunk_path in enumerate(chunk_paths):
+            # Build initial prompt from previous chunks for better transcription quality
+            initial_prompt = _build_initial_prompt(combined_texts) if combined_texts else None
+            
+            chunk_result = _transcribe_whisper_file(client, chunk_path, initial_prompt=initial_prompt)
 
             if detected_language is None:
                 detected_language = chunk_result.get("language")
 
-            combined_texts.append(chunk_result.get("text", ""))
+            chunk_text = chunk_result.get("text", "")
+            combined_texts.append(chunk_text)
 
             chunk_segments = chunk_result.get("segments", []) or []
             if chunk_segments:
