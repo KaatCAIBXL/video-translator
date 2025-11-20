@@ -1,0 +1,35 @@
+"""Simple session-based role management for video-translator."""
+from typing import Optional, Dict
+from fastapi import Request
+import secrets
+
+# Simple in-memory session store (in production, use proper session storage)
+_sessions: Dict[str, str] = {}  # session_id -> role
+
+def create_session(role: str) -> str:
+    """Create a new session with the given role."""
+    session_id = secrets.token_urlsafe(32)
+    _sessions[session_id] = role
+    return session_id
+
+def get_role_from_session(session_id: Optional[str]) -> Optional[str]:
+    """Get the role for a session ID."""
+    if not session_id:
+        return None
+    return _sessions.get(session_id)
+
+def get_role_from_request(request: Request) -> Optional[str]:
+    """Get the role from the request's session cookie."""
+    session_id = request.cookies.get("session_id")
+    return get_role_from_session(session_id)
+
+def is_editor(request: Request) -> bool:
+    """Check if the user is an editor."""
+    role = get_role_from_request(request)
+    return role == "editor"
+
+def is_viewer(request: Request) -> bool:
+    """Check if the user is a viewer."""
+    role = get_role_from_request(request)
+    return role == "viewer" or role == "editor"  # Editors can also view
+

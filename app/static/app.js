@@ -1,3 +1,6 @@
+// Check if user is editor
+const isEditor = document.getElementById("role-indicator")?.textContent.includes("Éditeur") || false;
+
 function filenameWithoutExtension(filename) {
     if (typeof filename !== "string") {
         return "video";
@@ -134,10 +137,65 @@ async function fetchVideos() {
     videos.forEach((video) => {
         const div = document.createElement("div");
         div.className = "video-item";
+        if (video.is_private) {
+            div.style.borderLeft = "4px solid #ffc107";
+            div.style.paddingLeft = "10px";
+        }
 
         const title = document.createElement("h3");
         title.textContent = video.filename;
+        if (video.is_private) {
+            const privateBadge = document.createElement("span");
+            privateBadge.textContent = " [PRIVÉ]";
+            privateBadge.style.color = "#ffc107";
+            title.appendChild(privateBadge);
+        }
+        if (video.folder_path) {
+            const folderBadge = document.createElement("span");
+            folderBadge.textContent = ` [${video.folder_path}]`;
+            folderBadge.style.color = "#6c757d";
+            folderBadge.style.fontSize = "0.8em";
+            title.appendChild(folderBadge);
+        }
         div.appendChild(title);
+        
+        // Editor controls
+        if (isEditor) {
+            const editorControls = document.createElement("div");
+            editorControls.className = "editor-controls";
+            editorControls.style.marginBottom = "10px";
+            
+            // Rename button
+            const renameBtn = document.createElement("button");
+            renameBtn.textContent = "Renommer";
+            renameBtn.onclick = () => renameVideo(video.id);
+            editorControls.appendChild(renameBtn);
+            
+            // Privacy toggle
+            const privacyBtn = document.createElement("button");
+            privacyBtn.textContent = video.is_private ? "Rendre public" : "Rendre privé";
+            privacyBtn.onclick = () => togglePrivacy(video.id, !video.is_private);
+            editorControls.appendChild(privacyBtn);
+            
+            // Delete button
+            const deleteBtn = document.createElement("button");
+            deleteBtn.textContent = "Supprimer";
+            deleteBtn.style.backgroundColor = "#dc3545";
+            deleteBtn.onclick = () => deleteVideo(video.id);
+            editorControls.appendChild(deleteBtn);
+            
+            // Edit subtitle buttons
+            if (video.available_subtitles && video.available_subtitles.length > 0) {
+                video.available_subtitles.forEach((lang) => {
+                    const editSubBtn = document.createElement("button");
+                    editSubBtn.textContent = `Éditer sous-titres (${lang.toUpperCase()})`;
+                    editSubBtn.onclick = () => editSubtitle(video.id, lang);
+                    editorControls.appendChild(editSubBtn);
+                });
+            }
+            
+            div.appendChild(editorControls);
+        }
 
         const summary = document.createElement("div");
         summary.className = "video-summary";
@@ -316,8 +374,13 @@ async function playVideo(video, options = {}) {
             infoEl.textContent = "Aucun sous-titre disponible.";
         } else {
             try {
+                // If specific lang is provided (for viewers), only load that one
+                const langsToLoad = options.lang 
+                    ? [options.lang] 
+                    : video.available_subtitles;
+                
                 const subtitles = await Promise.all(
-                    video.available_subtitles.map(async (lang) => {
+                    langsToLoad.map(async (lang) => {
                         const res = await fetch(`/videos/${video.id}/subs/${lang}`);
                         if (!res.ok) {
                             throw new Error(`Impossible de charger les sous-titres pour ${lang}`);
@@ -473,49 +536,208 @@ if (fileInput && fileNameLabel) {
     fileInput.addEventListener("change", updateFileLabel);
 }
 
-document.getElementById("upload-form").addEventListener("submit", async (e) => {
-    e.preventDefault();
-    const form = e.target;
-    const statusEl = document.getElementById("upload-status");
-    statusEl.textContent = "Téléversement et traitement en cours... Cela peut prendre un moment.";
-
-    const formData = new FormData(form);
-    const checkedLangs = [...form.querySelectorAll("input[name='languages']:checked")];
-    const checkedOptions = [...form.querySelectorAll("input[name='process_options']:checked")];
-
-    if (checkedLangs.length === 0 || checkedLangs.length > 2) {
-        alert("Veuillez sélectionner une ou deux langues cibles.");
-        return;
-    }
-
-    if (checkedOptions.length === 0) {
-        alert("Veuillez sélectionner au moins une option de traitement.");
-        return;
-    }
-
+// Editor functions
+async function renameVideo(videoId) {
+    const newName = prompt("Entrez le nouveau nom de la vidéo:");
+    if (!newName) return;
+    
     try {
-        const res = await fetch("/api/upload", {
-            method: "POST",
+        const formData = new FormData();
+        formData.append("new_filename", newName);
+        
+        const res = await fetch(`/api/videos/${videoId}/rename`, {
+            method: "PUT",
             body: formData,
         });
-
+        
         if (!res.ok) {
             const err = await res.json();
-            statusEl.textContent = "Erreur : " + (err.error || res.statusText);
+            alert("Erreur : " + (err.error || res.statusText));
+            return;
+        }
+        
+        alert("Vidéo renommée avec succès!");
+        fetchVideos();
+    } catch (err) {
+        console.error(err);
+        alert("Erreur lors du renommage.");
+    }
+}
+
+async function togglePrivacy(videoId, isPrivate) {
+    try {
+        const formData = new FormData();
+        formData.append("is_private", isPrivate);
+        
+        const res = await fetch(`/api/videos/${videoId}/privacy`, {
+            method: "PUT",
+            body: formData,
+        });
+        
+        if (!res.ok) {
+            const err = await res.json();
+            alert("Erreur : " + (err.error || res.statusText));
+            return;
+        }
+        
+        alert("Confidentialité mise à jour!");
+        fetchVideos();
+    } catch (err) {
+        console.error(err);
+        alert("Erreur lors de la mise à jour de la confidentialité.");
+    }
+}
+
+async function deleteVideo(videoId) {
+    if (!confirm("Êtes-vous sûr de vouloir supprimer cette vidéo? Cette action est irréversible.")) {
+        return;
+    }
+    
+    try {
+        const res = await fetch(`/api/videos/${videoId}`, {
+            method: "DELETE",
+        });
+        
+        if (!res.ok) {
+            const err = await res.json();
+            alert("Erreur : " + (err.error || res.statusText));
+            return;
+        }
+        
+        alert("Vidéo supprimée avec succès!");
+        fetchVideos();
+    } catch (err) {
+        console.error(err);
+        alert("Erreur lors de la suppression.");
+    }
+}
+
+async function editSubtitle(videoId, lang) {
+    try {
+        const res = await fetch(`/api/videos/${videoId}/subs/${lang}/edit`);
+        if (!res.ok) {
+            const err = await res.json();
+            alert("Erreur : " + (err.error || res.statusText));
+            return;
+        }
+        
+        const data = await res.json();
+        const content = prompt("Modifiez le contenu des sous-titres (format VTT):", data.content);
+        if (content === null) return;
+        
+        const formData = new FormData();
+        formData.append("content", content);
+        
+        const saveRes = await fetch(`/api/videos/${videoId}/subs/${lang}/edit`, {
+            method: "PUT",
+            body: formData,
+        });
+        
+        if (!saveRes.ok) {
+            const err = await saveRes.json();
+            alert("Erreur : " + (err.error || saveRes.statusText));
+            return;
+        }
+        
+        alert("Sous-titres mis à jour avec succès!");
+        fetchVideos();
+    } catch (err) {
+        console.error(err);
+        alert("Erreur lors de l'édition des sous-titres.");
+    }
+}
+
+// Upload form handler (only for editors)
+const uploadForm = document.getElementById("upload-form");
+if (uploadForm && isEditor) {
+    uploadForm.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const form = e.target;
+        const statusEl = document.getElementById("upload-status");
+        statusEl.textContent = "Téléversement et traitement en cours... Cela peut prendre un moment.";
+
+        const formData = new FormData(form);
+        const checkedLangs = [...form.querySelectorAll("input[name='languages']:checked")];
+        const checkedOptions = [...form.querySelectorAll("input[name='process_options']:checked")];
+        
+        // Add folder path and privacy
+        const folderPath = document.getElementById("folder-path-input")?.value || "";
+        const isPrivate = document.getElementById("is-private-checkbox")?.checked || false;
+        if (folderPath) {
+            formData.append("folder_path", folderPath);
+        }
+        formData.append("is_private", isPrivate);
+
+        if (checkedLangs.length === 0 || checkedLangs.length > 2) {
+            alert("Veuillez sélectionner une ou deux langues cibles.");
             return;
         }
 
-        const data = await res.json();
-        statusEl.innerHTML = "";
-        const queuedMsg = document.createElement("div");
-        queuedMsg.textContent = `Téléversement réussi. La vidéo ${data.id} est en cours de traitement...`;
-        statusEl.appendChild(queuedMsg);
+        if (checkedOptions.length === 0) {
+            alert("Veuillez sélectionner au moins une option de traitement.");
+            return;
+        }
 
-        await pollJobStatus(data.id, statusEl);
-    } catch (err) {
-        console.error(err);
-        statusEl.textContent = "Erreur inconnue.";
+        try {
+            const res = await fetch("/api/upload", {
+                method: "POST",
+                body: formData,
+            });
+
+            if (!res.ok) {
+                const err = await res.json();
+                statusEl.textContent = "Erreur : " + (err.error || res.statusText);
+                return;
+            }
+
+            const data = await res.json();
+            statusEl.innerHTML = "";
+            const queuedMsg = document.createElement("div");
+            queuedMsg.textContent = `Téléversement réussi. La vidéo ${data.id} est en cours de traitement...`;
+            statusEl.appendChild(queuedMsg);
+
+            await pollJobStatus(data.id, statusEl);
+        } catch (err) {
+            console.error(err);
+            statusEl.textContent = "Erreur inconnue.";
+        }
+    });
+}
+
+// Folder management (editors only)
+if (isEditor) {
+    const createFolderBtn = document.getElementById("create-folder-btn-top") || document.getElementById("create-folder-btn");
+    if (createFolderBtn) {
+        createFolderBtn.addEventListener("click", async () => {
+            const folderPath = prompt("Entrez le chemin du dossier (ex: projets/2024):");
+            if (!folderPath) return;
+            
+            const isPrivate = confirm("Voulez-vous rendre ce dossier privé?");
+            
+            try {
+                const formData = new FormData();
+                formData.append("folder_path", folderPath);
+                formData.append("is_private", isPrivate);
+                
+                const res = await fetch("/api/folders", {
+                    method: "POST",
+                    body: formData,
+                });
+                
+                if (!res.ok) {
+                    const err = await res.json();
+                    alert("Erreur : " + (err.error || res.statusText));
+                    return;
+                }
+                
+                alert("Dossier créé avec succès!");
+                fetchVideos();
+            } catch (err) {
+                console.error(err);
+                alert("Erreur lors de la création du dossier.");
+            }
+        });
     }
-});
+}
 
 window.addEventListener("load", fetchVideos);

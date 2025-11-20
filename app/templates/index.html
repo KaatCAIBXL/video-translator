@@ -7,10 +7,32 @@
  </head>
  <body>
  <h1>Traduction et doublage vidéo</h1>
+ {% if is_editor %}
+ <div id="role-indicator" style="background: #007bff; color: white; padding: 10px; margin-bottom: 20px;">
+     Mode Éditeur actif
+ </div>
+ {% else %}
+ <div id="role-indicator" style="background: #28a745; color: white; padding: 10px; margin-bottom: 20px;">
+     Mode Public actif
+ </div>
+ {% endif %}
  
- <section id="upload">
+ {% if is_editor %}
+ <section id="upload" style="display: block;">
      <h2>Télécharger une nouvelle vidéo</h2>
      <form id="upload-form">
+         <fieldset>
+             <legend>Dossier (optionnel)</legend>
+             <label>
+                 Chemin du dossier :
+                 <input type="text" name="folder_path" placeholder="ex: projets/2024" id="folder-path-input">
+                 <button type="button" id="create-folder-btn">Créer un nouveau dossier</button>
+             </label>
+             <label>
+                 <input type="checkbox" name="is_private" id="is-private-checkbox">
+                 Privé (visible uniquement par les éditeurs)
+             </label>
+         </fieldset>
          <label>Fichier vidéo :
              <input type="file" name="file" accept="video/*" required>
          </label>
@@ -66,11 +88,19 @@
     </form>
      <div id="upload-status"></div>
  </section>
+ {% else %}
+ <section id="upload" style="display: none;"></section>
+ {% endif %}
  
  <hr>
  
  <section id="library">
      <h2>Vidéos traitées</h2>
+     {% if is_editor %}
+     <div id="folder-management">
+         <button type="button" id="create-folder-btn-top">Créer un nouveau dossier</button>
+     </div>
+     {% endif %}
      <div id="video-list"></div>
  </section>
  

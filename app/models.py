@@ -1,4 +1,4 @@
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
@@ -24,3 +24,11 @@ class VideoListItem(BaseModel):
     available_dubs: List[str] = Field(default_factory=list)
     available_dub_audios: List[str] = Field(default_factory=list)
     available_combined_subtitles: List[str] = Field(default_factory=list)
+    folder_path: Optional[str] = None  # Path to folder containing this video
+    is_private: bool = False  # Only visible to editors
+
+class FolderItem(BaseModel):
+    name: str
+    path: str
+    is_private: bool = False
+    parent_path: Optional[str] = None

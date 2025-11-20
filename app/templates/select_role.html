@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Choisir votre rôle - Traduction vidéo</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <style>
+        .role-selection {
+            max-width: 600px;
+            margin: 50px auto;
+            padding: 20px;
+            text-align: center;
+        }
+        .role-option {
+            display: inline-block;
+            margin: 20px;
+            padding: 30px;
+            border: 2px solid #ccc;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.3s;
+            min-width: 200px;
+        }
+        .role-option:hover {
+            border-color: #007bff;
+            background-color: #f0f8ff;
+        }
+        .role-option h3 {
+            margin-top: 0;
+        }
+        .role-option form {
+            margin: 0;
+        }
+        .role-option button {
+            width: 100%;
+            padding: 15px;
+            font-size: 16px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        .role-option button:hover {
+            background-color: #0056b3;
+        }
+    </style>
+</head>
+<body>
+    <div class="role-selection">
+        <h1>Bienvenue</h1>
+        <p>Veuillez choisir votre rôle :</p>
+        
+        <div class="role-option">
+            <h3>👁️ Public</h3>
+            <p>Consulter et télécharger les vidéos disponibles</p>
+            <form method="POST" action="/api/set-role">
+                <input type="hidden" name="role" value="viewer">
+                <button type="submit">Continuer en tant que public</button>
+            </form>
+        </div>
+        
+        <div class="role-option">
+            <h3>✏️ Éditeur</h3>
+            <p>Télécharger, modifier et gérer les vidéos</p>
+            <form method="POST" action="/api/set-role">
+                <input type="hidden" name="role" value="editor">
+                <button type="submit">Continuer en tant qu'éditeur</button>
+            </form>
+        </div>
+    </div>
+</body>
+</html>
+

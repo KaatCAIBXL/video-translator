@@ -1,13 +1,15 @@
 import asyncio
+import json
 import logging
 import shutil
 import tempfile
 import uuid
 from fastapi import FastAPI, UploadFile, File, Form, Request
 from fastapi.concurrency import run_in_threadpool
-from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
+from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from .auth import get_role_from_request, is_editor, create_session
 
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
@@ -67,6 +69,21 @@ def _load_video_metadata(video_dir: Path) -> Optional[VideoMetadata]:
         logger.exception("Failed to load metadata for video %s", video_dir.name)
         return None
 
+
+def _find_video_directory(video_id: str) -> Optional[Path]:
+    """Find video directory by ID, searching recursively through folders."""
+    def _search(directory: Path) -> Optional[Path]:
+        for item in directory.iterdir():
+            if item.is_dir():
+                meta = _load_video_metadata(item)
+                if meta and meta.id == video_id:
+                    return item
+                # Recursively search subdirectories
+                found = _search(item)
+                if found:
+                    return found
+        return None
+    return _search(settings.PROCESSED_DIR)
 
 def _find_original_video(video_dir: Path) -> Optional[Path]:
     for candidate in video_dir.iterdir():
@@ -155,68 +172,127 @@ def _combined_subtitle_key(path: Path) -> Optional[str]:
 
 @app.get("/")
 async def index(request: Request):
+    """Redirect to role selection if no session, otherwise show main page."""
+    role = get_role_from_request(request)
+    if not role:
+        return RedirectResponse(url="/select-role", status_code=302)
+    
     return templates.TemplateResponse(
         "index.html",
         {
             "request": request,
             "available_languages": LANGUAGE_OPTIONS,
+            "is_editor": is_editor(request),
         },
     )
+
+@app.get("/select-role")
+async def select_role(request: Request):
+    """Role selection page."""
+    return templates.TemplateResponse("select_role.html", {"request": request})
+
+@app.post("/api/set-role")
+async def set_role(request: Request, role: str = Form(...)):
+    """Set the user's role and create a session."""
+    if role not in ("viewer", "editor"):
+        return JSONResponse({"error": "Rôle invalide"}, status_code=400)
+    
+    session_id = create_session(role)
+    response = RedirectResponse(url="/", status_code=302)
+    response.set_cookie(key="session_id", value=session_id, httponly=True, max_age=86400*30)  # 30 days
+    return response
 
 
 # ---------- API: lijst video's ----------
 
+def _load_video_info(video_dir: Path) -> dict:
+    """Load folder and privacy info for a video."""
+    info_path = video_dir / "info.json"
+    if not info_path.exists():
+        return {"folder_path": None, "is_private": False}
+    try:
+        return json.loads(info_path.read_text(encoding="utf-8"))
+    except Exception:
+        return {"folder_path": None, "is_private": False}
+
+def _get_relative_path(video_dir: Path) -> Optional[str]:
+    """Get relative path from PROCESSED_DIR."""
+    try:
+        return str(video_dir.relative_to(settings.PROCESSED_DIR).parent)
+    except ValueError:
+        return None
+
 @app.get("/api/videos", response_model=List[VideoListItem])
-async def list_videos():
+async def list_videos(request: Request):
+    """List all videos, filtering by privacy based on user role."""
     items: List[VideoListItem] = []
+    user_is_editor = is_editor(request)
 
-    for video_dir in settings.PROCESSED_DIR.iterdir():
-        if not video_dir.is_dir():
-            continue
-        meta = _load_video_metadata(video_dir)
-        if meta is None:
-            continue
+    def _scan_directory(directory: Path, folder_path: Optional[str] = None):
+        """Recursively scan directory for videos."""
+        for item in directory.iterdir():
+            if item.is_dir():
+                # Check if this is a video directory (has metadata.json)
+                meta = _load_video_metadata(item)
+                if meta is not None:
+                    # This is a video directory
+                    info = _load_video_info(item)
+                    is_private = info.get("is_private", False)
+                    
+                    # Filter: viewers can't see private videos
+                    if not user_is_editor and is_private:
+                        continue
+                    
+                    subtitles = [
+                        lang
+                        for lang in meta.translations.keys()
+                        if (item / f"subs_{lang}.vtt").exists()
+                    ]
 
-        subtitles = [
-            lang
-            for lang in meta.translations.keys()
-            if (video_dir / f"subs_{lang}.vtt").exists()
-        ]
+                    dubs = [
+                        lang
+                        for lang in meta.translations.keys()
+                        if (item / f"video_dub_{lang}.mp4").exists()
+                    ]
 
-        dubs = [
-            lang
-            for lang in meta.translations.keys()
-            if (video_dir / f"video_dub_{lang}.mp4").exists()
-        ]
+                    dub_audios = [
+                        lang
+                        for lang in meta.translations.keys()
+                        if (item / f"dub_audio_{lang}.mp3").exists()
+                    ]
 
-        dub_audios = [
-            lang
-            for lang in meta.translations.keys()
-            if (video_dir / f"dub_audio_{lang}.mp3").exists()
-        ]
+                    combined = []
+                    for combined_file in item.glob("subs_combined_*.vtt"):
+                        key = _combined_subtitle_key(combined_file)
+                        if key:
+                            combined.append(key)
 
-        combined = []
-        for combined_file in video_dir.glob("subs_combined_*.vtt"):
-            key = _combined_subtitle_key(combined_file)
-            if key:
-                combined.append(key)
+                    subtitles.sort()
+                    dubs.sort()
+                    dub_audios.sort()
+                    combined.sort()
+                    
+                    # Get folder path
+                    video_folder_path = info.get("folder_path") or folder_path
+                    
+                    items.append(
+                        VideoListItem(
+                            id=meta.id,
+                            filename=meta.filename,
+                            available_subtitles=subtitles,
+                            available_dubs=dubs,
+                            available_dub_audios=dub_audios,
+                            available_combined_subtitles=combined,
+                            folder_path=video_folder_path,
+                            is_private=is_private,
+                        )
+                    )
+                else:
+                    # This might be a folder, scan recursively
+                    current_folder = folder_path + "/" + item.name if folder_path else item.name
+                    _scan_directory(item, current_folder)
 
-        subtitles.sort()
-        dubs.sort()
-        dub_audios.sort()
-        combined.sort()
-        
-        items.append(
-            VideoListItem(
-                id=meta.id,
-                filename=meta.filename,
-                available_subtitles=subtitles,
-                available_dubs=dubs,
-                available_dub_audios=dub_audios,
-                available_combined_subtitles=combined,
-            )
-        )
-
+    _scan_directory(settings.PROCESSED_DIR)
     return items
 
 
@@ -224,11 +300,20 @@ async def list_videos():
 
 @app.post("/api/upload")
 async def upload_video(
+    request: Request,
     languages: List[str] = Form(...),  # max. 2 talen aanvinken in frontend
     process_options: Optional[List[str]] = Form(None),
     tts_speed_multiplier: float = Form(1.0),
+    folder_path: Optional[str] = Form(None),  # Optional folder path
+    is_private: bool = Form(False),  # Make video private
     file: UploadFile = File(...)
 ):
+    # Only editors can upload
+    if not is_editor(request):
+        return JSONResponse(
+            {"error": "Seuls les éditeurs peuvent télécharger des vidéos."},
+            status_code=403,
+        )
     normalized_langs = [lang.lower() for lang in languages]
 
     if len(normalized_langs) == 0 or len(normalized_langs) > 2:
@@ -284,7 +369,21 @@ async def upload_video(
         
     video_id = str(uuid.uuid4())
     ext = Path(file.filename).suffix
-    video_dir = settings.PROCESSED_DIR / video_id
+    
+    # Handle folder structure
+    if folder_path:
+        # Sanitize folder path
+        folder_path = folder_path.strip().strip("/").strip("\\")
+        if folder_path:
+            # Create folder structure
+            folder_dir = settings.PROCESSED_DIR / folder_path
+            folder_dir.mkdir(parents=True, exist_ok=True)
+            video_dir = folder_dir / video_id
+        else:
+            video_dir = settings.PROCESSED_DIR / video_id
+    else:
+        video_dir = settings.PROCESSED_DIR / video_id
+    
     video_dir.mkdir(parents=True, exist_ok=True)
 
     video_path = video_dir / f"original{ext}"
@@ -313,6 +412,8 @@ async def upload_video(
             original_filename=file.filename,
             process_options=normalized_options,
             tts_speed_multiplier=tts_speed_multiplier,
+            folder_path=folder_path,
+            is_private=is_private,
         )
     )
 
@@ -338,6 +439,8 @@ async def process_video_job(
     original_filename: str,
     process_options: List[str],
     tts_speed_multiplier: float,
+    folder_path: Optional[str] = None,
+    is_private: bool = False,
 ):
     warnings: List[str] = []
     options_set = set(process_options or DEFAULT_PROCESS_OPTIONS)
@@ -448,7 +551,7 @@ async def process_video_job(
                         temp_audio_path.unlink()
             
                     
-        # 7. metadata opslaan
+        # 7. metadata opslaan (with folder and privacy info)
         meta = VideoMetadata(
             id=video_id,
             filename=original_filename,
@@ -457,6 +560,14 @@ async def process_video_job(
             translations=translations,
         )
         await run_in_threadpool(save_metadata, meta, meta_path)
+        
+        # Save folder and privacy info in a separate file
+        info_path = video_dir / "info.json"
+        info_data = {
+            "folder_path": folder_path if folder_path else None,
+            "is_private": is_private,
+        }
+        info_path.write_text(json.dumps(info_data, indent=2), encoding="utf-8")
         job_store.mark_completed(
             video_id,
             warnings=warnings,
@@ -486,14 +597,19 @@ def _video_base_stem(meta: Optional[VideoMetadata], fallback: Path) -> str:
     return fallback.stem
 
 @app.get("/videos/{video_id}/original")
-async def get_original_video(video_id: str):
-    video_dir = settings.PROCESSED_DIR / video_id
-    if not video_dir.exists():
-        return JSONResponse({"error": "Video not found"}, status_code=404)
+async def get_original_video(request: Request, video_id: str):
+    video_dir = _find_video_directory(video_id)
+    if not video_dir or not video_dir.exists():
+        return JSONResponse({"error": "Vidéo non trouvée"}, status_code=404)
+    
+    # Check privacy
+    info = _load_video_info(video_dir)
+    if info.get("is_private") and not is_editor(request):
+        return JSONResponse({"error": "Accès refusé"}, status_code=403)
 
     original_path = _find_original_video(video_dir)
     if original_path is None:
-        return JSONResponse({"error": "Original video not found"}, status_code=404)
+        return JSONResponse({"error": "Vidéo originale non trouvée"}, status_code=404)
 
     meta = _load_video_metadata(video_dir)
     filename = meta.filename if meta else original_path.name
@@ -501,14 +617,19 @@ async def get_original_video(video_id: str):
 
 
 @app.get("/videos/{video_id}/dub/{lang}")
-async def get_dubbed_video(video_id: str, lang: str):
-    video_dir = settings.PROCESSED_DIR / video_id
-    if not video_dir.exists():
-        return JSONResponse({"error": "Video not found"}, status_code=404)
+async def get_dubbed_video(request: Request, video_id: str, lang: str):
+    video_dir = _find_video_directory(video_id)
+    if not video_dir or not video_dir.exists():
+        return JSONResponse({"error": "Vidéo non trouvée"}, status_code=404)
+    
+    # Check privacy
+    info = _load_video_info(video_dir)
+    if info.get("is_private") and not is_editor(request):
+        return JSONResponse({"error": "Accès refusé"}, status_code=403)
 
     dub_path = video_dir / f"video_dub_{lang}.mp4"
     if not dub_path.exists():
-        return JSONResponse({"error": "Dubbed video not found"}, status_code=404)
+        return JSONResponse({"error": "Vidéo doublée non trouvée"}, status_code=404)
 
     meta = _load_video_metadata(video_dir)
     original_path = _find_original_video(video_dir)
@@ -517,14 +638,19 @@ async def get_dubbed_video(video_id: str, lang: str):
     return FileResponse(dub_path, filename=filename)       
 
 @app.get("/videos/{video_id}/dub-audio/{lang}")
-async def get_dub_audio(video_id: str, lang: str):
-    video_dir = settings.PROCESSED_DIR / video_id
-    if not video_dir.exists():
-        return JSONResponse({"error": "Video not found"}, status_code=404)
+async def get_dub_audio(request: Request, video_id: str, lang: str):
+    video_dir = _find_video_directory(video_id)
+    if not video_dir or not video_dir.exists():
+        return JSONResponse({"error": "Vidéo non trouvée"}, status_code=404)
+    
+    # Check privacy
+    info = _load_video_info(video_dir)
+    if info.get("is_private") and not is_editor(request):
+        return JSONResponse({"error": "Accès refusé"}, status_code=403)
 
     audio_path = video_dir / f"dub_audio_{lang}.mp3"
     if not audio_path.exists():
-        return JSONResponse({"error": "Dub audio not found"}, status_code=404)
+        return JSONResponse({"error": "Audio de doublage non trouvé"}, status_code=404)
 
     meta = _load_video_metadata(video_dir)
     original_path = _find_original_video(video_dir)
@@ -533,14 +659,19 @@ async def get_dub_audio(video_id: str, lang: str):
     return FileResponse(audio_path, media_type="audio/mpeg", filename=filename)
 
 @app.get("/videos/{video_id}/subs/{lang}")
-async def get_subtitles(video_id: str, lang: str):
-    video_dir = settings.PROCESSED_DIR / video_id
-    if not video_dir.exists():
-        return JSONResponse({"error": "Video not found"}, status_code=404)
+async def get_subtitles(request: Request, video_id: str, lang: str):
+    video_dir = _find_video_directory(video_id)
+    if not video_dir or not video_dir.exists():
+        return JSONResponse({"error": "Vidéo non trouvée"}, status_code=404)
+    
+    # Check privacy
+    info = _load_video_info(video_dir)
+    if info.get("is_private") and not is_editor(request):
+        return JSONResponse({"error": "Accès refusé"}, status_code=403)
 
     subs_path = video_dir / f"subs_{lang}.vtt"
     if not subs_path.exists():
-        return JSONResponse({"error": "Subtitles not found"}, status_code=404)
+        return JSONResponse({"error": "Sous-titres non trouvés"}, status_code=404)
 
     meta = _load_video_metadata(video_dir)
     original_path = _find_original_video(video_dir)
@@ -549,10 +680,15 @@ async def get_subtitles(video_id: str, lang: str):
     return FileResponse(subs_path, media_type="text/vtt", filename=filename)
     
 @app.get("/videos/{video_id}/subs/combined")
-async def get_combined_subtitles(video_id: str, langs: Optional[str] = None):
-    video_dir = settings.PROCESSED_DIR / video_id
-    if not video_dir.exists():
-        return JSONResponse({"error": "Video not found"}, status_code=404)
+async def get_combined_subtitles(request: Request, video_id: str, langs: Optional[str] = None):
+    video_dir = _find_video_directory(video_id)
+    if not video_dir or not video_dir.exists():
+        return JSONResponse({"error": "Vidéo non trouvée"}, status_code=404)
+    
+    # Check privacy
+    info = _load_video_info(video_dir)
+    if info.get("is_private") and not is_editor(request):
+        return JSONResponse({"error": "Accès refusé"}, status_code=403)
 
     meta = _load_video_metadata(video_dir)
     if meta is None or not meta.translations:
@@ -610,3 +746,235 @@ async def get_combined_subtitles(video_id: str, langs: Optional[str] = None):
         media_type="text/vtt",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+# ---------- Folder management (editors only) ----------
+
+@app.post("/api/folders")
+async def create_folder(request: Request, folder_path: str = Form(...), is_private: bool = Form(False)):
+    """Create a new folder."""
+    if not is_editor(request):
+        return JSONResponse({"error": "Seuls les éditeurs peuvent créer des dossiers."}, status_code=403)
+    
+    folder_path = folder_path.strip().strip("/").strip("\\")
+    if not folder_path:
+        return JSONResponse({"error": "Le chemin du dossier ne peut pas être vide."}, status_code=400)
+    
+    folder_dir = settings.PROCESSED_DIR / folder_path
+    try:
+        folder_dir.mkdir(parents=True, exist_ok=True)
+        # Save privacy info
+        info_path = folder_dir / ".folder_info.json"
+        info_data = {"is_private": is_private}
+        info_path.write_text(json.dumps(info_data, indent=2), encoding="utf-8")
+        return JSONResponse({"message": "Dossier créé avec succès.", "path": folder_path})
+    except Exception as e:
+        logger.exception("Failed to create folder")
+        return JSONResponse({"error": f"Impossible de créer le dossier: {e}"}, status_code=500)
+
+@app.get("/api/folders")
+async def list_folders(request: Request):
+    """List all folders."""
+    user_is_editor = is_editor(request)
+    folders = []
+    
+    def _scan_folders(directory: Path, parent_path: Optional[str] = None):
+        for item in directory.iterdir():
+            if item.is_dir():
+                # Check if it's a folder (not a video directory)
+                meta = _load_video_metadata(item)
+                if meta is None:
+                    # This is a folder
+                    folder_name = item.name
+                    current_path = parent_path + "/" + folder_name if parent_path else folder_name
+                    
+                    # Check privacy
+                    info_path = item / ".folder_info.json"
+                    is_private = False
+                    if info_path.exists():
+                        try:
+                            info_data = json.loads(info_path.read_text(encoding="utf-8"))
+                            is_private = info_data.get("is_private", False)
+                        except Exception:
+                            pass
+                    
+                    # Filter: viewers can't see private folders
+                    if not user_is_editor and is_private:
+                        _scan_folders(item, current_path)  # Still scan subfolders
+                        continue
+                    
+                    folders.append({
+                        "name": folder_name,
+                        "path": current_path,
+                        "is_private": is_private,
+                        "parent_path": parent_path,
+                    })
+                    
+                    # Recursively scan subfolders
+                    _scan_folders(item, current_path)
+    
+    _scan_folders(settings.PROCESSED_DIR)
+    return JSONResponse(folders)
+
+
+# ---------- File management (editors only) ----------
+
+@app.delete("/api/videos/{video_id}")
+async def delete_video(request: Request, video_id: str):
+    """Delete a video and all its files."""
+    if not is_editor(request):
+        return JSONResponse({"error": "Seuls les éditeurs peuvent supprimer des vidéos."}, status_code=403)
+    
+    # Find video directory (could be in a folder)
+    def _find_video_dir(directory: Path) -> Optional[Path]:
+        for item in directory.iterdir():
+            if item.is_dir():
+                meta = _load_video_metadata(item)
+                if meta and meta.id == video_id:
+                    return item
+                # Recursively search
+                found = _find_video_dir(item)
+                if found:
+                    return found
+        return None
+    
+    video_dir = _find_video_dir(settings.PROCESSED_DIR)
+    if not video_dir:
+        return JSONResponse({"error": "Vidéo non trouvée."}, status_code=404)
+    
+    try:
+        shutil.rmtree(video_dir)
+        return JSONResponse({"message": "Vidéo supprimée avec succès."})
+    except Exception as e:
+        logger.exception("Failed to delete video")
+        return JSONResponse({"error": f"Impossible de supprimer la vidéo: {e}"}, status_code=500)
+
+@app.put("/api/videos/{video_id}/rename")
+async def rename_video(request: Request, video_id: str, new_filename: str = Form(...)):
+    """Rename a video file."""
+    if not is_editor(request):
+        return JSONResponse({"error": "Seuls les éditeurs peuvent renommer des vidéos."}, status_code=403)
+    
+    # Find video directory
+    def _find_video_dir(directory: Path) -> Optional[Path]:
+        for item in directory.iterdir():
+            if item.is_dir():
+                meta = _load_video_metadata(item)
+                if meta and meta.id == video_id:
+                    return item
+                found = _find_video_dir(item)
+                if found:
+                    return found
+        return None
+    
+    video_dir = _find_video_dir(settings.PROCESSED_DIR)
+    if not video_dir:
+        return JSONResponse({"error": "Vidéo non trouvée."}, status_code=404)
+    
+    try:
+        meta_path = video_dir / "metadata.json"
+        meta = load_metadata(meta_path)
+        meta.filename = new_filename
+        save_metadata(meta, meta_path)
+        return JSONResponse({"message": "Vidéo renommée avec succès."})
+    except Exception as e:
+        logger.exception("Failed to rename video")
+        return JSONResponse({"error": f"Impossible de renommer la vidéo: {e}"}, status_code=500)
+
+@app.put("/api/videos/{video_id}/privacy")
+async def toggle_video_privacy(request: Request, video_id: str, is_private: bool = Form(...)):
+    """Toggle video privacy."""
+    if not is_editor(request):
+        return JSONResponse({"error": "Seuls les éditeurs peuvent modifier la confidentialité."}, status_code=403)
+    
+    # Find video directory
+    def _find_video_dir(directory: Path) -> Optional[Path]:
+        for item in directory.iterdir():
+            if item.is_dir():
+                meta = _load_video_metadata(item)
+                if meta and meta.id == video_id:
+                    return item
+                found = _find_video_dir(item)
+                if found:
+                    return found
+        return None
+    
+    video_dir = _find_video_dir(settings.PROCESSED_DIR)
+    if not video_dir:
+        return JSONResponse({"error": "Vidéo non trouvée."}, status_code=404)
+    
+    try:
+        info_path = video_dir / "info.json"
+        info_data = {"folder_path": None, "is_private": is_private}
+        if info_path.exists():
+            existing = json.loads(info_path.read_text(encoding="utf-8"))
+            info_data["folder_path"] = existing.get("folder_path")
+        info_path.write_text(json.dumps(info_data, indent=2), encoding="utf-8")
+        return JSONResponse({"message": "Confidentialité mise à jour."})
+    except Exception as e:
+        logger.exception("Failed to update privacy")
+        return JSONResponse({"error": f"Impossible de mettre à jour la confidentialité: {e}"}, status_code=500)
+
+
+# ---------- Subtitle editor (editors only) ----------
+
+@app.get("/api/videos/{video_id}/subs/{lang}/edit")
+async def get_subtitle_for_edit(request: Request, video_id: str, lang: str):
+    """Get subtitle content for editing."""
+    if not is_editor(request):
+        return JSONResponse({"error": "Seuls les éditeurs peuvent modifier les sous-titres."}, status_code=403)
+    
+    # Find video directory
+    def _find_video_dir(directory: Path) -> Optional[Path]:
+        for item in directory.iterdir():
+            if item.is_dir():
+                meta = _load_video_metadata(item)
+                if meta and meta.id == video_id:
+                    return item
+                found = _find_video_dir(item)
+                if found:
+                    return found
+        return None
+    
+    video_dir = _find_video_dir(settings.PROCESSED_DIR)
+    if not video_dir:
+        return JSONResponse({"error": "Vidéo non trouvée."}, status_code=404)
+    
+    subs_path = video_dir / f"subs_{lang}.vtt"
+    if not subs_path.exists():
+        return JSONResponse({"error": "Sous-titres non trouvés."}, status_code=404)
+    
+    try:
+        content = subs_path.read_text(encoding="utf-8")
+        return JSONResponse({"content": content})
+    except Exception as e:
+        return JSONResponse({"error": f"Impossible de lire les sous-titres: {e}"}, status_code=500)
+
+@app.put("/api/videos/{video_id}/subs/{lang}/edit")
+async def save_subtitle_edit(request: Request, video_id: str, lang: str, content: str = Form(...)):
+    """Save edited subtitle content."""
+    if not is_editor(request):
+        return JSONResponse({"error": "Seuls les éditeurs peuvent modifier les sous-titres."}, status_code=403)
+    
+    # Find video directory
+    def _find_video_dir(directory: Path) -> Optional[Path]:
+        for item in directory.iterdir():
+            if item.is_dir():
+                meta = _load_video_metadata(item)
+                if meta and meta.id == video_id:
+                    return item
+                found = _find_video_dir(item)
+                if found:
+                    return found
+        return None
+    
+    video_dir = _find_video_dir(settings.PROCESSED_DIR)
+    if not video_dir:
+        return JSONResponse({"error": "Vidéo non trouvée."}, status_code=404)
+    
+    subs_path = video_dir / f"subs_{lang}.vtt"
+    try:
+        subs_path.write_text(content, encoding="utf-8")
+        return JSONResponse({"message": "Sous-titres mis à jour avec succès."})
+    except Exception as e:
+        return JSONResponse({"error": f"Impossible de sauvegarder les sous-titres: {e}"}, status_code=500)
