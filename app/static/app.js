@@ -174,12 +174,6 @@ function createVideoItem(video) {
             video.available_subtitles && video.available_subtitles.length > 0
              ? video.available_subtitles.map((code) => code.toUpperCase()).join(", ")
                 : "aucun";
-        const combinedText =
-            video.available_combined_subtitles && video.available_combined_subtitles.length > 0
-                ? video.available_combined_subtitles
-                      .map((entry) => entry.toUpperCase().replace(/\+/g, " + "))
-                      .join(", ")
-                : "aucun";
         const audioDubText =
             video.available_dub_audios && video.available_dub_audios.length > 0
                 ? video.available_dub_audios.map((code) => code.toUpperCase()).join(", ")
@@ -189,8 +183,7 @@ function createVideoItem(video) {
                 ? video.available_dubs.map((code) => code.toUpperCase()).join(", ")
                 : "aucun";
         summary.textContent =
-            `Sous-titres : ${subtitlesText} | ` +
-            `Sous-titres combinés : ${combinedText} | ` +
+            `Ondertiteling : ${subtitlesText} | ` +
             `Audio doublé : ${audioDubText} | ` +
             `Vidéos doublées : ${dubsText}`;
         div.appendChild(summary);
@@ -203,34 +196,52 @@ function createVideoItem(video) {
         playOriginalBtn.onclick = () => playVideo(video, { mode: "original" });
         controls.appendChild(playOriginalBtn);
 
-        // Subtitle selection
+        // Subtitle selection with multiple checkboxes
         if (video.available_subtitles && video.available_subtitles.length > 0) {
-            if (isEditor) {
-                // Editors: simple button
-            const btnSubs = document.createElement("button");
-            btnSubs.textContent = "Lecture avec sous-titres";
-            btnSubs.onclick = () => playVideo(video, { mode: "subs" });
-            controls.appendChild(btnSubs);
-            } else {
-                // Viewers: subtitle selection dropdown
-                const subtitleSelect = document.createElement("select");
-                subtitleSelect.innerHTML = "<option value=''>Sans sous-titres</option>";
-                video.available_subtitles.forEach((lang) => {
-                    const option = document.createElement("option");
-                    option.value = lang;
-                    option.textContent = `Sous-titres (${lang.toUpperCase()})`;
-                    subtitleSelect.appendChild(option);
-                });
-                subtitleSelect.onchange = () => {
-                    const selectedLang = subtitleSelect.value;
-                    if (selectedLang) {
-                        playVideo(video, { mode: "subs", lang: selectedLang });
+            const subtitleWrapper = document.createElement("div");
+            subtitleWrapper.style.marginTop = "10px";
+            subtitleWrapper.style.marginBottom = "10px";
+            
+            const subtitleLabel = document.createElement("label");
+            subtitleLabel.textContent = "Ondertiteling: ";
+            subtitleLabel.style.marginRight = "10px";
+            subtitleWrapper.appendChild(subtitleLabel);
+            
+            const selectedLangs = new Set();
+            
+            video.available_subtitles.forEach((lang) => {
+                const checkbox = document.createElement("input");
+                checkbox.type = "checkbox";
+                checkbox.value = lang;
+                checkbox.id = `subtitle-${video.id}-${lang}`;
+                checkbox.style.marginRight = "5px";
+                checkbox.style.marginLeft = "10px";
+                
+                const langLabel = document.createElement("label");
+                langLabel.htmlFor = checkbox.id;
+                langLabel.textContent = lang.toUpperCase();
+                langLabel.style.marginRight = "10px";
+                
+                checkbox.addEventListener("change", () => {
+                    if (checkbox.checked) {
+                        selectedLangs.add(lang);
+                    } else {
+                        selectedLangs.delete(lang);
+                    }
+                    
+                    // Play video with selected subtitles
+                    if (selectedLangs.size > 0) {
+                        playVideo(video, { mode: "subs", langs: Array.from(selectedLangs) });
                     } else {
                         playVideo(video, { mode: "original" });
                     }
-                };
-                controls.appendChild(subtitleSelect);
-            }
+                });
+                
+                subtitleWrapper.appendChild(checkbox);
+                subtitleWrapper.appendChild(langLabel);
+            });
+            
+            controls.appendChild(subtitleWrapper);
         }
 
         if (video.available_dubs && video.available_dubs.length > 0) {
@@ -327,34 +338,25 @@ function createVideoItem(video) {
         }
 
         if (video.available_subtitles && video.available_subtitles.length > 0) {
-            video.available_subtitles.forEach((lang) => {
+            // If 2 languages available, download combined, otherwise download first language
+            if (video.available_subtitles.length >= 2) {
+                const langParam = video.available_subtitles.slice(0, 2).join(",");
                 downloads.appendChild(
                     createDownloadLink(
-                        `Télécharger les sous-titres (${lang.toUpperCase()})`,
-                        `/videos/${video.id}/subs/${lang}`,
-                        `${baseName}_${lang}.vtt`
-                    )
-                );
-
-            });
-        }
-
-        if (video.available_combined_subtitles && video.available_combined_subtitles.length > 0) {
-            video.available_combined_subtitles.forEach((entry) => {
-                const langs = entry.split("+").map((code) => code.trim()).filter(Boolean);
-                if (langs.length < 2) {
-                    return;
-                }
-                const langParam = langs.join(",");
-                const combinedLabel = langs.map((code) => code.toUpperCase()).join(" + ");
-                downloads.appendChild(
-                    createDownloadLink(
-                        `Télécharger les sous-titres combinés (${combinedLabel})`,
+                        `Ondertiteling downloaden (${video.available_subtitles.slice(0, 2).map(l => l.toUpperCase()).join(" + ")})`,
                         `/videos/${video.id}/subs/combined?langs=${encodeURIComponent(langParam)}`,
-                        `${baseName}_${langs.join("_")}_combined.vtt`
+                        `${baseName}_${video.available_subtitles.slice(0, 2).join("_")}.vtt`
                     )
                 );
-            });
+            } else {
+                downloads.appendChild(
+                    createDownloadLink(
+                        `Ondertiteling downloaden (${video.available_subtitles[0].toUpperCase()})`,
+                        `/videos/${video.id}/subs/${video.available_subtitles[0]}`,
+                        `${baseName}_${video.available_subtitles[0]}.vtt`
+                    )
+                );
+            }
         }
 
         if (video.available_dub_audios && video.available_dub_audios.length > 0) {
@@ -827,10 +829,12 @@ async function playVideo(video, options = {}) {
             infoEl.textContent = "Aucun sous-titre disponible.";
         } else {
             try {
-                // If specific lang is provided (for viewers), only load that one
-                const langsToLoad = options.lang 
-                    ? [options.lang] 
-                    : video.available_subtitles;
+                // Support multiple languages selection
+                const langsToLoad = options.langs && options.langs.length > 0
+                    ? options.langs
+                    : (options.lang 
+                        ? [options.lang] 
+                        : video.available_subtitles);
                 
                 // Check if subtitles are cached for offline use
                 const cache = "caches" in window ? await caches.open("video-cache") : null;
@@ -913,7 +917,7 @@ async function playVideo(video, options = {}) {
                     clearSubtitleOverlay();
                 };
 
-                infoEl.textContent = `Lecture avec sous-titres (${video.available_subtitles
+                infoEl.textContent = `Lecture avec sous-titres (${langsToLoad
                     .map((code) => code.toUpperCase())
                     .join(", ")})`;
             } catch (err) {

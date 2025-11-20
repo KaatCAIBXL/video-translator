@@ -48,8 +48,7 @@ templates = Jinja2Templates(directory=str(BASE_DIR / "app" / "templates"))
 LANGUAGE_OPTIONS = get_language_options()
 ALLOWED_LANGUAGE_CODES = {opt.code for opt in LANGUAGE_OPTIONS}
 PROCESS_OPTIONS = {
-    "subs_per_language",
-    "subs_combined",
+    "subs",
     "dub_audio",
     "dub_video",
 }
@@ -475,8 +474,8 @@ async def process_video_job(
 ):
     warnings: List[str] = []
     options_set = set(process_options or DEFAULT_PROCESS_OPTIONS)
-    create_subtitles = "subs_per_language" in options_set
-    create_combined = "subs_combined" in options_set
+    create_subtitles = "subs" in options_set or "subs_per_language" in options_set
+    create_combined = False  # No longer used - removed combined subtitles option
     create_dub_audio = "dub_audio" in options_set
     create_dub_video = "dub_video" in options_set
     needs_dub_assets = create_dub_audio or create_dub_video
@@ -520,18 +519,7 @@ async def process_video_job(
                 paired_segments = pair_translation_segments(segs)
                 await run_in_threadpool(generate_vtt, paired_segments, vtt_path)
 
-        if create_combined:
-            if len(languages) < 2:
-                warnings.append("Combined subtitles require two target languages.")
-            else:
-                try:
-                    combined_segments = _build_combined_segments(translations, languages)
-                except ValueError as exc:
-                    warnings.append(str(exc))
-                else:
-                    combined_path = video_dir / _combined_subtitle_filename(languages)
-                    content = render_vtt_content(combined_segments)
-                    combined_path.write_text(content, encoding="utf-8")
+        # Combined subtitles option removed - no longer needed
 
         if needs_dub_assets:
             for lang, segs in translations.items():
