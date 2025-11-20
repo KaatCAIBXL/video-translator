@@ -215,6 +215,34 @@ def _load_video_info(video_dir: Path) -> dict:
     except Exception:
         return {"folder_path": None, "is_private": False}
 
+def _is_folder_private(folder_path: Optional[str]) -> bool:
+    """Check if a folder (or any of its parent folders) is private."""
+    if not folder_path:
+        return False
+    
+    # Check each level of the path
+    parts = folder_path.split("/")
+    current_path = ""
+    
+    for part in parts:
+        if current_path:
+            current_path = current_path + "/" + part
+        else:
+            current_path = part
+        
+        folder_dir = settings.PROCESSED_DIR / current_path
+        info_path = folder_dir / ".folder_info.json"
+        
+        if info_path.exists():
+            try:
+                info_data = json.loads(info_path.read_text(encoding="utf-8"))
+                if info_data.get("is_private", False):
+                    return True
+            except Exception:
+                pass
+    
+    return False
+
 def _get_relative_path(video_dir: Path) -> Optional[str]:
     """Get relative path from PROCESSED_DIR."""
     try:
@@ -239,8 +267,14 @@ async def list_videos(request: Request):
                     info = _load_video_info(item)
                     is_private = info.get("is_private", False)
                     
-                    # Filter: viewers can't see private videos
-                    if not user_is_editor and is_private:
+                    # Get folder path
+                    video_folder_path = info.get("folder_path") or folder_path
+                    
+                    # Check if video itself is private OR if it's in a private folder
+                    video_is_private = is_private or _is_folder_private(video_folder_path)
+                    
+                    # Filter: viewers can't see private videos or videos in private folders
+                    if not user_is_editor and video_is_private:
                         continue
                     
                     subtitles = [
@@ -272,9 +306,6 @@ async def list_videos(request: Request):
                     dub_audios.sort()
                     combined.sort()
                     
-                    # Get folder path
-                    video_folder_path = info.get("folder_path") or folder_path
-                    
                     items.append(
                         VideoListItem(
                             id=meta.id,
@@ -284,7 +315,7 @@ async def list_videos(request: Request):
                             available_dub_audios=dub_audios,
                             available_combined_subtitles=combined,
                             folder_path=video_folder_path,
-                            is_private=is_private,
+                            is_private=video_is_private,
                         )
                     )
                 else:
@@ -602,9 +633,10 @@ async def get_original_video(request: Request, video_id: str):
     if not video_dir or not video_dir.exists():
         return JSONResponse({"error": "Vidéo non trouvée"}, status_code=404)
     
-    # Check privacy
+    # Check privacy (video itself or parent folder)
     info = _load_video_info(video_dir)
-    if info.get("is_private") and not is_editor(request):
+    video_is_private = info.get("is_private", False) or _is_folder_private(info.get("folder_path"))
+    if video_is_private and not is_editor(request):
         return JSONResponse({"error": "Accès refusé"}, status_code=403)
 
     original_path = _find_original_video(video_dir)
@@ -622,9 +654,10 @@ async def get_dubbed_video(request: Request, video_id: str, lang: str):
     if not video_dir or not video_dir.exists():
         return JSONResponse({"error": "Vidéo non trouvée"}, status_code=404)
     
-    # Check privacy
+    # Check privacy (video itself or parent folder)
     info = _load_video_info(video_dir)
-    if info.get("is_private") and not is_editor(request):
+    video_is_private = info.get("is_private", False) or _is_folder_private(info.get("folder_path"))
+    if video_is_private and not is_editor(request):
         return JSONResponse({"error": "Accès refusé"}, status_code=403)
 
     dub_path = video_dir / f"video_dub_{lang}.mp4"
@@ -643,9 +676,10 @@ async def get_dub_audio(request: Request, video_id: str, lang: str):
     if not video_dir or not video_dir.exists():
         return JSONResponse({"error": "Vidéo non trouvée"}, status_code=404)
     
-    # Check privacy
+    # Check privacy (video itself or parent folder)
     info = _load_video_info(video_dir)
-    if info.get("is_private") and not is_editor(request):
+    video_is_private = info.get("is_private", False) or _is_folder_private(info.get("folder_path"))
+    if video_is_private and not is_editor(request):
         return JSONResponse({"error": "Accès refusé"}, status_code=403)
 
     audio_path = video_dir / f"dub_audio_{lang}.mp3"
@@ -664,9 +698,10 @@ async def get_subtitles(request: Request, video_id: str, lang: str):
     if not video_dir or not video_dir.exists():
         return JSONResponse({"error": "Vidéo non trouvée"}, status_code=404)
     
-    # Check privacy
+    # Check privacy (video itself or parent folder)
     info = _load_video_info(video_dir)
-    if info.get("is_private") and not is_editor(request):
+    video_is_private = info.get("is_private", False) or _is_folder_private(info.get("folder_path"))
+    if video_is_private and not is_editor(request):
         return JSONResponse({"error": "Accès refusé"}, status_code=403)
 
     subs_path = video_dir / f"subs_{lang}.vtt"
@@ -685,9 +720,10 @@ async def get_combined_subtitles(request: Request, video_id: str, langs: Optiona
     if not video_dir or not video_dir.exists():
         return JSONResponse({"error": "Vidéo non trouvée"}, status_code=404)
     
-    # Check privacy
+    # Check privacy (video itself or parent folder)
     info = _load_video_info(video_dir)
-    if info.get("is_private") and not is_editor(request):
+    video_is_private = info.get("is_private", False) or _is_folder_private(info.get("folder_path"))
+    if video_is_private and not is_editor(request):
         return JSONResponse({"error": "Accès refusé"}, status_code=403)
 
     meta = _load_video_metadata(video_dir)
@@ -811,9 +847,12 @@ async def list_folders(request: Request):
                         except Exception:
                             pass
                     
-                    # Filter: viewers can't see private folders
-                    if not user_is_editor and is_private:
-                        _scan_folders(item, current_path)  # Still scan subfolders
+                    # Check if parent folder is private
+                    parent_is_private = _is_folder_private(parent_path)
+                    
+                    # Filter: viewers can't see private folders or folders in private parent folders
+                    if not user_is_editor and (is_private or parent_is_private):
+                        _scan_folders(item, current_path)  # Still scan subfolders (but don't show them)
                         continue
                     
                     folders.append({
