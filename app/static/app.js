@@ -466,6 +466,7 @@ function renderFolder(folderData, container, level = 0) {
         contentDiv.appendChild(videoDiv);
     });
     
+    // Always show content div when expanded, even if empty
     // Show message if folder is empty
     if (Object.keys(folderData.children).length === 0 && folderData.videos.length === 0) {
         const emptyMsg = document.createElement("div");
@@ -474,6 +475,13 @@ function renderFolder(folderData, container, level = 0) {
         emptyMsg.style.fontStyle = "italic";
         emptyMsg.style.padding = "10px";
         contentDiv.appendChild(emptyMsg);
+    }
+    
+    // Auto-expand if folder is empty (so it's visible)
+    if (Object.keys(folderData.children).length === 0 && folderData.videos.length === 0) {
+        isExpanded = true;
+        contentDiv.style.display = "block";
+        folderIcon.textContent = "📂 ";
     }
     
     folderDiv.appendChild(folderHeader);
@@ -495,11 +503,10 @@ async function fetchVideos() {
         }
         videos = await videosRes.json();
         
-        if (isEditor) {
-            const foldersRes = await fetch("/api/folders");
-            if (foldersRes.ok) {
-                folders = await foldersRes.json();
-            }
+        // Always fetch folders (for both editors and viewers, but viewers only see public ones)
+        const foldersRes = await fetch("/api/folders");
+        if (foldersRes.ok) {
+            folders = await foldersRes.json();
         }
     } catch (error) {
         console.error("Failed to load processed videos", error);
@@ -507,15 +514,10 @@ async function fetchVideos() {
         return;
     }
 
-    if (!Array.isArray(videos) || videos.length === 0) {
-        container.textContent = "Aucune vidéo n'a encore été traitée.";
-        return;
-    }
-
-    // Build folder tree
+    // Build folder tree (even if no videos exist, show folders)
     const { tree, rootVideos } = buildFolderTree(videos, folders);
     
-    // Render root folders
+    // Render root folders (always show, even if empty)
     Object.values(tree).forEach(folderData => {
         if (folderData.type === 'folder') {
             renderFolder(folderData, container, 0);
@@ -527,6 +529,11 @@ async function fetchVideos() {
         const videoDiv = createVideoItem(video);
         container.appendChild(videoDiv);
     });
+    
+    // Show message if no videos and no folders
+    if (rootVideos.length === 0 && Object.keys(tree).length === 0) {
+        container.textContent = "Aucune vidéo n'a encore été traitée.";
+    }
 }
 
 function clearTracks(videoEl) {
@@ -1050,49 +1057,159 @@ if (uploadForm && isEditor) {
 
 // Folder management (editors only)
 if (isEditor) {
-    const createFolderBtn = document.getElementById("create-folder-btn-top") || document.getElementById("create-folder-btn");
+    const createFolderBtn = document.getElementById("create-folder-btn");
     if (createFolderBtn) {
         createFolderBtn.addEventListener("click", async () => {
-            const folderPath = prompt("Entrez le chemin du dossier (ex: projets/2024):");
-            if (!folderPath) return;
+            // Get existing folders for path selection
+            let existingFolders = [];
+            try {
+                const foldersRes = await fetch("/api/folders");
+                if (foldersRes.ok) {
+                    existingFolders = await foldersRes.json();
+                }
+            } catch (err) {
+                console.error("Failed to load folders", err);
+            }
             
-            const isPrivate = confirm("Voulez-vous rendre ce dossier privé?");
+            // Create dialog for folder creation
+            const dialog = document.createElement("div");
+            dialog.style.position = "fixed";
+            dialog.style.top = "50%";
+            dialog.style.left = "50%";
+            dialog.style.transform = "translate(-50%, -50%)";
+            dialog.style.backgroundColor = "white";
+            dialog.style.padding = "20px";
+            dialog.style.border = "2px solid #ccc";
+            dialog.style.borderRadius = "5px";
+            dialog.style.zIndex = "10000";
+            dialog.style.boxShadow = "0 4px 6px rgba(0,0,0,0.1)";
+            dialog.style.minWidth = "400px";
+            dialog.style.maxHeight = "80vh";
+            dialog.style.overflow = "auto";
+            
+            const title = document.createElement("h3");
+            title.textContent = "Créer un nouveau dossier";
+            title.style.marginTop = "0";
+            dialog.appendChild(title);
+            
+            // Folder path selection
+            const pathLabel = document.createElement("label");
+            pathLabel.textContent = "Chemin du dossier:";
+            pathLabel.style.display = "block";
+            pathLabel.style.marginBottom = "5px";
+            dialog.appendChild(pathLabel);
+            
+            const pathInput = document.createElement("input");
+            pathInput.type = "text";
+            pathInput.placeholder = "ex: projets/2024";
+            pathInput.style.width = "100%";
+            pathInput.style.padding = "5px";
+            pathInput.style.marginBottom = "10px";
+            dialog.appendChild(pathInput);
+            
+            // Existing folders browser
+            if (existingFolders.length > 0) {
+                const foldersLabel = document.createElement("label");
+                foldersLabel.textContent = "Ou cliquer sur un dossier existant pour créer un sous-dossier:";
+                foldersLabel.style.display = "block";
+                foldersLabel.style.marginTop = "10px";
+                foldersLabel.style.marginBottom = "5px";
+                dialog.appendChild(foldersLabel);
+                
+                const foldersList = document.createElement("div");
+                foldersList.style.maxHeight = "150px";
+                foldersList.style.overflowY = "auto";
+                foldersList.style.border = "1px solid #ccc";
+                foldersList.style.padding = "5px";
+                foldersList.style.marginBottom = "10px";
+                
+                // Sort folders by path for better organization
+                const sortedFolders = [...existingFolders].sort((a, b) => a.path.localeCompare(b.path));
+                
+                sortedFolders.forEach(folder => {
+                    const folderItem = document.createElement("div");
+                    folderItem.style.padding = "5px";
+                    folderItem.style.cursor = "pointer";
+                    folderItem.style.borderBottom = "1px solid #eee";
+                    folderItem.textContent = "📁 " + folder.path;
+                    if (folder.is_private) {
+                        folderItem.textContent += " [PRIVÉ]";
+                    }
+                    folderItem.onmouseover = () => {
+                        folderItem.style.backgroundColor = "#f0f0f0";
+                    };
+                    folderItem.onmouseout = () => {
+                        folderItem.style.backgroundColor = "transparent";
+                    };
+                    folderItem.onclick = () => {
+                        // Set the path to the selected folder (user can add subfolder name after)
+                        pathInput.value = folder.path + "/";
+                        pathInput.focus();
+                    };
+                    foldersList.appendChild(folderItem);
+                });
+                
+                dialog.appendChild(foldersList);
+            }
+            
+            // Privacy checkbox
+            const privacyLabel = document.createElement("label");
+            privacyLabel.style.display = "flex";
+            privacyLabel.style.alignItems = "center";
+            privacyLabel.style.marginBottom = "10px";
+            const privacyCheckbox = document.createElement("input");
+            privacyCheckbox.type = "checkbox";
+            privacyCheckbox.id = "new-folder-private";
+            privacyLabel.appendChild(privacyCheckbox);
+            const privacyText = document.createElement("span");
+            privacyText.textContent = " Rendre ce dossier privé";
+            privacyText.style.marginLeft = "5px";
+            privacyLabel.appendChild(privacyText);
+            dialog.appendChild(privacyLabel);
             
             // Color picker
+            const colorLabel = document.createElement("label");
+            colorLabel.textContent = "Couleur du dossier:";
+            colorLabel.style.display = "block";
+            colorLabel.style.marginBottom = "5px";
+            dialog.appendChild(colorLabel);
+            
             const colorInput = document.createElement("input");
             colorInput.type = "color";
             colorInput.value = "#f0f0f0";
-            colorInput.style.margin = "10px";
+            colorInput.style.width = "100%";
+            colorInput.style.height = "40px";
+            colorInput.style.marginBottom = "15px";
+            dialog.appendChild(colorInput);
             
-            const colorDialog = document.createElement("div");
-            colorDialog.style.position = "fixed";
-            colorDialog.style.top = "50%";
-            colorDialog.style.left = "50%";
-            colorDialog.style.transform = "translate(-50%, -50%)";
-            colorDialog.style.backgroundColor = "white";
-            colorDialog.style.padding = "20px";
-            colorDialog.style.border = "2px solid #ccc";
-            colorDialog.style.borderRadius = "5px";
-            colorDialog.style.zIndex = "10000";
-            colorDialog.style.boxShadow = "0 4px 6px rgba(0,0,0,0.1)";
+            // Buttons
+            const buttons = document.createElement("div");
+            buttons.style.display = "flex";
+            buttons.style.gap = "10px";
+            buttons.style.justifyContent = "flex-end";
             
-            const colorLabel = document.createElement("label");
-            colorLabel.textContent = "Choisissez une couleur pour le dossier:";
-            colorLabel.style.display = "block";
-            colorLabel.style.marginBottom = "10px";
-            colorDialog.appendChild(colorLabel);
-            colorDialog.appendChild(colorInput);
+            const cancelBtn = document.createElement("button");
+            cancelBtn.textContent = "Annuler";
+            cancelBtn.onclick = () => {
+                document.body.removeChild(dialog);
+            };
+            buttons.appendChild(cancelBtn);
             
-            const colorButtons = document.createElement("div");
-            colorButtons.style.display = "flex";
-            colorButtons.style.gap = "10px";
-            colorButtons.style.marginTop = "15px";
-            
-            const colorOkBtn = document.createElement("button");
-            colorOkBtn.textContent = "OK";
-            colorOkBtn.onclick = async () => {
+            const createBtn = document.createElement("button");
+            createBtn.textContent = "Créer";
+            createBtn.style.backgroundColor = "#007bff";
+            createBtn.style.color = "white";
+            createBtn.onclick = async () => {
+                const folderPath = pathInput.value.trim();
+                if (!folderPath) {
+                    alert("Veuillez entrer un chemin de dossier.");
+                    return;
+                }
+                
+                const isPrivate = privacyCheckbox.checked;
                 const selectedColor = colorInput.value;
-                document.body.removeChild(colorDialog);
+                
+                document.body.removeChild(dialog);
                 
                 try {
                     const formData = new FormData();
@@ -1118,17 +1235,10 @@ if (isEditor) {
                     alert("Erreur lors de la création du dossier.");
                 }
             };
+            buttons.appendChild(createBtn);
             
-            const colorCancelBtn = document.createElement("button");
-            colorCancelBtn.textContent = "Annuler";
-            colorCancelBtn.onclick = () => {
-                document.body.removeChild(colorDialog);
-            };
-            
-            colorButtons.appendChild(colorOkBtn);
-            colorButtons.appendChild(colorCancelBtn);
-            colorDialog.appendChild(colorButtons);
-            document.body.appendChild(colorDialog);
+            dialog.appendChild(buttons);
+            document.body.appendChild(dialog);
         });
     }
 }
