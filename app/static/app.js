@@ -519,7 +519,12 @@ function renderFolder(folderData, container, level = 0) {
     contentDiv.style.marginTop = "5px";
     
     let isExpanded = false;
-    folderLeft.addEventListener("click", () => {
+    // Make entire folder header clickable
+    folderHeader.addEventListener("click", (e) => {
+        // Don't expand if clicking on buttons
+        if (e.target.tagName === "BUTTON" || e.target.closest("button")) {
+            return;
+        }
         isExpanded = !isExpanded;
         contentDiv.style.display = isExpanded ? "block" : "none";
         folderIcon.textContent = isExpanded ? "📂 " : "📁 ";
@@ -606,6 +611,9 @@ async function fetchVideos() {
     if (rootVideos.length === 0 && Object.keys(tree).length === 0) {
         container.textContent = "Aucune vidéo n'a encore été traitée.";
     }
+    
+    // Refresh folder dropdown after fetching videos
+    populateFolderDropdown();
 }
 
 function clearTracks(videoEl) {
@@ -1255,7 +1263,7 @@ if (uploadForm && isEditor) {
     const checkedOptions = [...form.querySelectorAll("input[name='process_options']:checked")];
         
         // Add folder path and privacy
-        const folderPath = document.getElementById("folder-path-input")?.value || "";
+        const folderPath = document.getElementById("folder-path-select")?.value || "";
         const isPrivate = document.getElementById("is-private-checkbox")?.checked || false;
         if (folderPath) {
             formData.append("folder_path", folderPath);
@@ -1473,6 +1481,7 @@ if (isEditor) {
                     
                     alert("Dossier créé avec succès!");
                     fetchVideos();
+                    populateFolderDropdown(); // Refresh folder dropdown
                 } catch (err) {
                     console.error(err);
                     alert("Erreur lors de la création du dossier.");
@@ -1486,4 +1495,43 @@ if (isEditor) {
     }
 }
 
-window.addEventListener("load", fetchVideos);
+// Populate folder dropdown in upload form
+async function populateFolderDropdown() {
+    const folderSelect = document.getElementById("folder-path-select");
+    if (!folderSelect || !isEditor) {
+        return;
+    }
+    
+    try {
+        const foldersRes = await fetch("/api/folders");
+        if (!foldersRes.ok) {
+            return;
+        }
+        const folders = await foldersRes.json();
+        
+        // Clear existing options except the first one
+        while (folderSelect.options.length > 1) {
+            folderSelect.remove(1);
+        }
+        
+        // Sort folders by path
+        const sortedFolders = [...folders].sort((a, b) => a.path.localeCompare(b.path));
+        
+        // Add folders to dropdown
+        sortedFolders.forEach(folder => {
+            const option = document.createElement("option");
+            option.value = folder.path;
+            option.textContent = folder.path + (folder.is_private ? " [PRIVÉ]" : "");
+            folderSelect.appendChild(option);
+        });
+    } catch (err) {
+        console.error("Failed to load folders for dropdown", err);
+    }
+}
+
+window.addEventListener("load", () => {
+    fetchVideos();
+    populateFolderDropdown();
+    // Refresh folder dropdown when videos are fetched (in case folders changed)
+    setInterval(populateFolderDropdown, 5000);
+});

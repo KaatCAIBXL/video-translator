@@ -21,18 +21,19 @@
  <section id="upload" style="display: block;">
      <h2>Télécharger une nouvelle vidéo</h2>
      <form id="upload-form">
-         <fieldset>
-             <legend>Dossier (optionnel)</legend>
-             <label>
-                 Chemin du dossier :
-                 <input type="text" name="folder_path" placeholder="ex: projets/2024" id="folder-path-input">
-                 <button type="button" id="create-folder-btn">Créer un nouveau dossier</button>
-             </label>
-             <label>
-                 <input type="checkbox" name="is_private" id="is-private-checkbox">
-                 Privé (visible uniquement par les éditeurs)
-             </label>
-         </fieldset>
+        <fieldset>
+            <legend>Dossier (optionnel)</legend>
+            <label>
+                Dossier :
+                <select name="folder_path" id="folder-path-select">
+                    <option value="">Aucun dossier (racine)</option>
+                </select>
+            </label>
+            <label>
+                <input type="checkbox" name="is_private" id="is-private-checkbox">
+                Privé (visible uniquement par les éditeurs)
+            </label>
+        </fieldset>
          <label>Fichier vidéo :
              <input type="file" name="file" accept="video/*" required>
          </label>
