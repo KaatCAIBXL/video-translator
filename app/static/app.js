@@ -120,6 +120,9 @@ function createVideoItem(video) {
             div.style.paddingLeft = "10px";
         }
 
+        const fileType = video.file_type || "video";
+        const isVideo = fileType === "video";
+
         const title = document.createElement("h3");
         title.textContent = video.filename;
         if (video.is_private) {
@@ -155,8 +158,8 @@ function createVideoItem(video) {
             deleteBtn.onclick = () => deleteVideo(video.id);
             editorControls.appendChild(deleteBtn);
             
-            // Edit subtitle buttons
-            if (video.available_subtitles && video.available_subtitles.length > 0) {
+            // Edit subtitle buttons (only for videos)
+            if (isVideo && video.available_subtitles && video.available_subtitles.length > 0) {
                 video.available_subtitles.forEach((lang) => {
                     const editSubBtn = document.createElement("button");
                     editSubBtn.textContent = `Éditer sous-titres (${lang.toUpperCase()})`;
@@ -168,25 +171,28 @@ function createVideoItem(video) {
             div.appendChild(editorControls);
         }
 
-        const summary = document.createElement("div");
-        summary.className = "video-summary";
-        const subtitlesText =
-            video.available_subtitles && video.available_subtitles.length > 0
-             ? video.available_subtitles.map((code) => code.toUpperCase()).join(", ")
-                : "aucun";
-        const audioDubText =
-            video.available_dub_audios && video.available_dub_audios.length > 0
-                ? video.available_dub_audios.map((code) => code.toUpperCase()).join(", ")
-                : "aucun";   
-        const dubsText =
-            video.available_dubs && video.available_dubs.length > 0
-                ? video.available_dubs.map((code) => code.toUpperCase()).join(", ")
-                : "aucun";
-        summary.textContent =
-            `Ondertiteling : ${subtitlesText} | ` +
-            `Audio doublé : ${audioDubText} | ` +
-            `Vidéos doublées : ${dubsText}`;
-        div.appendChild(summary);
+        // Summary (only for videos)
+        if (isVideo) {
+            const summary = document.createElement("div");
+            summary.className = "video-summary";
+            const subtitlesText =
+                video.available_subtitles && video.available_subtitles.length > 0
+                 ? video.available_subtitles.map((code) => code.toUpperCase()).join(", ")
+                    : "aucun";
+            const audioDubText =
+                video.available_dub_audios && video.available_dub_audios.length > 0
+                    ? video.available_dub_audios.map((code) => code.toUpperCase()).join(", ")
+                    : "aucun";   
+            const dubsText =
+                video.available_dubs && video.available_dubs.length > 0
+                    ? video.available_dubs.map((code) => code.toUpperCase()).join(", ")
+                    : "aucun";
+            summary.textContent =
+                `Ondertiteling : ${subtitlesText} | ` +
+                `Audio doublé : ${audioDubText} | ` +
+                `Vidéos doublées : ${dubsText}`;
+            div.appendChild(summary);
+        }
 
         const controls = document.createElement("div");
         controls.className = "video-controls";
@@ -263,8 +269,8 @@ function createVideoItem(video) {
 
         const baseName = filenameWithoutExtension(video.filename);
         
-        // Cache video for offline playback in the app (with subtitles)
-        if ("caches" in window) {
+        // Cache video for offline playback in the app (with subtitles) - only for videos
+        if (isVideo && "caches" in window) {
             const cacheVideoBtn = document.createElement("button");
             cacheVideoBtn.textContent = "💾 Mettre en cache pour lecture hors ligne (dans l'app)";
             cacheVideoBtn.style.marginBottom = "10px";
