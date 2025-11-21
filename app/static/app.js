@@ -1020,75 +1020,69 @@ function initializeFileUpload() {
         return;
     }
 
-    // Setup file upload button click handler - SIMPLE AND DIRECT
+    // Setup file upload button click handler - DIRECT AND RELIABLE
     if (fileUploadButton) {
         // Remove any existing listeners by cloning
         const newButton = fileUploadButton.cloneNode(true);
         fileUploadButton.parentNode.replaceChild(newButton, fileUploadButton);
         
-        newButton.onclick = function(e) {
+        // Use addEventListener for better compatibility
+        newButton.addEventListener("click", function(e) {
             e.preventDefault();
             e.stopPropagation();
             console.log("File upload button clicked - attempting to open file picker");
             
-            // Get fresh reference to file input
+            // Get fresh reference to file input every time
             const currentFileInput = document.getElementById("video-file");
             if (!currentFileInput) {
                 console.error("File input element not found!");
                 alert("Erreur: Le champ de fichier n'a pas été trouvé. Veuillez rafraîchir la page.");
-                return false;
+                return;
             }
             
-            // Make sure input is visible and accessible temporarily
-            const originalStyle = {
-                position: currentFileInput.style.position,
-                left: currentFileInput.style.left,
-                top: currentFileInput.style.top,
-                width: currentFileInput.style.width,
-                height: currentFileInput.style.height,
-                opacity: currentFileInput.style.opacity,
-                zIndex: currentFileInput.style.zIndex
-            };
+            // Ensure input is in the DOM and accessible
+            if (!document.body.contains(currentFileInput)) {
+                console.error("File input not in DOM!");
+                return;
+            }
             
-            currentFileInput.style.position = "fixed";
-            currentFileInput.style.left = "0";
-            currentFileInput.style.top = "0";
-            currentFileInput.style.width = "1px";
-            currentFileInput.style.height = "1px";
-            currentFileInput.style.opacity = "0";
-            currentFileInput.style.zIndex = "9999";
-            
-            // Try multiple methods to trigger file picker
+            // Try to trigger file picker - simplest method first
             try {
-                // Method 1: Direct click
+                // Direct click - this should work in most browsers
                 currentFileInput.click();
-                console.log("File input clicked (method 1)");
-            } catch (err1) {
-                console.warn("Method 1 failed:", err1);
+                console.log("File input clicked successfully");
+            } catch (err) {
+                console.error("Error clicking file input:", err);
+                // Fallback: try creating a temporary input
                 try {
-                    // Method 2: Focus then click
-                    currentFileInput.focus();
-                    setTimeout(() => {
-                        currentFileInput.click();
-                        console.log("File input clicked (method 2)");
-                    }, 10);
+                    const tempInput = document.createElement("input");
+                    tempInput.type = "file";
+                    tempInput.accept = currentFileInput.accept || "*/*";
+                    tempInput.style.position = "fixed";
+                    tempInput.style.left = "-9999px";
+                    tempInput.onchange = function(evt) {
+                        if (evt.target.files && evt.target.files[0]) {
+                            // Transfer file to original input using DataTransfer
+                            const dataTransfer = new DataTransfer();
+                            dataTransfer.items.add(evt.target.files[0]);
+                            currentFileInput.files = dataTransfer.files;
+                            // Trigger change event on original input
+                            const changeEvent = new Event('change', { bubbles: true });
+                            currentFileInput.dispatchEvent(changeEvent);
+                        }
+                        document.body.removeChild(tempInput);
+                    };
+                    document.body.appendChild(tempInput);
+                    tempInput.click();
+                    console.log("Fallback file input created and clicked");
                 } catch (err2) {
-                    console.error("Method 2 failed:", err2);
+                    console.error("Fallback method also failed:", err2);
                     alert("Impossible d'ouvrir le sélecteur de fichiers. Veuillez rafraîchir la page.");
                 }
             }
-            
-            // Reset input style after a delay
-            setTimeout(() => {
-                currentFileInput.style.position = originalStyle.position || "absolute";
-                currentFileInput.style.left = originalStyle.left || "-9999px";
-                currentFileInput.style.zIndex = originalStyle.zIndex || "-1";
-            }, 100);
-            
-            return false;
-        };
+        }, { once: false, passive: false });
         
-        console.log("File upload button handler attached");
+        console.log("File upload button handler attached successfully");
     } else {
         console.error("File upload button element not found!");
     }
@@ -1670,16 +1664,21 @@ if (uploadForm && isEditor) {
 // Folder management (editors only) - initialize when ready
 function initializeFolderManagement() {
     if (!isEditor) {
+        console.log("User is not an editor, skipping folder management initialization");
         return;
     }
     
     const createFolderBtn = document.getElementById("create-folder-btn");
     if (createFolderBtn) {
+        console.log("Found create folder button, attaching handler");
         // Remove any existing listeners to prevent duplicates
         const newBtn = createFolderBtn.cloneNode(true);
         createFolderBtn.parentNode.replaceChild(newBtn, createFolderBtn);
         
         newBtn.addEventListener("click", async (e) => {
+            console.log("Create folder button clicked");
+            e.preventDefault();
+            e.stopPropagation();
             e.preventDefault();
             e.stopPropagation();
             // Get existing folders for path selection
