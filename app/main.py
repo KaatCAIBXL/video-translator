@@ -268,14 +268,15 @@ async def list_videos(request: Request):
     user_is_editor = is_editor(request)
 
     def _scan_directory(directory: Path, folder_path: Optional[str] = None):
-        """Recursively scan directory for videos."""
+        """Recursively scan directory for videos, audio, and text files."""
         for item in directory.iterdir():
             if item.is_dir():
                 # Check if this is a video directory (has metadata.json)
                 meta = _load_video_metadata(item)
+                info = _load_video_info(item)
+                
                 if meta is not None:
                     # This is a video directory
-                    info = _load_video_info(item)
                     is_private = info.get("is_private", False)
                     
                     # Get folder path - use info.json first, then calculate from directory structure
@@ -331,6 +332,7 @@ async def list_videos(request: Request):
                         VideoListItem(
                             id=meta.id,
                             filename=meta.filename,
+                            file_type="video",
                             available_subtitles=subtitles,
                             available_dubs=dubs,
                             available_dub_audios=dub_audios,
@@ -339,6 +341,60 @@ async def list_videos(request: Request):
                             is_private=video_is_private,
                         )
                     )
+                elif (item / "info.json").exists():
+                    # Check if this is an audio or text file directory (has info.json and original file)
+                    file_type = info.get("file_type", "video")
+                    if file_type in ["audio", "text"]:
+                        # Check if original file exists
+                        original_exists = any((item / f"original{ext}").exists() for ext in [".mp3", ".wav", ".m4a", ".txt"])
+                        if original_exists:
+                        is_private = info.get("is_private", False)
+                        
+                        # Get folder path
+                        file_folder_path = info.get("folder_path")
+                        if not file_folder_path and folder_path:
+                            file_folder_path = folder_path
+                        elif not file_folder_path:
+                            try:
+                                rel_path = item.parent.relative_to(settings.PROCESSED_DIR)
+                                if str(rel_path) != ".":
+                                    file_folder_path = str(rel_path).replace("\\", "/")
+                            except ValueError:
+                                pass
+                        
+                        # Check privacy
+                        file_is_private = is_private or _is_folder_private(file_folder_path)
+                        
+                        # Filter: viewers can't see private files
+                        if not user_is_editor and file_is_private:
+                            continue
+                        
+                        # Get original filename from info.json or directory
+                        original_file = None
+                        for ext in [".mp3", ".wav", ".m4a", ".txt"]:
+                            candidate = item / f"original{ext}"
+                            if candidate.exists():
+                                original_file = candidate
+                                break
+                        
+                        if original_file:
+                            filename = original_file.name
+                            # Use directory name as ID (same as video)
+                            file_id = item.name
+                            
+                            items.append(
+                                VideoListItem(
+                                    id=file_id,
+                                    filename=filename,
+                                    file_type=file_type,
+                                    available_subtitles=[],
+                                    available_dubs=[],
+                                    available_dub_audios=[],
+                                    available_combined_subtitles=[],
+                                    folder_path=file_folder_path,
+                                    is_private=file_is_private,
+                                )
+                            )
                 else:
                     # This might be a folder, scan recursively
                     current_folder = folder_path + "/" + item.name if folder_path else item.name
@@ -1083,6 +1139,7 @@ async def handle_audio_text_upload(
     info_data = {
         "folder_path": folder_path if folder_path else None,
         "is_private": is_private,
+        "file_type": file_type,  # Store file type for audio/text files
     }
     info_path.write_text(json.dumps(info_data, indent=2), encoding="utf-8")
     

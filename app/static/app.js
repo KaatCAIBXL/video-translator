@@ -295,23 +295,30 @@ function createVideoItem(video) {
             });
         }
         
-        // Download video as file (for external use)
-        const downloadVideoBtn = document.createElement("button");
-        downloadVideoBtn.textContent = "📥 Télécharger vidéo (fichier)";
-        downloadVideoBtn.style.marginBottom = "5px";
-        downloadVideoBtn.style.padding = "8px";
-        downloadVideoBtn.style.backgroundColor = "#6c757d";
-        downloadVideoBtn.style.color = "white";
-        downloadVideoBtn.style.border = "none";
-        downloadVideoBtn.style.borderRadius = "3px";
-        downloadVideoBtn.style.cursor = "pointer";
-        downloadVideoBtn.onclick = () => {
+        // Download file (video, audio, or text) as file (for external use)
+        const downloadFileBtn = document.createElement("button");
+        const fileType = video.file_type || "video";
+        downloadFileBtn.textContent = "📥 Télécharger";
+        downloadFileBtn.style.marginBottom = "5px";
+        downloadFileBtn.style.padding = "8px";
+        downloadFileBtn.style.backgroundColor = "#6c757d";
+        downloadFileBtn.style.color = "white";
+        downloadFileBtn.style.border = "none";
+        downloadFileBtn.style.borderRadius = "3px";
+        downloadFileBtn.style.cursor = "pointer";
+        downloadFileBtn.onclick = () => {
             const link = document.createElement("a");
-            link.href = `/videos/${video.id}/original`;
-            link.download = `${baseName}_original.mp4`;
+            if (fileType === "video") {
+                link.href = `/videos/${video.id}/original`;
+                link.download = `${baseName}_original.mp4`;
+            } else {
+                // For audio/text files, use the /files endpoint
+                link.href = `/files/${video.id}/original${fileType === "audio" ? ".mp3" : ".txt"}`;
+                link.download = video.filename;
+            }
             link.click();
         };
-        downloads.appendChild(downloadVideoBtn);
+        downloads.appendChild(downloadFileBtn);
         
         // Cache dubbed videos for offline playback
         if (video.available_dubs && video.available_dubs.length > 0 && "caches" in window) {

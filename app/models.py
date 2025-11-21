@@ -20,6 +20,7 @@ class VideoMetadata(BaseModel):
 class VideoListItem(BaseModel):
     id: str
     filename: str
+    file_type: str = "video"  # video, audio, or text
     available_subtitles: List[str] = Field(default_factory=list)
     available_dubs: List[str] = Field(default_factory=list)
     available_dub_audios: List[str] = Field(default_factory=list)
