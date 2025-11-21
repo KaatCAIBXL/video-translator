@@ -787,17 +787,17 @@ async def get_original_video(request: Request, video_id: str):
     # First try to find as a video directory
     video_dir = _find_video_directory(video_id)
     if video_dir and video_dir.exists():
-        # Check privacy (video itself or parent folder)
-        info = _load_video_info(video_dir)
-        video_is_private = info.get("is_private", False) or _is_folder_private(info.get("folder_path"))
-        if video_is_private and not is_editor(request):
-            return JSONResponse({"error": "Accès refusé"}, status_code=403)
+    # Check privacy (video itself or parent folder)
+    info = _load_video_info(video_dir)
+    video_is_private = info.get("is_private", False) or _is_folder_private(info.get("folder_path"))
+    if video_is_private and not is_editor(request):
+        return JSONResponse({"error": "Accès refusé"}, status_code=403)
 
-        original_path = _find_original_video(video_dir)
+    original_path = _find_original_video(video_dir)
         if original_path is not None:
-            meta = _load_video_metadata(video_dir)
-            filename = meta.filename if meta else original_path.name
-            return FileResponse(original_path, filename=filename)
+    meta = _load_video_metadata(video_dir)
+    filename = meta.filename if meta else original_path.name
+    return FileResponse(original_path, filename=filename)
     
     # If not found as video directory, try to find as loose video file
     loose_file = _find_loose_file(video_id)
@@ -1393,11 +1393,11 @@ async def delete_video(request: Request, video_id: str):
 
 @app.put("/api/videos/{video_id}/rename")
 async def rename_video(request: Request, video_id: str, new_filename: str = Form(...)):
-    """Rename a video file."""
+    """Rename a video, audio, or text file."""
     if not is_editor(request):
-        return JSONResponse({"error": "Seuls les éditeurs peuvent renommer des vidéos."}, status_code=403)
+        return JSONResponse({"error": "Seuls les éditeurs peuvent renommer des fichiers."}, status_code=403)
     
-    # Find video directory
+    # First try to find as a video directory
     def _find_video_dir(directory: Path) -> Optional[Path]:
         for item in directory.iterdir():
             if item.is_dir():
@@ -1410,18 +1410,62 @@ async def rename_video(request: Request, video_id: str, new_filename: str = Form
         return None
     
     video_dir = _find_video_dir(settings.PROCESSED_DIR)
-    if not video_dir:
-        return JSONResponse({"error": "Vidéo non trouvée."}, status_code=404)
-    
+    if video_dir:
+        # This is a processed video directory
     try:
         meta_path = video_dir / "metadata.json"
         meta = load_metadata(meta_path)
         meta.filename = new_filename
         save_metadata(meta, meta_path)
-        return JSONResponse({"message": "Vidéo renommée avec succès."})
+            return JSONResponse({"message": "Fichier renommé avec succès."})
     except Exception as e:
         logger.exception("Failed to rename video")
-        return JSONResponse({"error": f"Impossible de renommer la vidéo: {e}"}, status_code=500)
+            return JSONResponse({"error": f"Impossible de renommer le fichier: {e}"}, status_code=500)
+    
+    # If not found as video directory, try to find as loose file
+    loose_file = _find_loose_file(video_id)
+    if loose_file and loose_file.exists() and loose_file.is_file():
+        try:
+            # Rename the file
+            new_file_path = loose_file.parent / new_filename
+            if new_file_path.exists():
+                return JSONResponse({"error": "Un fichier avec ce nom existe déjà."}, status_code=400)
+            
+            loose_file.rename(new_file_path)
+            return JSONResponse({"message": "Fichier renommé avec succès."})
+        except Exception as e:
+            logger.exception("Failed to rename loose file")
+            return JSONResponse({"error": f"Impossible de renommer le fichier: {e}"}, status_code=500)
+    
+    # Also check for audio/text files in directories with info.json
+    def _find_file_dir(directory: Path) -> Optional[Path]:
+        for item in directory.iterdir():
+            if item.is_dir():
+                info = _load_video_info(item)
+                # Check if this directory has the same ID (directory name)
+                if item.name == video_id and (item / "info.json").exists():
+                    return item
+                found = _find_file_dir(item)
+                if found:
+                    return found
+        return None
+    
+    file_dir = _find_file_dir(settings.PROCESSED_DIR)
+    if file_dir:
+        # This is an audio/text file directory
+        try:
+            info_path = file_dir / "info.json"
+            info = json.loads(info_path.read_text(encoding="utf-8"))
+            # Update the original filename in info.json
+            # The actual file is named "original.ext", so we need to update the stored filename
+            info["filename"] = new_filename
+            info_path.write_text(json.dumps(info, ensure_ascii=False, indent=2), encoding="utf-8")
+            return JSONResponse({"message": "Fichier renommé avec succès."})
+        except Exception as e:
+            logger.exception("Failed to rename file directory")
+            return JSONResponse({"error": f"Impossible de renommer le fichier: {e}"}, status_code=500)
+    
+    return JSONResponse({"error": "Fichier non trouvé."}, status_code=404)
 
 @app.put("/api/videos/{video_id}/privacy")
 async def toggle_video_privacy(request: Request, video_id: str, is_private: bool = Form(...)):
