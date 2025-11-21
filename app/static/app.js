@@ -1913,6 +1913,14 @@ async function populateFolderDropdown() {
         return;
     }
     
+    // Don't update if dropdown is currently open (user is selecting)
+    if (folderSelect === document.activeElement) {
+        return;
+    }
+    
+    // Save current selection
+    const currentValue = folderSelect.value;
+    
     try {
         const foldersRes = await fetch("/api/folders");
         if (!foldersRes.ok) {
@@ -1935,6 +1943,11 @@ async function populateFolderDropdown() {
             option.textContent = folder.path + (folder.is_private ? " [PRIVÉ]" : "");
             folderSelect.appendChild(option);
         });
+        
+        // Restore previous selection if it still exists
+        if (currentValue && Array.from(folderSelect.options).some(opt => opt.value === currentValue)) {
+            folderSelect.value = currentValue;
+        }
     } catch (err) {
         console.error("Failed to load folders for dropdown", err);
     }
