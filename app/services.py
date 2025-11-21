@@ -814,9 +814,10 @@ async def generate_dub_audio(
         mix_inputs: List[str] = []
         for idx, (_, delay_ms) in enumerate(segment_audio):
             label = f"a{idx}"
+            # Apply delay with extra_delay_ms adjustment for leading silence
+            total_delay_ms = delay_ms + extra_delay_ms
             filter_parts.append(
-                f"[{idx}:a]adelay={delay_ms}|{delay_ms}[{label}]"
-                f"[{idx}:a]adelay={delay_ms + extra_delay_ms}|{delay_ms + extra_delay_ms}[{label}]"
+                f"[{idx}:a]adelay={total_delay_ms}|{total_delay_ms}[{label}]"
             )
             mix_inputs.append(f"[{label}]")
 
