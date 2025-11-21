@@ -54,11 +54,17 @@ templates = Jinja2Templates(directory=str(BASE_DIR / "app" / "templates"))
 LANGUAGE_OPTIONS = get_language_options()
 ALLOWED_LANGUAGE_CODES = {opt.code for opt in LANGUAGE_OPTIONS}
 PROCESS_OPTIONS = {
+    # Video processing options
     "subs",
     "dub_audio",
     "dub_video",
+    # Audio/Text processing options
+    "transcribe",
+    "improve_text",
+    "translate",
+    "generate_audio",
 }
-DEFAULT_PROCESS_OPTIONS = list(PROCESS_OPTIONS)
+DEFAULT_PROCESS_OPTIONS = ["subs", "dub_audio", "dub_video"]  # Default for videos
 
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "app" / "static")), name="static")
 
