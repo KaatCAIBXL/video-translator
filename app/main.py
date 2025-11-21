@@ -1124,8 +1124,12 @@ async def upload_file_to_folder(
         return JSONResponse({"error": "Dossier non trouvé."}, status_code=404)
     
     try:
-        # Save file directly to folder
+        # Check if file already exists
         file_path = folder_dir / file.filename
+        if file_path.exists():
+            return JSONResponse({"error": "Un fichier avec ce nom existe déjà dans ce dossier."}, status_code=400)
+        
+        # Save file directly to folder
         with open(file_path, "wb") as f:
             shutil.copyfileobj(file.file, f)
         return JSONResponse({"message": f"Fichier téléchargé avec succès dans {folder_path}.", "filename": file.filename})
