@@ -262,9 +262,10 @@ function createVideoItem(video) {
                 
             });
             controls.appendChild(dubWrapper);
-        }
+            }
 
-        div.appendChild(controls);
+            div.appendChild(controls);
+        }
 
         const downloads = document.createElement("div");
         downloads.className = "download-links";
