@@ -96,6 +96,29 @@ def _find_video_directory(video_id: str) -> Optional[Path]:
         return None
     return _search(settings.PROCESSED_DIR)
 
+def _find_loose_file(file_id: str) -> Optional[Path]:
+    """Find a loose file (uploaded directly to folder) by ID.
+    The file_id is generated from the relative path, e.g., 'folder1_folder2_filename_mp4'."""
+    def _search(directory: Path, current_path: str = "") -> Optional[Path]:
+        for item in directory.iterdir():
+            if item.is_file():
+                # Generate ID from path (same as in _scan_directory)
+                try:
+                    rel_path = item.relative_to(settings.PROCESSED_DIR)
+                    generated_id = str(rel_path).replace("\\", "/").replace("/", "_").replace(".", "_")
+                    if generated_id == file_id:
+                        return item
+                except ValueError:
+                    pass
+            elif item.is_dir():
+                # Recursively search subdirectories
+                new_path = current_path + "/" + item.name if current_path else item.name
+                found = _search(item, new_path)
+                if found:
+                    return found
+        return None
+    return _search(settings.PROCESSED_DIR)
+
 def _find_original_video(video_dir: Path) -> Optional[Path]:
     for candidate in video_dir.iterdir():
         if candidate.name.startswith("original"):
@@ -393,12 +416,53 @@ async def list_videos(request: Request):
                                         available_combined_subtitles=[],
                                         folder_path=file_folder_path,
                                         is_private=file_is_private,
-                                    )
-                                )
+                        )
+                    )
                 else:
                     # This might be a folder, scan recursively
                     current_folder = folder_path + "/" + item.name if folder_path else item.name
                     _scan_directory(item, current_folder)
+            else:
+                # Check if this is a loose file (uploaded directly to folder)
+                # Only process video, audio, and text files
+                if item.suffix.lower() in [".mp4", ".avi", ".mov", ".mkv", ".webm",  # video
+                                           ".mp3", ".wav", ".m4a", ".ogg", ".flac",  # audio
+                                           ".txt"]:  # text
+                    # Determine file type from extension
+                    if item.suffix.lower() in [".mp4", ".avi", ".mov", ".mkv", ".webm"]:
+                        file_type = "video"
+                    elif item.suffix.lower() in [".mp3", ".wav", ".m4a", ".ogg", ".flac"]:
+                        file_type = "audio"
+                    else:
+                        file_type = "text"
+                    
+                    # Check privacy based on folder
+                    file_is_private = _is_folder_private(folder_path)
+                    
+                    # Filter: viewers can't see files in private folders
+                    if not user_is_editor and file_is_private:
+                        continue
+                    
+                    # Generate a unique ID from the file path
+                    try:
+                        rel_path = item.relative_to(settings.PROCESSED_DIR)
+                        file_id = str(rel_path).replace("\\", "/").replace("/", "_").replace(".", "_")
+                    except ValueError:
+                        file_id = item.name
+                    
+                    items.append(
+                        VideoListItem(
+                            id=file_id,
+                            filename=item.name,
+                            file_type=file_type,
+                            available_subtitles=[],
+                            available_dubs=[],
+                            available_dub_audios=[],
+                            available_combined_subtitles=[],
+                            folder_path=folder_path,
+                            is_private=file_is_private,
+                        )
+                    )
 
     _scan_directory(settings.PROCESSED_DIR)
     return items
@@ -720,10 +784,9 @@ def _video_base_stem(meta: Optional[VideoMetadata], fallback: Path) -> str:
 
 @app.get("/videos/{video_id}/original")
 async def get_original_video(request: Request, video_id: str):
+    # First try to find as a video directory
     video_dir = _find_video_directory(video_id)
-    if not video_dir or not video_dir.exists():
-        return JSONResponse({"error": "Vidéo non trouvée"}, status_code=404)
-    
+    if video_dir and video_dir.exists():
     # Check privacy (video itself or parent folder)
     info = _load_video_info(video_dir)
     video_is_private = info.get("is_private", False) or _is_folder_private(info.get("folder_path"))
@@ -731,12 +794,29 @@ async def get_original_video(request: Request, video_id: str):
         return JSONResponse({"error": "Accès refusé"}, status_code=403)
 
     original_path = _find_original_video(video_dir)
-    if original_path is None:
-        return JSONResponse({"error": "Vidéo originale non trouvée"}, status_code=404)
-
+        if original_path is not None:
     meta = _load_video_metadata(video_dir)
     filename = meta.filename if meta else original_path.name
     return FileResponse(original_path, filename=filename)
+    
+    # If not found as video directory, try to find as loose video file
+    loose_file = _find_loose_file(video_id)
+    if loose_file and loose_file.exists() and loose_file.is_file():
+        # Check if it's a video file
+        if loose_file.suffix.lower() in [".mp4", ".avi", ".mov", ".mkv", ".webm"]:
+            # Check privacy based on folder
+            try:
+                rel_path = loose_file.parent.relative_to(settings.PROCESSED_DIR)
+                folder_path = str(rel_path) if str(rel_path) != "." else None
+            except ValueError:
+                folder_path = None
+            
+            if not is_editor(request) and _is_folder_private(folder_path):
+                return JSONResponse({"error": "Accès refusé"}, status_code=403)
+            
+            return FileResponse(loose_file, filename=loose_file.name)
+    
+    return JSONResponse({"error": "Vidéo non trouvée"}, status_code=404)
 
 
 @app.get("/videos/{video_id}/dub/{lang}")
@@ -1227,28 +1307,45 @@ async def handle_audio_text_upload(
 # ---------- File downloads ----------
 @app.get("/files/{file_id}/{filename:path}")
 async def download_file(request: Request, file_id: str, filename: str):
-    """Download a processed file (transcribed text, translated text, generated audio, etc.)."""
-    # Find file directory (could be in a folder)
+    """Download a processed file (transcribed text, translated text, generated audio, etc.) or a loose file."""
+    # First try to find as a directory-based file (processed files)
     file_dir = _find_video_directory(file_id)
-    if not file_dir:
-        return JSONResponse({"error": "Fichier non trouvé."}, status_code=404)
+    if file_dir:
+        file_path = file_dir / filename
+        if file_path.exists() and file_path.is_file():
+            # Check privacy
+            info = _load_video_info(file_dir)
+            is_private = info.get("is_private", False)
+            folder_path = info.get("folder_path")
+            if not is_editor(request) and (is_private or _is_folder_private(folder_path)):
+                return JSONResponse({"error": "Accès refusé."}, status_code=403)
+            
+            return FileResponse(
+                path=str(file_path),
+                filename=filename,
+                media_type="application/octet-stream",
+            )
     
-    file_path = file_dir / filename
-    if not file_path.exists() or not file_path.is_file():
-        return JSONResponse({"error": "Fichier non trouvé."}, status_code=404)
+    # If not found as directory-based, try to find as loose file
+    loose_file = _find_loose_file(file_id)
+    if loose_file and loose_file.exists() and loose_file.is_file():
+        # Check privacy based on folder
+        try:
+            rel_path = loose_file.parent.relative_to(settings.PROCESSED_DIR)
+            folder_path = str(rel_path) if str(rel_path) != "." else None
+        except ValueError:
+            folder_path = None
+        
+        if not is_editor(request) and _is_folder_private(folder_path):
+            return JSONResponse({"error": "Accès refusé."}, status_code=403)
+        
+        return FileResponse(
+            path=str(loose_file),
+            filename=loose_file.name,
+            media_type="application/octet-stream",
+        )
     
-    # Check privacy
-    info = _load_video_info(file_dir)
-    is_private = info.get("is_private", False)
-    folder_path = info.get("folder_path")
-    if not is_editor(request) and (is_private or _is_folder_private(folder_path)):
-        return JSONResponse({"error": "Accès refusé."}, status_code=403)
-    
-    return FileResponse(
-        path=str(file_path),
-        filename=filename,
-        media_type="application/octet-stream",
-    )
+    return JSONResponse({"error": "Fichier non trouvé."}, status_code=404)
 
 
 # ---------- File management (editors only) ----------
