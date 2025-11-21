@@ -1020,23 +1020,77 @@ function initializeFileUpload() {
         return;
     }
 
-    // Setup file upload button click handler
+    // Setup file upload button click handler - SIMPLE AND DIRECT
     if (fileUploadButton) {
-        fileUploadButton.addEventListener("click", (e) => {
+        // Remove any existing listeners by cloning
+        const newButton = fileUploadButton.cloneNode(true);
+        fileUploadButton.parentNode.replaceChild(newButton, fileUploadButton);
+        
+        newButton.onclick = function(e) {
             e.preventDefault();
             e.stopPropagation();
-            // Trigger file input click
-            try {
-                fileInput.click();
-            } catch (err) {
-                console.error("Error triggering file input:", err);
-                // Fallback: try to focus and click
-                fileInput.focus();
-                fileInput.click();
+            console.log("File upload button clicked - attempting to open file picker");
+            
+            // Get fresh reference to file input
+            const currentFileInput = document.getElementById("video-file");
+            if (!currentFileInput) {
+                console.error("File input element not found!");
+                alert("Erreur: Le champ de fichier n'a pas été trouvé. Veuillez rafraîchir la page.");
+                return false;
             }
-        });
+            
+            // Make sure input is visible and accessible temporarily
+            const originalStyle = {
+                position: currentFileInput.style.position,
+                left: currentFileInput.style.left,
+                top: currentFileInput.style.top,
+                width: currentFileInput.style.width,
+                height: currentFileInput.style.height,
+                opacity: currentFileInput.style.opacity,
+                zIndex: currentFileInput.style.zIndex
+            };
+            
+            currentFileInput.style.position = "fixed";
+            currentFileInput.style.left = "0";
+            currentFileInput.style.top = "0";
+            currentFileInput.style.width = "1px";
+            currentFileInput.style.height = "1px";
+            currentFileInput.style.opacity = "0";
+            currentFileInput.style.zIndex = "9999";
+            
+            // Try multiple methods to trigger file picker
+            try {
+                // Method 1: Direct click
+                currentFileInput.click();
+                console.log("File input clicked (method 1)");
+            } catch (err1) {
+                console.warn("Method 1 failed:", err1);
+                try {
+                    // Method 2: Focus then click
+                    currentFileInput.focus();
+                    setTimeout(() => {
+                        currentFileInput.click();
+                        console.log("File input clicked (method 2)");
+                    }, 10);
+                } catch (err2) {
+                    console.error("Method 2 failed:", err2);
+                    alert("Impossible d'ouvrir le sélecteur de fichiers. Veuillez rafraîchir la page.");
+                }
+            }
+            
+            // Reset input style after a delay
+            setTimeout(() => {
+                currentFileInput.style.position = originalStyle.position || "absolute";
+                currentFileInput.style.left = originalStyle.left || "-9999px";
+                currentFileInput.style.zIndex = originalStyle.zIndex || "-1";
+            }, 100);
+            
+            return false;
+        };
+        
+        console.log("File upload button handler attached");
     } else {
-        console.warn("File upload button not found");
+        console.error("File upload button element not found!");
     }
 
     if (fileNameLabel) {
