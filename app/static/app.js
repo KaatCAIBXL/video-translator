@@ -1191,7 +1191,10 @@ async function renameVideo(videoId) {
         }
         
         alert("Vidéo renommée avec succès!");
-        fetchVideos();
+        // Refresh the list to show the renamed file with its new ID
+        await fetchVideos();
+        // Scroll to top to ensure the refreshed list is visible
+        window.scrollTo(0, 0);
     } catch (err) {
         console.error(err);
         alert("Erreur lors du renommage.");
