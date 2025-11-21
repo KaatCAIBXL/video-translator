@@ -1716,8 +1716,6 @@ function initializeFolderManagement() {
             console.log("Create folder button clicked");
             e.preventDefault();
             e.stopPropagation();
-            e.preventDefault();
-            e.stopPropagation();
             // Get existing folders for path selection
             let existingFolders = [];
             try {
