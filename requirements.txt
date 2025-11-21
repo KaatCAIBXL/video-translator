@@ -8,4 +8,6 @@ openai
 python-dotenv
 ffmpeg-python
 edge-tts
+deepl
+pydub
 

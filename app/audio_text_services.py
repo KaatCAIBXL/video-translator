@@ -13,7 +13,11 @@ import time
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-import deepl
+try:
+    import deepl
+except ImportError:
+    deepl = None
+
 import edge_tts
 from openai import OpenAI
 from pydub import AudioSegment
@@ -84,9 +88,15 @@ def get_openai_client() -> OpenAI:
 def get_deepl_translator() -> Optional[deepl.Translator]:
     """Get or create DeepL translator."""
     global _deepl_translator
+    if deepl is None:
+        return None
     if _deepl_translator is None:
         if settings.DEEPL_API_KEY:
-            _deepl_translator = deepl.Translator(settings.DEEPL_API_KEY)
+            try:
+                _deepl_translator = deepl.Translator(settings.DEEPL_API_KEY)
+            except Exception as e:
+                logger.warning(f"Failed to initialize DeepL translator: {e}")
+                return None
     return _deepl_translator
 
 
@@ -255,6 +265,8 @@ def read_bantu_instructions(target_lang: str) -> str:
 
 def translate_with_deepl(text: str, source_lang: str, target_lang: str) -> str:
     """Translate text using DeepL."""
+    if deepl is None:
+        raise ValueError("DeepL package not installed")
     translator = get_deepl_translator()
     if not translator:
         raise ValueError("DeepL API key not configured")
