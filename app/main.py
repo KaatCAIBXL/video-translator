@@ -1412,14 +1412,14 @@ async def rename_video(request: Request, video_id: str, new_filename: str = Form
     video_dir = _find_video_dir(settings.PROCESSED_DIR)
     if video_dir:
         # This is a processed video directory
-        try:
-            meta_path = video_dir / "metadata.json"
-            meta = load_metadata(meta_path)
-            meta.filename = new_filename
-            save_metadata(meta, meta_path)
+    try:
+        meta_path = video_dir / "metadata.json"
+        meta = load_metadata(meta_path)
+        meta.filename = new_filename
+        save_metadata(meta, meta_path)
             return JSONResponse({"message": "Fichier renommé avec succès."})
-        except Exception as e:
-            logger.exception("Failed to rename video")
+    except Exception as e:
+        logger.exception("Failed to rename video")
             return JSONResponse({"error": f"Impossible de renommer le fichier: {e}"}, status_code=500)
     
     # If not found as video directory, try to find as loose file
