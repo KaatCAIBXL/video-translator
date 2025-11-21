@@ -1599,9 +1599,11 @@ if (uploadForm && isEditor) {
     }
     formData.append("is_private", isPrivate);
 
+    // Get submit button reference once to avoid redeclaration
+    const submitBtn = form.querySelector('button[type="submit"]');
+
     try {
         // Disable submit button to prevent double submission (iOS issue)
-        const submitBtn = form.querySelector('button[type="submit"]');
         if (submitBtn) {
             submitBtn.disabled = true;
             submitBtn.textContent = "Téléversement en cours...";
@@ -1616,6 +1618,11 @@ if (uploadForm && isEditor) {
         if (!res.ok) {
             const err = await res.json();
             statusEl.textContent = "Erreur : " + (err.error || res.statusText);
+            // Re-enable submit button on error
+            if (submitBtn) {
+                submitBtn.disabled = false;
+                submitBtn.textContent = "Téléverser et traiter";
+            }
             return;
         }
 
@@ -1659,7 +1666,6 @@ if (uploadForm && isEditor) {
         }
         
         // Re-enable submit button after successful upload
-        const submitBtn = form.querySelector('button[type="submit"]');
         if (submitBtn) {
             submitBtn.disabled = false;
             submitBtn.textContent = "Téléverser et traiter";
@@ -1667,6 +1673,11 @@ if (uploadForm && isEditor) {
     } catch (err) {
         console.error(err);
         statusEl.textContent = "Erreur inconnue.";
+        // Re-enable submit button on error
+        if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.textContent = "Téléverser et traiter";
+        }
     }
 });
 }
