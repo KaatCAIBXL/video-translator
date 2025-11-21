@@ -1,0 +1,27 @@
+# Force LF line endings for Python files
+*.py text eol=lf
+*.pyw text eol=lf
+
+# Force LF for other text files
+*.txt text eol=lf
+*.md text eol=lf
+*.json text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+*.html text eol=lf
+*.css text eol=lf
+*.js text eol=lf
+
+# Binary files
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.mp4 binary
+*.mp3 binary
+*.avi binary
+*.mov binary
+*.mkv binary
+*.webm binary
+
