@@ -1712,7 +1712,8 @@ function initializeFolderManagement() {
         const newBtn = createFolderBtn.cloneNode(true);
         createFolderBtn.parentNode.replaceChild(newBtn, createFolderBtn);
         
-        newBtn.addEventListener("click", async (e) => {
+        // Use onclick for better compatibility
+        newBtn.onclick = async function(e) {
             console.log("Create folder button clicked");
             e.preventDefault();
             e.stopPropagation();
