@@ -194,12 +194,14 @@ function createVideoItem(video) {
             div.appendChild(summary);
         }
 
-        const controls = document.createElement("div");
-        controls.className = "video-controls";
+        // Controls (only for videos)
+        if (isVideo) {
+            const controls = document.createElement("div");
+            controls.className = "video-controls";
 
-        // Subtitle selection with multiple checkboxes (before play button)
-        const selectedLangs = new Set();
-        if (video.available_subtitles && video.available_subtitles.length > 0) {
+            // Subtitle selection with multiple checkboxes (before play button)
+            const selectedLangs = new Set();
+            if (video.available_subtitles && video.available_subtitles.length > 0) {
             const subtitleWrapper = document.createElement("div");
             subtitleWrapper.style.marginTop = "10px";
             subtitleWrapper.style.marginBottom = "10px";
