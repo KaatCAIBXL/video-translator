@@ -306,7 +306,6 @@ function createVideoItem(video) {
         
         // Download file (video, audio, or text) as file (for external use)
         const downloadFileBtn = document.createElement("button");
-        const fileType = video.file_type || "video";
         downloadFileBtn.textContent = "📥 Télécharger";
         downloadFileBtn.style.marginBottom = "5px";
         downloadFileBtn.style.padding = "8px";
