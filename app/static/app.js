@@ -512,14 +512,14 @@ function renderFolder(folderData, container, level = 0) {
         };
         folderControls.appendChild(privacyBtn);
         
-        // Upload video button
+        // Upload file button (video, audio, or text)
         const uploadBtn = document.createElement("button");
-        uploadBtn.textContent = "Télécharger vidéo";
+        uploadBtn.textContent = "Télécharger";
         uploadBtn.style.fontSize = "0.8em";
         uploadBtn.style.padding = "3px 8px";
         uploadBtn.onclick = (e) => {
             e.stopPropagation();
-            uploadVideoToFolder(folderData.path);
+            uploadFileToFolder(folderData.path);
         };
         folderControls.appendChild(uploadBtn);
         
@@ -1367,10 +1367,11 @@ async function toggleFolderPrivacy(folderPath, isPrivate) {
     }
 }
 
-async function uploadVideoToFolder(folderPath) {
+async function uploadFileToFolder(folderPath) {
     const input = document.createElement("input");
     input.type = "file";
-    input.accept = "video/*";
+    // Accept all file types: video, audio, and text
+    input.accept = "video/*,audio/*,.txt";
     input.onchange = async (e) => {
         const file = e.target.files[0];
         if (!file) return;
@@ -1390,11 +1391,11 @@ async function uploadVideoToFolder(folderPath) {
                 return;
             }
             
-            alert("Vidéo téléchargée avec succès!");
+            alert("Fichier téléchargé avec succès!");
             fetchVideos();
         } catch (err) {
             console.error(err);
-            alert("Erreur lors du téléchargement de la vidéo.");
+            alert("Erreur lors du téléchargement du fichier.");
         }
     };
     input.click();

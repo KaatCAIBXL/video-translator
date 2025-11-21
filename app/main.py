@@ -1030,28 +1030,28 @@ async def update_folder_color(request: Request, folder_path: str, color: str = F
         return JSONResponse({"error": f"Impossible de mettre à jour la couleur: {e}"}, status_code=500)
 
 @app.post("/api/folders/{folder_path:path}/upload")
-async def upload_video_to_folder(
+async def upload_file_to_folder(
     request: Request,
     folder_path: str,
     file: UploadFile = File(...)
 ):
-    """Upload a video directly to a folder without processing."""
+    """Upload a file (video, audio, or text) directly to a folder without processing."""
     if not is_editor(request):
-        return JSONResponse({"error": "Seuls les éditeurs peuvent télécharger des vidéos."}, status_code=403)
+        return JSONResponse({"error": "Seuls les éditeurs peuvent télécharger des fichiers."}, status_code=403)
     
     folder_dir = settings.PROCESSED_DIR / folder_path
     if not folder_dir.exists() or not folder_dir.is_dir():
         return JSONResponse({"error": "Dossier non trouvé."}, status_code=404)
     
     try:
-        # Save video directly to folder
-        video_path = folder_dir / file.filename
-        with open(video_path, "wb") as f:
+        # Save file directly to folder
+        file_path = folder_dir / file.filename
+        with open(file_path, "wb") as f:
             shutil.copyfileobj(file.file, f)
-        return JSONResponse({"message": f"Vidéo téléchargée avec succès dans {folder_path}.", "filename": file.filename})
+        return JSONResponse({"message": f"Fichier téléchargé avec succès dans {folder_path}.", "filename": file.filename})
     except Exception as e:
-        logger.exception("Failed to upload video to folder")
-        return JSONResponse({"error": f"Impossible de télécharger la vidéo: {e}"}, status_code=500)
+        logger.exception("Failed to upload file to folder")
+        return JSONResponse({"error": f"Impossible de télécharger le fichier: {e}"}, status_code=500)
 
 
 # ============================================================
