@@ -19,8 +19,23 @@
  
  {% if is_editor %}
  <section id="upload" style="display: block;">
-     <h2>Télécharger une nouvelle vidéo</h2>
+     <h2>Télécharger et traiter un fichier</h2>
      <form id="upload-form">
+        <fieldset>
+            <legend>Type de fichier</legend>
+            <label>
+                <input type="radio" name="file_type" value="video" checked>
+                Vidéo
+            </label>
+            <label>
+                <input type="radio" name="file_type" value="audio">
+                Audio
+            </label>
+            <label>
+                <input type="radio" name="file_type" value="text">
+                Texte
+            </label>
+        </fieldset>
         <fieldset>
             <legend>Dossier (optionnel)</legend>
             <label>
@@ -31,12 +46,62 @@
             </label>
         </fieldset>
          <div class="file-upload">
-             <label class="file-upload-label">Fichier vidéo :</label>
+             <label class="file-upload-label" id="file-type-label">Fichier vidéo :</label>
              <input type="file" name="file" id="video-file" accept="video/*" class="file-upload-input" required>
              <button type="button" class="file-upload-trigger" onclick="document.getElementById('video-file').click()">Choisir un fichier</button>
              <span class="file-upload-name" id="selected-file-name">Aucun fichier sélectionné</span>
          </div>
-         <fieldset>
+         <fieldset id="processing-options-fieldset">
+             <legend>Options de traitement</legend>
+             <div id="video-options">
+                 <label>
+                     <input type="checkbox" name="process_options" value="subs" checked>
+                     Télécharger les sous-titres
+                 </label>
+                 <label>
+                     <input type="checkbox" name="process_options" value="dub_audio" checked>
+                     Audio de doublage (MP3)
+                 </label>
+                 <label>
+                     <input type="checkbox" name="process_options" value="dub_video" checked>
+                     Vidéo avec doublage audio
+                 </label>
+             </div>
+             <div id="audio-options" style="display: none;">
+                 <label>
+                     <input type="checkbox" name="process_options" value="transcribe" checked>
+                     Transcrire (audio → texte)
+                 </label>
+                 <label>
+                     <input type="checkbox" name="process_options" value="improve_text">
+                     Améliorer le texte (avec IA)
+                 </label>
+                 <label>
+                     <input type="checkbox" name="process_options" value="translate">
+                     Traduire
+                 </label>
+                 <label>
+                     <input type="checkbox" name="process_options" value="generate_audio">
+                     Générer audio (texte → audio)
+                 </label>
+             </div>
+             <div id="text-options" style="display: none;">
+                 <label>
+                     <input type="checkbox" name="process_options" value="improve_text" checked>
+                     Améliorer le texte (avec IA)
+                 </label>
+                 <label>
+                     <input type="checkbox" name="process_options" value="translate" checked>
+                     Traduire
+                 </label>
+                 <label>
+                     <input type="checkbox" name="process_options" value="generate_audio">
+                     Générer audio (texte → audio)
+                 </label>
+             </div>
+            <p class="language-hint">Décochez les options inutiles pour éviter un traitement superflu.</p>
+         </fieldset>
+         <fieldset id="languages-fieldset">
              <legend>Langues cibles (max. 2)</legend>
              {% for lang in available_languages %}
              <label>
@@ -47,23 +112,20 @@
              <p class="language-hint">Les langues marquées d'un * utilisent le traducteur IA, les autres passent par DeepL.</p>
              <p class="language-hint">Lingala, Tshiluba, Kikongo et Malagasy ne proposent pour l'instant que des sous-titres.</p>
          </fieldset>
-        <fieldset>
-            <legend>Options de traitement</legend>
-            <label>
-                <input type="checkbox" name="process_options" value="subs" checked>
-                Télécharger les sous-titres
-            </label>
+         <fieldset id="source-language-fieldset" style="display: none;">
+             <legend>Langue source</legend>
              <label>
-                 <input type="checkbox" name="process_options" value="dub_audio" checked>
-                 Audio de doublage (MP3)
+                 Langue du fichier :
+                 <select name="source_language" id="source-language-select">
+                     <option value="fr">Français</option>
+                     <option value="nl">Néerlandais</option>
+                     <option value="en">Anglais</option>
+                     <option value="es">Espagnol</option>
+                     <option value="pt">Portugais</option>
+                 </select>
              </label>
-             <label>
-                 <input type="checkbox" name="process_options" value="dub_video" checked>
-                 Vidéo avec doublage audio
-             </label>
-            <p class="language-hint">Décochez les options inutiles pour éviter un traitement superflu.</p>
-        </fieldset>
-        <fieldset>
+         </fieldset>
+        <fieldset id="tts-speed-fieldset">
             <legend>Synchronisation du doublage</legend>
             <label>
                 Vitesse relative de la voix TTS

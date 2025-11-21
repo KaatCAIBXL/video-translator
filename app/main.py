@@ -31,6 +31,12 @@ from .services import (
     load_metadata,
     get_audio_stream_start_offset,
 )
+from .audio_text_services import (
+    transcribe_long_audio,
+    improve_text_with_ai,
+    translate_text,
+    generate_long_tts_audio,
+)
 
 from .languages import (
     get_language_options,
@@ -341,19 +347,43 @@ async def list_videos(request: Request):
 @app.post("/api/upload")
 async def upload_video(
     request: Request,
-    languages: List[str] = Form(...),  # max. 2 talen aanvinken in frontend
+    file_type: str = Form("video"),  # video, audio, or text
+    languages: Optional[List[str]] = Form(None),  # max. 2 talen aanvinken in frontend
     process_options: Optional[List[str]] = Form(None),
     tts_speed_multiplier: float = Form(1.0),
     folder_path: Optional[str] = Form(None),  # Optional folder path
     is_private: bool = Form(False),  # Make video private
+    source_language: Optional[str] = Form("fr"),  # Source language for audio/text
     file: UploadFile = File(...)
 ):
     # Only editors can upload
     if not is_editor(request):
         return JSONResponse(
-            {"error": "Seuls les éditeurs peuvent télécharger des vidéos."},
+            {"error": "Seuls les éditeurs peuvent télécharger des fichiers."},
             status_code=403,
         )
+    
+    file_type = file_type.lower()
+    if file_type not in ["video", "audio", "text"]:
+        return JSONResponse(
+            {"error": "Type de fichier invalide. Utilisez 'video', 'audio' ou 'text'."},
+            status_code=400,
+        )
+    
+    # For audio/text files, handle differently
+    if file_type in ["audio", "text"]:
+        return await handle_audio_text_upload(
+            request, file_type, file, languages, process_options,
+            folder_path, is_private, source_language
+        )
+    
+    # Original video processing logic
+    if not languages:
+        return JSONResponse(
+            {"error": "Please select one or two target languages"},
+            status_code=400,
+        )
+    
     normalized_langs = [lang.lower() for lang in languages]
 
     if len(normalized_langs) == 0 or len(normalized_langs) > 2:
@@ -959,6 +989,202 @@ async def upload_video_to_folder(
     except Exception as e:
         logger.exception("Failed to upload video to folder")
         return JSONResponse({"error": f"Impossible de télécharger la vidéo: {e}"}, status_code=500)
+
+
+# ============================================================
+# AUDIO AND TEXT PROCESSING
+# ============================================================
+async def handle_audio_text_upload(
+    request: Request,
+    file_type: str,
+    file: UploadFile,
+    languages: Optional[List[str]],
+    process_options: Optional[List[str]],
+    folder_path: Optional[str],
+    is_private: bool,
+    source_language: str,
+):
+    """Handle upload and processing of audio or text files."""
+    if process_options is None:
+        return JSONResponse(
+            {"error": "Veuillez sélectionner au moins une option de traitement."},
+            status_code=400,
+        )
+    
+    normalized_options = [opt.lower().strip() for opt in process_options if opt.strip()]
+    if not normalized_options:
+        return JSONResponse(
+            {"error": "Veuillez sélectionner au moins une option de traitement."},
+            status_code=400,
+        )
+    
+    # Validate languages if translation or audio generation is requested
+    normalized_langs = []
+    if languages:
+        normalized_langs = [lang.lower() for lang in languages]
+        if len(normalized_langs) > 2:
+            return JSONResponse(
+                {"error": "Veuillez sélectionner au maximum deux langues cibles."},
+                status_code=400,
+            )
+        invalid = [lang for lang in normalized_langs if lang not in ALLOWED_LANGUAGE_CODES]
+        if invalid:
+            return JSONResponse(
+                {"error": f"Langues non supportées: {', '.join(invalid)}"},
+                status_code=400,
+            )
+    
+    # Check if languages are needed
+    needs_languages = any(opt in ["translate", "generate_audio"] for opt in normalized_options)
+    if needs_languages and not normalized_langs:
+        return JSONResponse(
+            {"error": "Veuillez sélectionner au moins une langue cible pour la traduction ou la génération audio."},
+            status_code=400,
+        )
+    
+    file_id = str(uuid.uuid4())
+    ext = Path(file.filename).suffix
+    
+    # Handle folder structure
+    if folder_path:
+        folder_path = folder_path.strip().strip("/").strip("\\")
+        if folder_path:
+            folder_dir = settings.PROCESSED_DIR / folder_path
+            folder_dir.mkdir(parents=True, exist_ok=True)
+            file_dir = folder_dir / file_id
+        else:
+            file_dir = settings.PROCESSED_DIR / file_id
+    else:
+        file_dir = settings.PROCESSED_DIR / file_id
+    
+    file_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Save uploaded file
+    original_path = file_dir / f"original{ext}"
+    try:
+        with open(original_path, "wb") as f:
+            shutil.copyfileobj(file.file, f)
+    except Exception:
+        logger.exception("Failed to store uploaded file")
+        return JSONResponse(
+            {"error": "Impossible de sauvegarder le fichier."},
+            status_code=500,
+        )
+    
+    # Save info.json
+    info_path = file_dir / "info.json"
+    info_data = {
+        "folder_path": folder_path if folder_path else None,
+        "is_private": is_private,
+    }
+    info_path.write_text(json.dumps(info_data, indent=2), encoding="utf-8")
+    
+    # Process the file based on options
+    try:
+        results = {}
+        
+        if file_type == "audio":
+            # Transcribe audio
+            if "transcribe" in normalized_options:
+                logger.info(f"Transcribing audio: {original_path}")
+                transcribed_text = transcribe_long_audio(original_path, language=source_language)
+                text_path = file_dir / "transcribed.txt"
+                text_path.write_text(transcribed_text, encoding="utf-8")
+                results["transcribed"] = str(text_path)
+                
+                # Improve text if requested
+                if "improve_text" in normalized_options:
+                    logger.info("Improving text with AI...")
+                    improved_text = improve_text_with_ai(transcribed_text, language=source_language)
+                    improved_path = file_dir / "improved.txt"
+                    improved_path.write_text(improved_text, encoding="utf-8")
+                    results["improved"] = str(improved_path)
+                    transcribed_text = improved_text  # Use improved text for translation
+                
+                # Translate if requested
+                if "translate" in normalized_options and normalized_langs:
+                    for target_lang in normalized_langs:
+                        logger.info(f"Translating to {target_lang}...")
+                        translated_text = translate_text(transcribed_text, source_language, target_lang)
+                        translated_path = file_dir / f"translated_{target_lang}.txt"
+                        translated_path.write_text(translated_text, encoding="utf-8")
+                        results[f"translated_{target_lang}"] = str(translated_path)
+                        
+                        # Generate audio if requested
+                        if "generate_audio" in normalized_options:
+                            logger.info(f"Generating TTS audio for {target_lang}...")
+                            audio_path = file_dir / f"audio_{target_lang}.mp3"
+                            await generate_long_tts_audio(translated_text, target_lang, audio_path)
+                            results[f"audio_{target_lang}"] = str(audio_path)
+        
+        elif file_type == "text":
+            # Read text file
+            text_content = original_path.read_text(encoding="utf-8")
+            
+            # Improve text if requested
+            if "improve_text" in normalized_options:
+                logger.info("Improving text with AI...")
+                improved_text = improve_text_with_ai(text_content, language=source_language)
+                improved_path = file_dir / "improved.txt"
+                improved_path.write_text(improved_text, encoding="utf-8")
+                results["improved"] = str(improved_path)
+                text_content = improved_text  # Use improved text for translation
+            
+            # Translate if requested
+            if "translate" in normalized_options and normalized_langs:
+                for target_lang in normalized_langs:
+                    logger.info(f"Translating to {target_lang}...")
+                    translated_text = translate_text(text_content, source_language, target_lang)
+                    translated_path = file_dir / f"translated_{target_lang}.txt"
+                    translated_path.write_text(translated_text, encoding="utf-8")
+                    results[f"translated_{target_lang}"] = str(translated_path)
+                    
+                    # Generate audio if requested
+                    if "generate_audio" in normalized_options:
+                        logger.info(f"Generating TTS audio for {target_lang}...")
+                        audio_path = file_dir / f"audio_{target_lang}.mp3"
+                        await generate_long_tts_audio(translated_text, target_lang, audio_path)
+                        results[f"audio_{target_lang}"] = str(audio_path)
+        
+        return JSONResponse({
+            "id": file_id,
+            "message": "Fichier traité avec succès.",
+            "results": results,
+        })
+    
+    except Exception as e:
+        logger.exception("Error processing audio/text file")
+        return JSONResponse(
+            {"error": f"Erreur lors du traitement: {str(e)}"},
+            status_code=500,
+        )
+
+
+# ---------- File downloads ----------
+@app.get("/files/{file_id}/{filename:path}")
+async def download_file(request: Request, file_id: str, filename: str):
+    """Download a processed file (transcribed text, translated text, generated audio, etc.)."""
+    # Find file directory (could be in a folder)
+    file_dir = _find_video_directory(file_id)
+    if not file_dir:
+        return JSONResponse({"error": "Fichier non trouvé."}, status_code=404)
+    
+    file_path = file_dir / filename
+    if not file_path.exists() or not file_path.is_file():
+        return JSONResponse({"error": "Fichier non trouvé."}, status_code=404)
+    
+    # Check privacy
+    info = _load_video_info(file_dir)
+    is_private = info.get("is_private", False)
+    folder_path = info.get("folder_path")
+    if not is_editor(request) and (is_private or _is_folder_private(folder_path)):
+        return JSONResponse({"error": "Accès refusé."}, status_code=403)
+    
+    return FileResponse(
+        path=str(file_path),
+        filename=filename,
+        media_type="application/octet-stream",
+    )
 
 
 # ---------- File management (editors only) ----------

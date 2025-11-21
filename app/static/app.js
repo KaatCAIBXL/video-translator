@@ -1332,6 +1332,55 @@ async function changeFolderColor(folderPath, currentColor) {
 }
 
 // Upload form handler (only for editors)
+// Dynamic form handling based on file type
+const fileTypeRadios = document.querySelectorAll('input[name="file_type"]');
+const fileInput = document.getElementById("video-file");
+const fileTypeLabel = document.getElementById("file-type-label");
+const videoOptions = document.getElementById("video-options");
+const audioOptions = document.getElementById("audio-options");
+const textOptions = document.getElementById("text-options");
+const languagesFieldset = document.getElementById("languages-fieldset");
+const sourceLanguageFieldset = document.getElementById("source-language-fieldset");
+const ttsSpeedFieldset = document.getElementById("tts-speed-fieldset");
+
+if (fileTypeRadios.length > 0) {
+    fileTypeRadios.forEach(radio => {
+        radio.addEventListener("change", (e) => {
+            const fileType = e.target.value;
+            
+            // Update file input accept attribute and label
+            if (fileType === "video") {
+                fileInput.accept = "video/*";
+                fileTypeLabel.textContent = "Fichier vidéo :";
+                videoOptions.style.display = "block";
+                audioOptions.style.display = "none";
+                textOptions.style.display = "none";
+                languagesFieldset.style.display = "block";
+                sourceLanguageFieldset.style.display = "none";
+                ttsSpeedFieldset.style.display = "block";
+            } else if (fileType === "audio") {
+                fileInput.accept = "audio/*";
+                fileTypeLabel.textContent = "Fichier audio :";
+                videoOptions.style.display = "none";
+                audioOptions.style.display = "block";
+                textOptions.style.display = "none";
+                languagesFieldset.style.display = "block";
+                sourceLanguageFieldset.style.display = "block";
+                ttsSpeedFieldset.style.display = "none";
+            } else if (fileType === "text") {
+                fileInput.accept = ".txt";
+                fileTypeLabel.textContent = "Fichier texte :";
+                videoOptions.style.display = "none";
+                audioOptions.style.display = "none";
+                textOptions.style.display = "block";
+                languagesFieldset.style.display = "block";
+                sourceLanguageFieldset.style.display = "block";
+                ttsSpeedFieldset.style.display = "none";
+            }
+        });
+    });
+}
+
 const uploadForm = document.getElementById("upload-form");
 if (uploadForm && isEditor) {
     uploadForm.addEventListener("submit", async (e) => {
@@ -1341,12 +1390,26 @@ if (uploadForm && isEditor) {
     statusEl.textContent = "Téléversement et traitement en cours... Cela peut prendre un moment.";
 
     const formData = new FormData(form);
+    const fileType = form.querySelector('input[name="file_type"]:checked')?.value || "video";
     const checkedLangs = [...form.querySelectorAll("input[name='languages']:checked")];
     const checkedOptions = [...form.querySelectorAll("input[name='process_options']:checked")];
+    
+    formData.append("file_type", fileType);
+    
+    // For audio and text files, we need source language
+    if (fileType === "audio" || fileType === "text") {
+        const sourceLang = form.querySelector('select[name="source_language"]')?.value;
+        if (sourceLang) {
+            formData.append("source_language", sourceLang);
+        }
+    }
         
-    if (checkedLangs.length === 0 || checkedLangs.length > 2) {
-        alert("Veuillez sélectionner une ou deux langues cibles.");
-        return;
+    // Languages are required for translation/generation
+    if (checkedOptions.some(opt => opt.value === "translate" || opt.value === "generate_audio" || opt.value === "subs" || opt.value === "dub_audio" || opt.value === "dub_video")) {
+        if (checkedLangs.length === 0 || checkedLangs.length > 2) {
+            alert("Veuillez sélectionner une ou deux langues cibles.");
+            return;
+        }
     }
 
     if (checkedOptions.length === 0) {
@@ -1389,11 +1452,42 @@ if (uploadForm && isEditor) {
 
         const data = await res.json();
         statusEl.innerHTML = "";
-        const queuedMsg = document.createElement("div");
-        queuedMsg.textContent = `Téléversement réussi. La vidéo ${data.id} est en cours de traitement...`;
-        statusEl.appendChild(queuedMsg);
-
-        await pollJobStatus(data.id, statusEl);
+        
+        // Check if this is an audio/text file (no job polling needed)
+        if (fileType === "audio" || fileType === "text") {
+            const successMsg = document.createElement("div");
+            successMsg.className = "status-success";
+            successMsg.textContent = data.message || "Fichier traité avec succès!";
+            statusEl.appendChild(successMsg);
+            
+            // Show results if available
+            if (data.results) {
+                const resultsDiv = document.createElement("div");
+                resultsDiv.style.marginTop = "10px";
+                resultsDiv.innerHTML = "<strong>Fichiers générés:</strong><ul>";
+                for (const [key, path] of Object.entries(data.results)) {
+                    const li = document.createElement("li");
+                    const link = document.createElement("a");
+                    // Extract filename from path
+                    const filename = path.split(/[/\\]/).pop();
+                    link.href = `/files/${data.id}/${filename}`;
+                    link.textContent = key + " (" + filename + ")";
+                    link.target = "_blank";
+                    li.appendChild(link);
+                    resultsDiv.querySelector("ul").appendChild(li);
+                }
+                resultsDiv.innerHTML += "</ul>";
+                statusEl.appendChild(resultsDiv);
+            }
+            
+            fetchVideos(); // Refresh video list
+        } else {
+            // Video processing with job polling
+            const queuedMsg = document.createElement("div");
+            queuedMsg.textContent = `Téléversement réussi. La vidéo ${data.id} est en cours de traitement...`;
+            statusEl.appendChild(queuedMsg);
+            await pollJobStatus(data.id, statusEl);
+        }
     } catch (err) {
         console.error(err);
         statusEl.textContent = "Erreur inconnue.";
