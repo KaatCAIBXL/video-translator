@@ -1011,6 +1011,20 @@ function timestampToSeconds(raw) {
 }
 const fileInput = document.getElementById("video-file");
 const fileNameLabel = document.getElementById("selected-file-name");
+const fileUploadButton = document.getElementById("file-upload-button");
+
+// Setup file upload button click handler
+if (fileUploadButton && fileInput) {
+    fileUploadButton.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        // Trigger file input click
+        if (fileInput) {
+            fileInput.click();
+        }
+    });
+}
+
 if (fileInput && fileNameLabel) {
     const defaultLabel = fileNameLabel.textContent || "Aucun fichier sélectionné";
     const updateFileLabel = () => {
@@ -1020,7 +1034,19 @@ if (fileInput && fileNameLabel) {
             fileNameLabel.textContent = defaultLabel;
         }
     };
+    // Support for both change and input events (iOS compatibility)
     fileInput.addEventListener("change", updateFileLabel);
+    fileInput.addEventListener("input", updateFileLabel);
+    
+    // Also handle click on the label area for better iOS support
+    const fileUploadLabel = document.getElementById("file-type-label");
+    if (fileUploadLabel) {
+        fileUploadLabel.style.cursor = "pointer";
+        fileUploadLabel.addEventListener("click", (e) => {
+            e.preventDefault();
+            fileInput.click();
+        });
+    }
 }
 
 // Editor functions
@@ -1385,14 +1411,33 @@ const uploadForm = document.getElementById("upload-form");
 if (uploadForm && isEditor) {
     uploadForm.addEventListener("submit", async (e) => {
     e.preventDefault();
+    e.stopPropagation(); // Prevent iOS Safari from handling form differently
+    
     const form = e.target;
     const statusEl = document.getElementById("upload-status");
+    if (!statusEl) {
+        console.error("Upload status element not found");
+        return;
+    }
+    
+    // Check if file is selected
+    const fileInput = document.getElementById("video-file");
+    if (!fileInput || !fileInput.files || fileInput.files.length === 0) {
+        alert("Veuillez sélectionner un fichier.");
+        return;
+    }
+    
     statusEl.textContent = "Téléversement et traitement en cours... Cela peut prendre un moment.";
 
     const formData = new FormData(form);
     const fileType = form.querySelector('input[name="file_type"]:checked')?.value || "video";
     const checkedLangs = [...form.querySelectorAll("input[name='languages']:checked")];
     const checkedOptions = [...form.querySelectorAll("input[name='process_options']:checked")];
+    
+    // Ensure file is included (iOS sometimes doesn't include it automatically)
+    if (fileInput.files[0]) {
+        formData.set("file", fileInput.files[0]);
+    }
     
     formData.append("file_type", fileType);
     
@@ -1455,9 +1500,17 @@ if (uploadForm && isEditor) {
     formData.append("is_private", isPrivate);
 
     try {
+        // Disable submit button to prevent double submission (iOS issue)
+        const submitBtn = form.querySelector('button[type="submit"]');
+        if (submitBtn) {
+            submitBtn.disabled = true;
+            submitBtn.textContent = "Téléversement en cours...";
+        }
+        
         const res = await fetch("/api/upload", {
             method: "POST",
             body: formData,
+            // Don't set Content-Type header - let browser set it with boundary for multipart/form-data
         });
 
         if (!res.ok) {
@@ -1503,6 +1556,13 @@ if (uploadForm && isEditor) {
             queuedMsg.textContent = `Téléversement réussi. La vidéo ${data.id} est en cours de traitement...`;
             statusEl.appendChild(queuedMsg);
             await pollJobStatus(data.id, statusEl);
+        }
+        
+        // Re-enable submit button after successful upload
+        const submitBtn = form.querySelector('button[type="submit"]');
+        if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.textContent = "Téléverser et traiter";
         }
     } catch (err) {
         console.error(err);
