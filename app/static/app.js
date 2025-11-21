@@ -1019,6 +1019,16 @@ function initializeFileUpload() {
         console.warn("File input not found");
         return;
     }
+    
+    // Ensure file input has correct accept attribute based on current file type selection
+    const selectedFileType = document.querySelector('input[name="file_type"]:checked')?.value || "video";
+    if (selectedFileType === "video") {
+        fileInput.accept = "video/*";
+    } else if (selectedFileType === "audio") {
+        fileInput.accept = "audio/*";
+    } else if (selectedFileType === "text") {
+        fileInput.accept = ".txt";
+    }
 
     // Setup file upload button click handler - DIRECT AND RELIABLE
     if (fileUploadButton) {
