@@ -1897,9 +1897,11 @@ function initializeFolderManagement() {
             
             dialog.appendChild(buttons);
             document.body.appendChild(dialog);
-        });
+        };
+        
+        console.log("Create folder button handler attached successfully");
     } else {
-        console.warn("Create folder button not found");
+        console.error("Create folder button element not found!");
     }
 }
 
