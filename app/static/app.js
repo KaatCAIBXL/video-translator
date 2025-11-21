@@ -1009,34 +1009,49 @@ function timestampToSeconds(raw) {
         parseFloat(seconds)
     );
 }
-const fileInput = document.getElementById("video-file");
-const fileNameLabel = document.getElementById("selected-file-name");
-const fileUploadButton = document.getElementById("file-upload-button");
+// Initialize file upload functionality when DOM is ready
+function initializeFileUpload() {
+    const fileInput = document.getElementById("video-file");
+    const fileNameLabel = document.getElementById("selected-file-name");
+    const fileUploadButton = document.getElementById("file-upload-button");
 
-// Setup file upload button click handler
-if (fileUploadButton && fileInput) {
-    fileUploadButton.addEventListener("click", (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        // Trigger file input click
-        if (fileInput) {
-            fileInput.click();
-        }
-    });
-}
+    if (!fileInput) {
+        console.warn("File input not found");
+        return;
+    }
 
-if (fileInput && fileNameLabel) {
-    const defaultLabel = fileNameLabel.textContent || "Aucun fichier sélectionné";
-    const updateFileLabel = () => {
-        if (fileInput.files && fileInput.files.length > 0) {
-            fileNameLabel.textContent = fileInput.files[0].name;
-        } else {
-            fileNameLabel.textContent = defaultLabel;
-        }
-    };
-    // Support for both change and input events (iOS compatibility)
-    fileInput.addEventListener("change", updateFileLabel);
-    fileInput.addEventListener("input", updateFileLabel);
+    // Setup file upload button click handler
+    if (fileUploadButton) {
+        fileUploadButton.addEventListener("click", (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            // Trigger file input click
+            try {
+                fileInput.click();
+            } catch (err) {
+                console.error("Error triggering file input:", err);
+                // Fallback: try to focus and click
+                fileInput.focus();
+                fileInput.click();
+            }
+        });
+    } else {
+        console.warn("File upload button not found");
+    }
+
+    if (fileNameLabel) {
+        const defaultLabel = fileNameLabel.textContent || "Aucun fichier sélectionné";
+        const updateFileLabel = () => {
+            if (fileInput.files && fileInput.files.length > 0) {
+                fileNameLabel.textContent = fileInput.files[0].name;
+            } else {
+                fileNameLabel.textContent = defaultLabel;
+            }
+        };
+        // Support for both change and input events (iOS compatibility)
+        fileInput.addEventListener("change", updateFileLabel);
+        fileInput.addEventListener("input", updateFileLabel);
+    }
     
     // Also handle click on the label area for better iOS support
     const fileUploadLabel = document.getElementById("file-type-label");
@@ -1044,9 +1059,21 @@ if (fileInput && fileNameLabel) {
         fileUploadLabel.style.cursor = "pointer";
         fileUploadLabel.addEventListener("click", (e) => {
             e.preventDefault();
-            fileInput.click();
+            try {
+                fileInput.click();
+            } catch (err) {
+                console.error("Error triggering file input from label:", err);
+            }
         });
     }
+}
+
+// Initialize when DOM is ready
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initializeFileUpload);
+} else {
+    // DOM is already loaded
+    initializeFileUpload();
 }
 
 // Editor functions
@@ -1360,7 +1387,7 @@ async function changeFolderColor(folderPath, currentColor) {
 // Upload form handler (only for editors)
 // Dynamic form handling based on file type
 const fileTypeRadios = document.querySelectorAll('input[name="file_type"]');
-const fileInput = document.getElementById("video-file");
+const fileInputForType = document.getElementById("video-file");
 const fileTypeLabel = document.getElementById("file-type-label");
 const videoOptions = document.getElementById("video-options");
 const audioOptions = document.getElementById("audio-options");
@@ -1375,33 +1402,35 @@ if (fileTypeRadios.length > 0) {
             const fileType = e.target.value;
             
             // Update file input accept attribute and label
-            if (fileType === "video") {
-                fileInput.accept = "video/*";
-                fileTypeLabel.textContent = "Fichier vidéo :";
-                videoOptions.style.display = "block";
-                audioOptions.style.display = "none";
-                textOptions.style.display = "none";
-                languagesFieldset.style.display = "block";
-                sourceLanguageFieldset.style.display = "none";
-                ttsSpeedFieldset.style.display = "block";
-            } else if (fileType === "audio") {
-                fileInput.accept = "audio/*";
-                fileTypeLabel.textContent = "Fichier audio :";
-                videoOptions.style.display = "none";
-                audioOptions.style.display = "block";
-                textOptions.style.display = "none";
-                languagesFieldset.style.display = "block";
-                sourceLanguageFieldset.style.display = "block";
-                ttsSpeedFieldset.style.display = "none";
-            } else if (fileType === "text") {
-                fileInput.accept = ".txt";
-                fileTypeLabel.textContent = "Fichier texte :";
-                videoOptions.style.display = "none";
-                audioOptions.style.display = "none";
-                textOptions.style.display = "block";
-                languagesFieldset.style.display = "block";
-                sourceLanguageFieldset.style.display = "block";
-                ttsSpeedFieldset.style.display = "none";
+            if (fileInputForType) {
+                if (fileType === "video") {
+                    fileInputForType.accept = "video/*";
+                    if (fileTypeLabel) fileTypeLabel.textContent = "Fichier vidéo :";
+                    videoOptions.style.display = "block";
+                    audioOptions.style.display = "none";
+                    textOptions.style.display = "none";
+                    languagesFieldset.style.display = "block";
+                    sourceLanguageFieldset.style.display = "none";
+                    ttsSpeedFieldset.style.display = "block";
+                } else if (fileType === "audio") {
+                    fileInputForType.accept = "audio/*";
+                    if (fileTypeLabel) fileTypeLabel.textContent = "Fichier audio :";
+                    videoOptions.style.display = "none";
+                    audioOptions.style.display = "block";
+                    textOptions.style.display = "none";
+                    languagesFieldset.style.display = "block";
+                    sourceLanguageFieldset.style.display = "block";
+                    ttsSpeedFieldset.style.display = "none";
+                } else if (fileType === "text") {
+                    fileInputForType.accept = ".txt";
+                    if (fileTypeLabel) fileTypeLabel.textContent = "Fichier texte :";
+                    videoOptions.style.display = "none";
+                    audioOptions.style.display = "none";
+                    textOptions.style.display = "block";
+                    languagesFieldset.style.display = "block";
+                    sourceLanguageFieldset.style.display = "block";
+                    ttsSpeedFieldset.style.display = "none";
+                }
             }
         });
     });
@@ -1421,8 +1450,8 @@ if (uploadForm && isEditor) {
     }
     
     // Check if file is selected
-    const fileInput = document.getElementById("video-file");
-    if (!fileInput || !fileInput.files || fileInput.files.length === 0) {
+    const fileInputForUpload = document.getElementById("video-file");
+    if (!fileInputForUpload || !fileInputForUpload.files || fileInputForUpload.files.length === 0) {
         alert("Veuillez sélectionner un fichier.");
         return;
     }
@@ -1435,8 +1464,8 @@ if (uploadForm && isEditor) {
     const checkedOptions = [...form.querySelectorAll("input[name='process_options']:checked")];
     
     // Ensure file is included (iOS sometimes doesn't include it automatically)
-    if (fileInput.files[0]) {
-        formData.set("file", fileInput.files[0]);
+    if (fileInputForUpload.files[0]) {
+        formData.set("file", fileInputForUpload.files[0]);
     }
     
     formData.append("file_type", fileType);
