@@ -317,7 +317,7 @@ function createVideoItem(video) {
         downloadFileBtn.onclick = () => {
             const link = document.createElement("a");
             if (fileType === "video") {
-                link.href = `/videos/${video.id}/original`;
+                link.href = `/videos/${encodeURIComponent(video.id)}/original`;
                 link.download = `${baseName}_original.mp4`;
             } else {
                 // For audio/text files, use the /files endpoint
@@ -325,10 +325,10 @@ function createVideoItem(video) {
                 // For loose files, use the filename directly
                 if (video.id.includes("_") && !video.id.match(/^[a-f0-9-]{36}$/)) {
                     // This is likely a loose file - use filename directly
-                    link.href = `/files/${video.id}/${encodeURIComponent(video.filename)}`;
+                    link.href = `/files/${encodeURIComponent(video.id)}/${encodeURIComponent(video.filename)}`;
                 } else {
                     // This is a processed file - use original extension
-                    link.href = `/files/${video.id}/original${fileType === "audio" ? ".mp3" : ".txt"}`;
+                    link.href = `/files/${encodeURIComponent(video.id)}/original${fileType === "audio" ? ".mp3" : ".txt"}`;
                 }
                 link.download = video.filename;
             }
@@ -367,7 +367,7 @@ function createVideoItem(video) {
                 downloadSubtitlesBtn.textContent = `📥 Télécharger les sous-titres (${video.available_subtitles.slice(0, 2).map(l => l.toUpperCase()).join(" + ")})`;
                 downloadSubtitlesBtn.onclick = () => {
                     const link = document.createElement("a");
-                    link.href = `/videos/${video.id}/subs/combined?langs=${encodeURIComponent(langParam)}`;
+                    link.href = `/videos/${encodeURIComponent(video.id)}/subs/combined?langs=${encodeURIComponent(langParam)}`;
                     link.download = `${baseName}_${video.available_subtitles.slice(0, 2).join("_")}.vtt`;
                     link.click();
                 };
@@ -375,7 +375,7 @@ function createVideoItem(video) {
                 downloadSubtitlesBtn.textContent = `📥 Télécharger les sous-titres (${video.available_subtitles[0].toUpperCase()})`;
                 downloadSubtitlesBtn.onclick = () => {
                     const link = document.createElement("a");
-                    link.href = `/videos/${video.id}/subs/${video.available_subtitles[0]}`;
+                    link.href = `/videos/${encodeURIComponent(video.id)}/subs/${encodeURIComponent(video.available_subtitles[0])}`;
                     link.download = `${baseName}_${video.available_subtitles[0]}.vtt`;
                     link.click();
                 };
@@ -395,7 +395,7 @@ function createVideoItem(video) {
                 downloads.appendChild(
                     createDownloadLink(
                         `Télécharger l'audio doublé (${lang.toUpperCase()})`,
-                        `/videos/${video.id}/dub-audio/${lang}`,
+                        `/videos/${encodeURIComponent(video.id)}/dub-audio/${encodeURIComponent(lang)}`,
                         `${baseName}_dub_${lang}.mp3`
                     )
                 );
@@ -702,9 +702,9 @@ async function isVideoCached(videoId, mode = "original", lang = null) {
         const cache = await caches.open("video-cache");
         let url;
         if (mode === "dub" && lang) {
-            url = `/videos/${videoId}/dub/${lang}`;
+            url = `/videos/${encodeURIComponent(videoId)}/dub/${encodeURIComponent(lang)}`;
         } else {
-            url = `/videos/${videoId}/original`;
+            url = `/videos/${encodeURIComponent(videoId)}/original`;
         }
         const cached = await cache.match(url);
         return cached !== undefined;
@@ -724,9 +724,9 @@ async function preloadVideoForOffline(videoId, mode = "original", lang = null, a
         const cache = await caches.open("video-cache");
         let url;
         if (mode === "dub" && lang) {
-            url = `/videos/${videoId}/dub/${lang}`;
+            url = `/videos/${encodeURIComponent(videoId)}/dub/${encodeURIComponent(lang)}`;
         } else {
-            url = `/videos/${videoId}/original`;
+            url = `/videos/${encodeURIComponent(videoId)}/original`;
         }
         
         // Check cache size limit
@@ -761,9 +761,9 @@ async function preloadVideoForOffline(videoId, mode = "original", lang = null, a
                 progressMsg.textContent = "Mise en cache de la vidéo et des sous-titres...";
                 for (const subLang of availableSubtitles) {
                     try {
-                        const subResponse = await fetch(`/videos/${videoId}/subs/${subLang}`);
+                        const subResponse = await fetch(`/videos/${encodeURIComponent(videoId)}/subs/${encodeURIComponent(subLang)}`);
                         if (subResponse.ok) {
-                            await cache.put(`/videos/${videoId}/subs/${subLang}`, subResponse.clone());
+                            await cache.put(`/videos/${encodeURIComponent(videoId)}/subs/${encodeURIComponent(subLang)}`, subResponse.clone());
                         }
                     } catch (err) {
                         console.warn(`Failed to cache subtitles for ${subLang}:`, err);
@@ -802,9 +802,9 @@ async function playVideo(video, options = {}) {
     // Determine video URL
     let videoUrl;
     if (mode === "dub" && lang) {
-        videoUrl = `/videos/${video.id}/dub/${lang}`;
+        videoUrl = `/videos/${encodeURIComponent(video.id)}/dub/${encodeURIComponent(lang)}`;
     } else {
-        videoUrl = `/videos/${video.id}/original`;
+        videoUrl = `/videos/${encodeURIComponent(video.id)}/original`;
     }
     
     // Check if video is cached for offline playback
@@ -872,7 +872,7 @@ async function playVideo(video, options = {}) {
                 
                 const subtitles = await Promise.all(
                     langsToLoad.map(async (lang) => {
-                        const subUrl = `/videos/${video.id}/subs/${lang}`;
+                        const subUrl = `/videos/${encodeURIComponent(video.id)}/subs/${encodeURIComponent(lang)}`;
                         
                         // Try cache first if available
                         let res;
@@ -961,7 +961,7 @@ async function playVideo(video, options = {}) {
         if (!selectedLang) {
             infoEl.textContent = "Aucun doublage disponible.";
         } else {
-            videoEl.src = `/videos/${video.id}/dub/${selectedLang}`;
+            videoEl.src = `/videos/${encodeURIComponent(video.id)}/dub/${encodeURIComponent(selectedLang)}`;
             infoEl.textContent = `Lecture avec doublage (${selectedLang.toUpperCase()})`;
         }
     } else {
@@ -1179,7 +1179,7 @@ async function renameVideo(videoId) {
         const formData = new FormData();
         formData.append("new_filename", newName);
         
-        const res = await fetch(`/api/videos/${videoId}/rename`, {
+        const res = await fetch(`/api/videos/${encodeURIComponent(videoId)}/rename`, {
             method: "PUT",
             body: formData,
         });
@@ -1203,7 +1203,7 @@ async function togglePrivacy(videoId, isPrivate) {
         const formData = new FormData();
         formData.append("is_private", isPrivate);
         
-        const res = await fetch(`/api/videos/${videoId}/privacy`, {
+        const res = await fetch(`/api/videos/${encodeURIComponent(videoId)}/privacy`, {
             method: "PUT",
             body: formData,
         });
@@ -1228,7 +1228,7 @@ async function deleteVideo(videoId) {
     }
     
     try {
-        const res = await fetch(`/api/videos/${videoId}`, {
+        const res = await fetch(`/api/videos/${encodeURIComponent(videoId)}`, {
             method: "DELETE",
         });
         
@@ -1248,7 +1248,7 @@ async function deleteVideo(videoId) {
 
 async function editSubtitle(videoId, lang) {
     try {
-        const res = await fetch(`/api/videos/${videoId}/subs/${lang}/edit`);
+        const res = await fetch(`/api/videos/${encodeURIComponent(videoId)}/subs/${encodeURIComponent(lang)}/edit`);
         if (!res.ok) {
             const err = await res.json();
             alert("Erreur : " + (err.error || res.statusText));
@@ -1319,7 +1319,7 @@ async function editSubtitle(videoId, lang) {
             formData.append("content", content);
             
             try {
-                const saveRes = await fetch(`/api/videos/${videoId}/subs/${lang}/edit`, {
+                const saveRes = await fetch(`/api/videos/${encodeURIComponent(videoId)}/subs/${encodeURIComponent(lang)}/edit`, {
                     method: "PUT",
                     body: formData,
                 });
