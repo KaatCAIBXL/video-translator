@@ -30,9 +30,12 @@
                 </select>
             </label>
         </fieldset>
-         <label>Fichier vidéo :
-             <input type="file" name="file" accept="video/*" required>
-         </label>
+         <div class="file-upload">
+             <label class="file-upload-label">Fichier vidéo :</label>
+             <input type="file" name="file" id="video-file" accept="video/*" class="file-upload-input" required>
+             <button type="button" class="file-upload-trigger" onclick="document.getElementById('video-file').click()">Choisir un fichier</button>
+             <span class="file-upload-name" id="selected-file-name">Aucun fichier sélectionné</span>
+         </div>
          <fieldset>
              <legend>Langues cibles (max. 2)</legend>
              {% for lang in available_languages %}
@@ -48,7 +51,7 @@
             <legend>Options de traitement</legend>
             <label>
                 <input type="checkbox" name="process_options" value="subs" checked>
-                Ondertiteling downloaden
+                Télécharger les sous-titres
             </label>
              <label>
                  <input type="checkbox" name="process_options" value="dub_audio" checked>
@@ -114,5 +117,3 @@
  <script src="/static/app.js"></script>
  </body>
  </html>
-
-)

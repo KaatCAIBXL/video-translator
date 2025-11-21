@@ -338,24 +338,33 @@ function createVideoItem(video) {
 
         if (video.available_subtitles && video.available_subtitles.length > 0) {
             // If 2 languages available, download combined, otherwise download first language
+            const downloadSubtitlesBtn = document.createElement("button");
             if (video.available_subtitles.length >= 2) {
                 const langParam = video.available_subtitles.slice(0, 2).join(",");
-                downloads.appendChild(
-                    createDownloadLink(
-                        `Ondertiteling downloaden (${video.available_subtitles.slice(0, 2).map(l => l.toUpperCase()).join(" + ")})`,
-                        `/videos/${video.id}/subs/combined?langs=${encodeURIComponent(langParam)}`,
-                        `${baseName}_${video.available_subtitles.slice(0, 2).join("_")}.vtt`
-                    )
-                );
+                downloadSubtitlesBtn.textContent = `📥 Télécharger les sous-titres (${video.available_subtitles.slice(0, 2).map(l => l.toUpperCase()).join(" + ")})`;
+                downloadSubtitlesBtn.onclick = () => {
+                    const link = document.createElement("a");
+                    link.href = `/videos/${video.id}/subs/combined?langs=${encodeURIComponent(langParam)}`;
+                    link.download = `${baseName}_${video.available_subtitles.slice(0, 2).join("_")}.vtt`;
+                    link.click();
+                };
             } else {
-                downloads.appendChild(
-                    createDownloadLink(
-                        `Ondertiteling downloaden (${video.available_subtitles[0].toUpperCase()})`,
-                        `/videos/${video.id}/subs/${video.available_subtitles[0]}`,
-                        `${baseName}_${video.available_subtitles[0]}.vtt`
-                    )
-                );
+                downloadSubtitlesBtn.textContent = `📥 Télécharger les sous-titres (${video.available_subtitles[0].toUpperCase()})`;
+                downloadSubtitlesBtn.onclick = () => {
+                    const link = document.createElement("a");
+                    link.href = `/videos/${video.id}/subs/${video.available_subtitles[0]}`;
+                    link.download = `${baseName}_${video.available_subtitles[0]}.vtt`;
+                    link.click();
+                };
             }
+            downloadSubtitlesBtn.style.marginBottom = "5px";
+            downloadSubtitlesBtn.style.padding = "8px";
+            downloadSubtitlesBtn.style.backgroundColor = "#6c757d";
+            downloadSubtitlesBtn.style.color = "white";
+            downloadSubtitlesBtn.style.border = "none";
+            downloadSubtitlesBtn.style.borderRadius = "3px";
+            downloadSubtitlesBtn.style.cursor = "pointer";
+            downloads.appendChild(downloadSubtitlesBtn);
         }
 
         if (video.available_dub_audios && video.available_dub_audios.length > 0) {
