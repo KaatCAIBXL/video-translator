@@ -1068,13 +1068,26 @@ function initializeFileUpload() {
     }
 }
 
-// Initialize when DOM is ready
+// Initialize when DOM is ready - with retry mechanism
+function tryInitializeFileUpload() {
+    try {
+        initializeFileUpload();
+    } catch (err) {
+        console.error("Error initializing file upload:", err);
+        // Retry after a short delay
+        setTimeout(tryInitializeFileUpload, 100);
+    }
+}
+
 if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', initializeFileUpload);
+    document.addEventListener('DOMContentLoaded', tryInitializeFileUpload);
 } else {
     // DOM is already loaded
-    initializeFileUpload();
+    tryInitializeFileUpload();
 }
+
+// Also try after a delay as fallback
+setTimeout(tryInitializeFileUpload, 500);
 
 // Editor functions
 async function renameVideo(videoId) {
@@ -1600,11 +1613,21 @@ if (uploadForm && isEditor) {
 });
 }
 
-// Folder management (editors only)
-if (isEditor) {
+// Folder management (editors only) - initialize when ready
+function initializeFolderManagement() {
+    if (!isEditor) {
+        return;
+    }
+    
     const createFolderBtn = document.getElementById("create-folder-btn");
     if (createFolderBtn) {
-        createFolderBtn.addEventListener("click", async () => {
+        // Remove any existing listeners to prevent duplicates
+        const newBtn = createFolderBtn.cloneNode(true);
+        createFolderBtn.parentNode.replaceChild(newBtn, createFolderBtn);
+        
+        newBtn.addEventListener("click", async (e) => {
+            e.preventDefault();
+            e.stopPropagation();
             // Get existing folders for path selection
             let existingFolders = [];
             try {
@@ -1786,8 +1809,28 @@ if (isEditor) {
             dialog.appendChild(buttons);
             document.body.appendChild(dialog);
         });
+    } else {
+        console.warn("Create folder button not found");
     }
 }
+
+// Initialize folder management when DOM is ready
+function tryInitializeFolderManagement() {
+    try {
+        initializeFolderManagement();
+    } catch (err) {
+        console.error("Error initializing folder management:", err);
+        setTimeout(tryInitializeFolderManagement, 100);
+    }
+}
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', tryInitializeFolderManagement);
+} else {
+    tryInitializeFolderManagement();
+}
+// Also try after a delay as fallback
+setTimeout(tryInitializeFolderManagement, 500);
 
 // Populate folder dropdown in upload form
 async function populateFolderDropdown() {
@@ -1829,3 +1872,4 @@ window.addEventListener("load", () => {
     // Refresh folder dropdown when videos are fetched (in case folders changed)
     setInterval(populateFolderDropdown, 5000);
 });
+
