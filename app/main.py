@@ -787,17 +787,17 @@ async def get_original_video(request: Request, video_id: str):
     # First try to find as a video directory
     video_dir = _find_video_directory(video_id)
     if video_dir and video_dir.exists():
-        # Check privacy (video itself or parent folder)
-        info = _load_video_info(video_dir)
-        video_is_private = info.get("is_private", False) or _is_folder_private(info.get("folder_path"))
-        if video_is_private and not is_editor(request):
-            return JSONResponse({"error": "Accès refusé"}, status_code=403)
+    # Check privacy (video itself or parent folder)
+    info = _load_video_info(video_dir)
+    video_is_private = info.get("is_private", False) or _is_folder_private(info.get("folder_path"))
+    if video_is_private and not is_editor(request):
+        return JSONResponse({"error": "Accès refusé"}, status_code=403)
 
-        original_path = _find_original_video(video_dir)
+    original_path = _find_original_video(video_dir)
         if original_path is not None:
-            meta = _load_video_metadata(video_dir)
-            filename = meta.filename if meta else original_path.name
-            return FileResponse(original_path, filename=filename)
+    meta = _load_video_metadata(video_dir)
+    filename = meta.filename if meta else original_path.name
+    return FileResponse(original_path, filename=filename)
     
     # If not found as video directory, try to find as loose video file
     loose_file = _find_loose_file(video_id)
@@ -1412,14 +1412,14 @@ async def rename_video(request: Request, video_id: str, new_filename: str = Form
     video_dir = _find_video_dir(settings.PROCESSED_DIR)
     if video_dir:
         # This is a processed video directory
-    try:
-        meta_path = video_dir / "metadata.json"
-        meta = load_metadata(meta_path)
-        meta.filename = new_filename
-        save_metadata(meta, meta_path)
+        try:
+            meta_path = video_dir / "metadata.json"
+            meta = load_metadata(meta_path)
+            meta.filename = new_filename
+            save_metadata(meta, meta_path)
             return JSONResponse({"message": "Fichier renommé avec succès."})
-    except Exception as e:
-        logger.exception("Failed to rename video")
+        except Exception as e:
+            logger.exception("Failed to rename video")
             return JSONResponse({"error": f"Impossible de renommer le fichier: {e}"}, status_code=500)
     
     # If not found as video directory, try to find as loose file
