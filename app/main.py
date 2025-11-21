@@ -378,7 +378,8 @@ async def upload_video(
         )
     
     # Original video processing logic
-    if not languages:
+    # For videos, languages are always required
+    if not languages or len(languages) == 0:
         return JSONResponse(
             {"error": "Please select one or two target languages"},
             status_code=400,

@@ -1396,19 +1396,35 @@ if (uploadForm && isEditor) {
     
     formData.append("file_type", fileType);
     
+    // For videos, languages are always required
+    if (fileType === "video") {
+        if (checkedLangs.length === 0 || checkedLangs.length > 2) {
+            alert("Veuillez sélectionner une ou deux langues cibles.");
+            return;
+        }
+        // Explicitly add languages to FormData for videos
+        checkedLangs.forEach(lang => {
+            formData.append("languages", lang.value);
+        });
+    }
+    
     // For audio and text files, we need source language
     if (fileType === "audio" || fileType === "text") {
         const sourceLang = form.querySelector('select[name="source_language"]')?.value;
         if (sourceLang) {
             formData.append("source_language", sourceLang);
         }
-    }
         
-    // Languages are required for translation/generation
-    if (checkedOptions.some(opt => opt.value === "translate" || opt.value === "generate_audio" || opt.value === "subs" || opt.value === "dub_audio" || opt.value === "dub_video")) {
-        if (checkedLangs.length === 0 || checkedLangs.length > 2) {
-            alert("Veuillez sélectionner une ou deux langues cibles.");
-            return;
+        // Languages are required for translation/generation
+        if (checkedOptions.some(opt => opt.value === "translate" || opt.value === "generate_audio")) {
+            if (checkedLangs.length === 0 || checkedLangs.length > 2) {
+                alert("Veuillez sélectionner une ou deux langues cibles.");
+                return;
+            }
+            // Explicitly add languages to FormData
+            checkedLangs.forEach(lang => {
+                formData.append("languages", lang.value);
+            });
         }
     }
 
