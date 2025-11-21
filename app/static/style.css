@@ -18,6 +18,10 @@ body {
 .file-upload-input {
     position: absolute;
     left: -9999px;
+    opacity: 0;
+    width: 0;
+    height: 0;
+    overflow: hidden;
 }
 
 .file-upload-trigger {

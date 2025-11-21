@@ -47,8 +47,10 @@
         </fieldset>
          <div class="file-upload">
              <label class="file-upload-label" id="file-type-label">Fichier vidéo :</label>
-             <input type="file" name="file" id="video-file" accept="video/*" class="file-upload-input" required>
-             <button type="button" class="file-upload-trigger" id="file-upload-button">Choisir un fichier</button>
+             <label for="video-file" style="cursor: pointer;">
+                 <input type="file" name="file" id="video-file" accept="video/*" class="file-upload-input" required>
+                 <button type="button" class="file-upload-trigger" id="file-upload-button">Choisir un fichier</button>
+             </label>
              <span class="file-upload-name" id="selected-file-name">Aucun fichier sélectionné</span>
          </div>
          <fieldset id="processing-options-fieldset">
