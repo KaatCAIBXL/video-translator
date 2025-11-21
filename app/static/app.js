@@ -322,10 +322,10 @@ function createVideoItem(video) {
             } else {
                 // For audio/text files, use the /files endpoint
                 // Check if this is a loose file (ID contains underscores from path) or processed file
-                // For loose files, the filename is already in the ID, so we use the filename directly
+                // For loose files, use the filename directly
                 if (video.id.includes("_") && !video.id.match(/^[a-f0-9-]{36}$/)) {
                     // This is likely a loose file - use filename directly
-                    link.href = `/files/${video.id}/${video.filename}`;
+                    link.href = `/files/${video.id}/${encodeURIComponent(video.filename)}`;
                 } else {
                     // This is a processed file - use original extension
                     link.href = `/files/${video.id}/original${fileType === "audio" ? ".mp3" : ".txt"}`;

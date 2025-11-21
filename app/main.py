@@ -1327,8 +1327,19 @@ async def download_file(request: Request, file_id: str, filename: str):
             )
     
     # If not found as directory-based, try to find as loose file
+    # The filename parameter might be the actual filename for loose files
     loose_file = _find_loose_file(file_id)
     if loose_file and loose_file.exists() and loose_file.is_file():
+        # Check if filename matches (for loose files, filename is passed in the URL)
+        if filename and loose_file.name != filename:
+            # Try to find file with matching filename in the same directory
+            loose_file_path = loose_file.parent / filename
+            if loose_file_path.exists() and loose_file_path.is_file():
+                loose_file = loose_file_path
+            else:
+                # If filename doesn't match, still allow download of the found file
+                pass
+        
         # Check privacy based on folder
         try:
             rel_path = loose_file.parent.relative_to(settings.PROCESSED_DIR)
