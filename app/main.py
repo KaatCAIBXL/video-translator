@@ -348,53 +348,53 @@ async def list_videos(request: Request):
                         # Check if original file exists
                         original_exists = any((item / f"original{ext}").exists() for ext in [".mp3", ".wav", ".m4a", ".txt"])
                         if original_exists:
-                        is_private = info.get("is_private", False)
-                        
-                        # Get folder path
-                        file_folder_path = info.get("folder_path")
-                        if not file_folder_path and folder_path:
-                            file_folder_path = folder_path
-                        elif not file_folder_path:
-                            try:
-                                rel_path = item.parent.relative_to(settings.PROCESSED_DIR)
-                                if str(rel_path) != ".":
-                                    file_folder_path = str(rel_path).replace("\\", "/")
-                            except ValueError:
-                                pass
-                        
-                        # Check privacy
-                        file_is_private = is_private or _is_folder_private(file_folder_path)
-                        
-                        # Filter: viewers can't see private files
-                        if not user_is_editor and file_is_private:
-                            continue
-                        
-                        # Get original filename from info.json or directory
-                        original_file = None
-                        for ext in [".mp3", ".wav", ".m4a", ".txt"]:
-                            candidate = item / f"original{ext}"
-                            if candidate.exists():
-                                original_file = candidate
-                                break
-                        
-                        if original_file:
-                            filename = original_file.name
-                            # Use directory name as ID (same as video)
-                            file_id = item.name
+                            is_private = info.get("is_private", False)
                             
-                            items.append(
-                                VideoListItem(
-                                    id=file_id,
-                                    filename=filename,
-                                    file_type=file_type,
-                                    available_subtitles=[],
-                                    available_dubs=[],
-                                    available_dub_audios=[],
-                                    available_combined_subtitles=[],
-                                    folder_path=file_folder_path,
-                                    is_private=file_is_private,
+                            # Get folder path
+                            file_folder_path = info.get("folder_path")
+                            if not file_folder_path and folder_path:
+                                file_folder_path = folder_path
+                            elif not file_folder_path:
+                                try:
+                                    rel_path = item.parent.relative_to(settings.PROCESSED_DIR)
+                                    if str(rel_path) != ".":
+                                        file_folder_path = str(rel_path).replace("\\", "/")
+                                except ValueError:
+                                    pass
+                            
+                            # Check privacy
+                            file_is_private = is_private or _is_folder_private(file_folder_path)
+                            
+                            # Filter: viewers can't see private files
+                            if not user_is_editor and file_is_private:
+                                continue
+                            
+                            # Get original filename from directory
+                            original_file = None
+                            for ext in [".mp3", ".wav", ".m4a", ".txt"]:
+                                candidate = item / f"original{ext}"
+                                if candidate.exists():
+                                    original_file = candidate
+                                    break
+                            
+                            if original_file:
+                                filename = original_file.name
+                                # Use directory name as ID (same as video)
+                                file_id = item.name
+                                
+                                items.append(
+                                    VideoListItem(
+                                        id=file_id,
+                                        filename=filename,
+                                        file_type=file_type,
+                                        available_subtitles=[],
+                                        available_dubs=[],
+                                        available_dub_audios=[],
+                                        available_combined_subtitles=[],
+                                        folder_path=file_folder_path,
+                                        is_private=file_is_private,
+                                    )
                                 )
-                            )
                 else:
                     # This might be a folder, scan recursively
                     current_folder = folder_path + "/" + item.name if folder_path else item.name
