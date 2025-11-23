@@ -171,98 +171,139 @@ function createVideoItem(video) {
             div.appendChild(editorControls);
         }
 
-        // Summary (only for videos)
-        if (isVideo) {
-            const summary = document.createElement("div");
-            summary.className = "video-summary";
-            const subtitlesText =
-                video.available_subtitles && video.available_subtitles.length > 0
-                 ? video.available_subtitles.map((code) => code.toUpperCase()).join(", ")
-                    : "aucun";
-            const audioDubText =
-                video.available_dub_audios && video.available_dub_audios.length > 0
-                    ? video.available_dub_audios.map((code) => code.toUpperCase()).join(", ")
-                    : "aucun";   
-            const dubsText =
-                video.available_dubs && video.available_dubs.length > 0
-                    ? video.available_dubs.map((code) => code.toUpperCase()).join(", ")
-                    : "aucun";
-            summary.textContent =
-                `Ondertiteling : ${subtitlesText} | ` +
-                `Audio doublé : ${audioDubText} | ` +
-                `Vidéos doublées : ${dubsText}`;
-            div.appendChild(summary);
-        }
-
         // Controls (only for videos)
         if (isVideo) {
             const controls = document.createElement("div");
             controls.className = "video-controls";
 
-            // Subtitle selection with multiple checkboxes (before play button)
+            // Subtitle selection with multiple checkboxes
             const selectedLangs = new Set();
+            let selectedAudioMode = "original"; // "original" or "dub"
+            let selectedDubLang = null;
+            
             if (video.available_subtitles && video.available_subtitles.length > 0) {
-            const subtitleWrapper = document.createElement("div");
-            subtitleWrapper.style.marginTop = "10px";
-            subtitleWrapper.style.marginBottom = "10px";
-            
-            const subtitleLabel = document.createElement("label");
-            subtitleLabel.textContent = "Ondertiteling: ";
-            subtitleLabel.style.marginRight = "10px";
-            subtitleWrapper.appendChild(subtitleLabel);
-            
-            video.available_subtitles.forEach((lang) => {
-                const checkbox = document.createElement("input");
-                checkbox.type = "checkbox";
-                checkbox.value = lang;
-                checkbox.id = `subtitle-${video.id}-${lang}`;
-                checkbox.style.marginRight = "5px";
-                checkbox.style.marginLeft = "10px";
+                const subtitleWrapper = document.createElement("div");
+                subtitleWrapper.style.marginTop = "10px";
+                subtitleWrapper.style.marginBottom = "10px";
                 
-                const langLabel = document.createElement("label");
-                langLabel.htmlFor = checkbox.id;
-                langLabel.textContent = lang.toUpperCase();
-                langLabel.style.marginRight = "10px";
+                const subtitleLabel = document.createElement("label");
+                subtitleLabel.textContent = "Ondertiteling: ";
+                subtitleLabel.style.marginRight = "10px";
+                subtitleWrapper.appendChild(subtitleLabel);
                 
-                checkbox.addEventListener("change", () => {
-                    if (checkbox.checked) {
-                        selectedLangs.add(lang);
-                    } else {
-                        selectedLangs.delete(lang);
-                    }
-                    // Don't auto-play - user must click play button
+                video.available_subtitles.forEach((lang) => {
+                    const checkbox = document.createElement("input");
+                    checkbox.type = "checkbox";
+                    checkbox.value = lang;
+                    checkbox.id = `subtitle-${video.id}-${lang}`;
+                    checkbox.style.marginRight = "5px";
+                    checkbox.style.marginLeft = "10px";
+                    
+                    const langLabel = document.createElement("label");
+                    langLabel.htmlFor = checkbox.id;
+                    langLabel.textContent = lang.toUpperCase();
+                    langLabel.style.marginRight = "10px";
+                    langLabel.style.cursor = "pointer";
+                    
+                    checkbox.addEventListener("change", () => {
+                        if (checkbox.checked) {
+                            selectedLangs.add(lang);
+                        } else {
+                            selectedLangs.delete(lang);
+                        }
+                    });
+                    
+                    subtitleWrapper.appendChild(checkbox);
+                    subtitleWrapper.appendChild(langLabel);
                 });
                 
-                subtitleWrapper.appendChild(checkbox);
-                subtitleWrapper.appendChild(langLabel);
-            });
+                controls.appendChild(subtitleWrapper);
+            }
+
+            // Audio selection
+            const audioWrapper = document.createElement("div");
+            audioWrapper.style.marginTop = "10px";
+            audioWrapper.style.marginBottom = "10px";
             
-            controls.appendChild(subtitleWrapper);
-        }
-
-        const playOriginalBtn = document.createElement("button");
-        playOriginalBtn.textContent = "▶️ Play";
-        playOriginalBtn.onclick = () => {
-            if (selectedLangs.size > 0) {
-                playVideo(video, { mode: "subs", langs: Array.from(selectedLangs) });
-            } else {
-                playVideo(video, { mode: "original" });
-            }
-        };
-        controls.appendChild(playOriginalBtn);
-
-        if (video.available_dubs && video.available_dubs.length > 0) {
-            const dubWrapper = document.createElement("div");
-            dubWrapper.className = "dub-buttons";
-            video.available_dubs.forEach((lang) => {
-                const btnDub = document.createElement("button");
-                btnDub.textContent = `Lecture doublée (${lang.toUpperCase()})`;
-                btnDub.onclick = () => playVideo(video, { mode: "dub", lang });
-                dubWrapper.appendChild(btnDub);
-                
+            const audioLabel = document.createElement("label");
+            audioLabel.textContent = "Audio: ";
+            audioLabel.style.marginRight = "10px";
+            audioWrapper.appendChild(audioLabel);
+            
+            // Original audio option
+            const originalRadio = document.createElement("input");
+            originalRadio.type = "radio";
+            originalRadio.name = `audio-${video.id}`;
+            originalRadio.id = `audio-original-${video.id}`;
+            originalRadio.value = "original";
+            originalRadio.checked = true;
+            originalRadio.style.marginRight = "5px";
+            originalRadio.style.marginLeft = "10px";
+            originalRadio.addEventListener("change", () => {
+                if (originalRadio.checked) {
+                    selectedAudioMode = "original";
+                    selectedDubLang = null;
+                }
             });
-            controls.appendChild(dubWrapper);
+            audioWrapper.appendChild(originalRadio);
+            
+            const originalLabel = document.createElement("label");
+            originalLabel.htmlFor = originalRadio.id;
+            originalLabel.textContent = "Originale";
+            originalLabel.style.marginRight = "15px";
+            originalLabel.style.cursor = "pointer";
+            audioWrapper.appendChild(originalLabel);
+            
+            // Dub audio options
+            if (video.available_dubs && video.available_dubs.length > 0) {
+                video.available_dubs.forEach((lang) => {
+                    const dubRadio = document.createElement("input");
+                    dubRadio.type = "radio";
+                    dubRadio.name = `audio-${video.id}`;
+                    dubRadio.id = `audio-dub-${video.id}-${lang}`;
+                    dubRadio.value = `dub-${lang}`;
+                    dubRadio.style.marginRight = "5px";
+                    dubRadio.style.marginLeft = "10px";
+                    dubRadio.addEventListener("change", () => {
+                        if (dubRadio.checked) {
+                            selectedAudioMode = "dub";
+                            selectedDubLang = lang;
+                        }
+                    });
+                    audioWrapper.appendChild(dubRadio);
+                    
+                    const dubLabel = document.createElement("label");
+                    dubLabel.htmlFor = dubRadio.id;
+                    dubLabel.textContent = `Lecture doublée (${lang.toUpperCase()})`;
+                    dubLabel.style.marginRight = "15px";
+                    dubLabel.style.cursor = "pointer";
+                    audioWrapper.appendChild(dubLabel);
+                });
             }
+            
+            controls.appendChild(audioWrapper);
+
+            // Play button
+            const playOriginalBtn = document.createElement("button");
+            playOriginalBtn.textContent = "Play";
+            playOriginalBtn.onclick = () => {
+                if (selectedAudioMode === "dub" && selectedDubLang) {
+                    // Play with dubbing
+                    if (selectedLangs.size > 0) {
+                        playVideo(video, { mode: "dub", lang: selectedDubLang, langs: Array.from(selectedLangs) });
+                    } else {
+                        playVideo(video, { mode: "dub", lang: selectedDubLang });
+                    }
+                } else {
+                    // Play original
+                    if (selectedLangs.size > 0) {
+                        playVideo(video, { mode: "subs", langs: Array.from(selectedLangs) });
+                    } else {
+                        playVideo(video, { mode: "original" });
+                    }
+                }
+            };
+            controls.appendChild(playOriginalBtn);
 
             div.appendChild(controls);
         }
@@ -962,7 +1003,96 @@ async function playVideo(video, options = {}) {
             infoEl.textContent = "Aucun doublage disponible.";
         } else {
             videoEl.src = `/videos/${encodeURIComponent(video.id)}/dub/${encodeURIComponent(selectedLang)}`;
-            infoEl.textContent = `Lecture avec doublage (${selectedLang.toUpperCase()})`;
+            
+            // Load subtitles if requested
+            if (options.langs && options.langs.length > 0) {
+                try {
+                    const cache = "caches" in window ? await caches.open("video-cache") : null;
+                    
+                    const subtitles = await Promise.all(
+                        options.langs.map(async (lang) => {
+                            const subUrl = `/videos/${encodeURIComponent(video.id)}/subs/${encodeURIComponent(lang)}`;
+                            
+                            let res;
+                            if (cache) {
+                                const cached = await cache.match(subUrl);
+                                if (cached) {
+                                    res = cached;
+                                } else {
+                                    res = await fetch(subUrl);
+                                    if (res.ok) {
+                                        await cache.put(subUrl, res.clone());
+                                        res = await cache.match(subUrl);
+                                    }
+                                }
+                            } else {
+                                res = await fetch(subUrl);
+                            }
+                            
+                            if (!res || !res.ok) {
+                                throw new Error(`Impossible de charger les sous-titres pour ${lang}`);
+                            }
+                            const text = await res.text();
+                            return { lang, cues: parseVtt(text) };
+                        })
+                    );
+
+                    const updateSubtitles = () => {
+                        const currentTime = videoEl.currentTime;
+                        overlay.innerHTML = "";
+
+                        subtitles.forEach(({ lang, cues }) => {
+                            const cue = cues.find(
+                                (item) => currentTime >= item.start && currentTime <= item.end
+                            );
+                            if (cue) {
+                                const line = document.createElement("div");
+                                line.className = "subtitle-line";
+                                const label = document.createElement("span");
+                                label.className = "subtitle-lang";
+                                label.textContent = lang.toUpperCase();
+                                line.appendChild(label);
+
+                                const textSpan = document.createElement("span");
+                                textSpan.className = "subtitle-text";
+                                cue.text.forEach((segment, index) => {
+                                    if (index > 0) {
+                                        textSpan.appendChild(document.createElement("br"));
+                                    }
+                                    textSpan.appendChild(document.createTextNode(segment));
+                                });
+                                line.appendChild(textSpan);
+
+                                overlay.appendChild(line);
+                            }
+                        });
+
+                        overlay.classList.toggle("hidden", overlay.children.length === 0);
+                    };
+
+                    const clearSubtitles = () => {
+                        clearSubtitleOverlay();
+                    };
+
+                    videoEl.addEventListener("timeupdate", updateSubtitles);
+                    videoEl.addEventListener("seeked", updateSubtitles);
+                    videoEl.addEventListener("ended", clearSubtitles);
+
+                    currentSubtitleCleanup = () => {
+                        videoEl.removeEventListener("timeupdate", updateSubtitles);
+                        videoEl.removeEventListener("seeked", updateSubtitles);
+                        videoEl.removeEventListener("ended", clearSubtitles);
+                        clearSubtitleOverlay();
+                    };
+
+                    infoEl.textContent = `Lecture avec doublage (${selectedLang.toUpperCase()}) et sous-titres (${options.langs.map((code) => code.toUpperCase()).join(", ")})`;
+                } catch (err) {
+                    console.error(err);
+                    infoEl.textContent = `Lecture avec doublage (${selectedLang.toUpperCase()}) - Impossible de charger les sous-titres.`;
+                }
+            } else {
+                infoEl.textContent = `Lecture avec doublage (${selectedLang.toUpperCase()})`;
+            }
         }
     } else {
         infoEl.textContent = "Lecture de la piste originale.";
