@@ -1,5 +1,5 @@
 // Check if user is editor
-const isEditor = document.getElementById("role-indicator")?.textContent.includes("Éditeur") || false;
+const isEditor = document.getElementById("role-indicator")?.textContent.includes("I-tech privé") || false;
 
 function filenameWithoutExtension(filename) {
     if (typeof filename !== "string") {
