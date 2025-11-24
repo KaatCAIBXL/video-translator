@@ -187,9 +187,7 @@ button {
 }
 
 .video-controls {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
+    display: block;
     margin-top: 8px;
 }
 

@@ -185,10 +185,12 @@ function createVideoItem(video) {
                 const subtitleWrapper = document.createElement("div");
                 subtitleWrapper.style.marginTop = "10px";
                 subtitleWrapper.style.marginBottom = "10px";
+                subtitleWrapper.style.display = "block";
                 
                 const subtitleLabel = document.createElement("label");
                 subtitleLabel.textContent = "Sous-titres: ";
                 subtitleLabel.style.marginRight = "10px";
+                subtitleLabel.style.display = "inline-block";
                 subtitleWrapper.appendChild(subtitleLabel);
                 
                 video.available_subtitles.forEach((lang) => {
@@ -225,10 +227,12 @@ function createVideoItem(video) {
             const audioWrapper = document.createElement("div");
             audioWrapper.style.marginTop = "10px";
             audioWrapper.style.marginBottom = "10px";
+            audioWrapper.style.display = "block";
             
             const audioLabel = document.createElement("label");
             audioLabel.textContent = "Audio: ";
             audioLabel.style.marginRight = "10px";
+            audioLabel.style.display = "inline-block";
             audioWrapper.appendChild(audioLabel);
             
             // Original audio option
@@ -287,8 +291,9 @@ function createVideoItem(video) {
 
             // Play button - komt ONDER Audio
             const playOriginalBtn = document.createElement("button");
-            playOriginalBtn.textContent = "Play";
+            playOriginalBtn.textContent = "Lire";
             playOriginalBtn.style.marginTop = "10px";
+            playOriginalBtn.style.display = "block";
             playOriginalBtn.onclick = () => {
                 if (selectedAudioMode === "dub" && selectedDubLang) {
                     // Play with dubbing
