@@ -187,7 +187,7 @@ function createVideoItem(video) {
                 subtitleWrapper.style.marginBottom = "10px";
                 
                 const subtitleLabel = document.createElement("label");
-                subtitleLabel.textContent = "Ondertiteling: ";
+                subtitleLabel.textContent = "Sous-titres: ";
                 subtitleLabel.style.marginRight = "10px";
                 subtitleWrapper.appendChild(subtitleLabel);
                 
@@ -217,10 +217,11 @@ function createVideoItem(video) {
                     subtitleWrapper.appendChild(langLabel);
                 });
                 
+                // Voeg eerst subtitleWrapper toe
                 controls.appendChild(subtitleWrapper);
             }
 
-            // Audio selection
+            // Audio selection - komt ONDER ondertiteling
             const audioWrapper = document.createElement("div");
             audioWrapper.style.marginTop = "10px";
             audioWrapper.style.marginBottom = "10px";
@@ -281,11 +282,13 @@ function createVideoItem(video) {
                 });
             }
             
+            // Voeg audioWrapper toe (onder ondertiteling)
             controls.appendChild(audioWrapper);
 
-            // Play button
+            // Play button - komt ONDER Audio
             const playOriginalBtn = document.createElement("button");
             playOriginalBtn.textContent = "Play";
+            playOriginalBtn.style.marginTop = "10px";
             playOriginalBtn.onclick = () => {
                 if (selectedAudioMode === "dub" && selectedDubLang) {
                     // Play with dubbing
