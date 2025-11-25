@@ -57,7 +57,7 @@ AVAILABLE_LANGUAGE_CODES: List[str] = [
 ]
 
 
-LANGUAGES_WITHOUT_DUBBING = {"ln", "lua", "kg", "mg"}
+LANGUAGES_WITHOUT_DUBBING = {"lua", "kg", "mg"}  # Lingala (ln) removed - now supported via ElevenLabs
 
 def get_language_options() -> List[LanguageOption]:
     options: List[LanguageOption] = []
