@@ -675,6 +675,59 @@ async def _edge_tts_to_bytes(text: str, voice: str, rate: Optional[str] = None) 
     return b"".join(audio_chunks)
 
 
+def get_elevenlabs_voices(api_key: str) -> List[Dict]:
+    """
+    Helper: haal alle beschikbare voices op van ElevenLabs.
+    Retourneert een lijst met voice dictionaries met 'voice_id' en 'name'.
+    """
+    url = "https://api.elevenlabs.io/v1/voices"
+    headers = {
+        "xi-api-key": api_key
+    }
+    
+    response = requests.get(url, headers=headers, timeout=30)
+    
+    if response.status_code != 200:
+        error_msg = response.text
+        raise RuntimeError(f"Failed to fetch ElevenLabs voices: {response.status_code} - {error_msg}")
+    
+    data = response.json()
+    return data.get("voices", [])
+
+
+async def _elevenlabs_tts_to_bytes(text: str, voice_id: str, api_key: str, speed_multiplier: float = 1.0) -> bytes:
+    """
+    Helper: roept ElevenLabs API aan en geeft audio terug als bytes.
+    """
+    url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
+    
+    headers = {
+        "Accept": "audio/mpeg",
+        "Content-Type": "application/json",
+        "xi-api-key": api_key
+    }
+    
+    # ElevenLabs stability en similarity settings (optioneel, kan aangepast worden)
+    data = {
+        "text": text,
+        "model_id": "eleven_multilingual_v2",  # Multilingual model voor Lingala
+        "voice_settings": {
+            "stability": 0.5,
+            "similarity_boost": 0.75
+        }
+    }
+    
+    # Speed multiplier: ElevenLabs gebruikt geen directe speed parameter,
+    # maar we kunnen dit later met ffmpeg aanpassen indien nodig
+    response = requests.post(url, json=data, headers=headers, timeout=30)
+    
+    if response.status_code != 200:
+        error_msg = response.text
+        raise RuntimeError(f"ElevenLabs TTS failed: {response.status_code} - {error_msg}")
+    
+    return response.content
+
+
 def _phonetic_for_lingala(text: str) -> str:
     """
     Maak een fonetische versie van de tekst voor Lingala.
@@ -703,12 +756,33 @@ def _phonetic_for_lingala(text: str) -> str:
 async def tts_for_language(text: str, lang: str, speed_multiplier: float = 1.0) -> bytes:
     """Generate TTS audio for the requested language."""
 
-    
-
     lang = lang.lower()
+    
+    # Voor Lingala: gebruik ElevenLabs als API key beschikbaar is
+    if lang == "ln" and settings.LINGALA_TTS_API_KEY and settings.LINGALA_ELEVENLABS_VOICE_ID:
+        try:
+            # Gebruik de originele Lingala tekst (geen fonetische conversie nodig met ElevenLabs)
+            audio_bytes = await _elevenlabs_tts_to_bytes(
+                text, 
+                settings.LINGALA_ELEVENLABS_VOICE_ID, 
+                settings.LINGALA_TTS_API_KEY,
+                speed_multiplier=speed_multiplier
+            )
+            # Als speed_multiplier niet 1.0 is, moeten we de audio aanpassen met ffmpeg
+            # Voor nu retourneren we de audio zoals die is (speed kan later worden toegepast)
+            return audio_bytes
+        except Exception as exc:
+            logger.warning(
+                "ElevenLabs TTS mislukt voor Lingala, val terug op edge-tts: %s",
+                exc
+            )
+            # Fallback naar edge-tts
+            pass
+    
+    # Standaard: gebruik edge-tts
     voices = VOICE_PREFERENCES.get(lang, (DEFAULT_TTS_VOICE,))
 
-    # 2. Fonetik stap voor ln/lu
+    # 2. Fonetik stap voor ln/lu (alleen als we edge-tts gebruiken)
     if lang == "ln":
         phonetic_text = _phonetic_for_lingala(text)
         tts_text = phonetic_text

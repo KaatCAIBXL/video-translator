@@ -13,6 +13,7 @@ class Settings:
     DEEPL_API_KEY: str = os.getenv("DEEPL_API_KEY", "")
     # Voor Tshiluba / Lingala TTS, als je aparte provider gebruikt:
     LINGALA_TTS_API_KEY: str = os.getenv("LINGALA_TTS_API_KEY", "")
+    LINGALA_ELEVENLABS_VOICE_ID: str = os.getenv("LINGALA_ELEVENLABS_VOICE_ID", "")
     TSHILUBA_TTS_API_KEY: str = os.getenv("TSHILUBA_TTS_API_KEY", "")
 
     # ffmpeg tuning
