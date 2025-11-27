@@ -23,6 +23,7 @@ from openai import OpenAI
 from pydub import AudioSegment
 
 from .config import settings
+from .services import _elevenlabs_tts_to_bytes
 
 logger = logging.getLogger(__name__)
 
@@ -366,8 +367,45 @@ def translate_text(text: str, source_lang: str, target_lang: str) -> str:
 # TEXT-TO-SPEECH
 # ============================================================
 async def generate_tts_audio(text: str, language: str, output_path: Path) -> None:
-    """Generate TTS audio using edge_tts."""
-    voice = TTS_VOICES.get(language.lower(), TTS_VOICES["en"])
+    """Generate TTS audio using edge_tts or ElevenLabs."""
+    lang = language.lower()
+    
+    # Voor Lingala: gebruik ElevenLabs als API key beschikbaar is
+    if lang == "ln" and settings.LINGALA_TTS_API_KEY and settings.LINGALA_ELEVENLABS_VOICE_ID:
+        try:
+            audio_bytes = await _elevenlabs_tts_to_bytes(
+                text,
+                settings.LINGALA_ELEVENLABS_VOICE_ID,
+                settings.LINGALA_TTS_API_KEY,
+                speed_multiplier=1.0
+            )
+            output_path.write_bytes(audio_bytes)
+            logger.info(f"ElevenLabs TTS audio generated for Lingala: {output_path}")
+            return
+        except Exception as e:
+            logger.warning(f"ElevenLabs TTS failed for Lingala, falling back to edge-tts: {e}")
+            # Fallback naar edge-tts
+            pass
+    
+    # Voor Tshiluba: gebruik ElevenLabs als API key beschikbaar is
+    if lang == "lua" and settings.TSHILUBA_TTS_API_KEY and settings.TSHILUBA_ELEVENLABS_VOICE_ID:
+        try:
+            audio_bytes = await _elevenlabs_tts_to_bytes(
+                text,
+                settings.TSHILUBA_ELEVENLABS_VOICE_ID,
+                settings.TSHILUBA_TTS_API_KEY,
+                speed_multiplier=1.0
+            )
+            output_path.write_bytes(audio_bytes)
+            logger.info(f"ElevenLabs TTS audio generated for Tshiluba: {output_path}")
+            return
+        except Exception as e:
+            logger.warning(f"ElevenLabs TTS failed for Tshiluba, falling back to edge-tts: {e}")
+            # Fallback naar edge-tts
+            pass
+    
+    # Standaard: gebruik edge-tts
+    voice = TTS_VOICES.get(lang, TTS_VOICES["en"])
     
     try:
         communicate = edge_tts.Communicate(text=text, voice=voice)

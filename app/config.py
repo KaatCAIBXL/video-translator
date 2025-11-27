@@ -15,6 +15,7 @@ class Settings:
     LINGALA_TTS_API_KEY: str = os.getenv("LINGALA_TTS_API_KEY", "")
     LINGALA_ELEVENLABS_VOICE_ID: str = os.getenv("LINGALA_ELEVENLABS_VOICE_ID", "")
     TSHILUBA_TTS_API_KEY: str = os.getenv("TSHILUBA_TTS_API_KEY", "")
+    TSHILUBA_ELEVENLABS_VOICE_ID: str = os.getenv("TSHILUBA_ELEVENLABS_VOICE_ID", "")
 
     # ffmpeg tuning
     WHISPER_MAX_UPLOAD_MB: int = int(os.getenv("WHISPER_MAX_UPLOAD_MB", "24"))

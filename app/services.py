@@ -779,6 +779,27 @@ async def tts_for_language(text: str, lang: str, speed_multiplier: float = 1.0) 
             # Fallback naar edge-tts
             pass
     
+    # Voor Tshiluba: gebruik ElevenLabs als API key beschikbaar is
+    if lang == "lua" and settings.TSHILUBA_TTS_API_KEY and settings.TSHILUBA_ELEVENLABS_VOICE_ID:
+        try:
+            # Gebruik de originele Tshiluba tekst (geen fonetische conversie nodig met ElevenLabs)
+            audio_bytes = await _elevenlabs_tts_to_bytes(
+                text, 
+                settings.TSHILUBA_ELEVENLABS_VOICE_ID, 
+                settings.TSHILUBA_TTS_API_KEY,
+                speed_multiplier=speed_multiplier
+            )
+            # Als speed_multiplier niet 1.0 is, moeten we de audio aanpassen met ffmpeg
+            # Voor nu retourneren we de audio zoals die is (speed kan later worden toegepast)
+            return audio_bytes
+        except Exception as exc:
+            logger.warning(
+                "ElevenLabs TTS mislukt voor Tshiluba, val terug op edge-tts: %s",
+                exc
+            )
+            # Fallback naar edge-tts
+            pass
+    
     # Standaard: gebruik edge-tts
     voices = VOICE_PREFERENCES.get(lang, (DEFAULT_TTS_VOICE,))
 
