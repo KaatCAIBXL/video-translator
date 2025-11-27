@@ -1275,7 +1275,11 @@ function initializeFileUpload() {
         const defaultLabel = fileNameLabel.textContent || "Aucun fichier sélectionné";
         const updateFileLabel = () => {
             if (fileInput.files && fileInput.files.length > 0) {
-                fileNameLabel.textContent = fileInput.files[0].name;
+                if (fileInput.files.length === 1) {
+                    fileNameLabel.textContent = fileInput.files[0].name;
+                } else {
+                    fileNameLabel.textContent = `${fileInput.files.length} fichiers sélectionnés`;
+                }
             } else {
                 fileNameLabel.textContent = defaultLabel;
             }
@@ -1730,13 +1734,8 @@ if (uploadForm && isEditor) {
     console.log("Checked languages count:", checkedLangs.length);
     console.log("Checked options:", checkedOptions.map(o => o.value));
     
-    // Add file
-    if (fileInputForUpload.files[0]) {
-        formData.append("file", fileInputForUpload.files[0]);
-        console.log("File added to FormData");
-    } else {
-        console.warn("No file found in input!");
-    }
+    // Note: We'll upload files one by one in a loop below
+    // Don't add file here yet
     
     // Add file type
     formData.append("file_type", fileType);
@@ -1836,80 +1835,152 @@ if (uploadForm && isEditor) {
             submitBtn.textContent = "Téléversement en cours...";
         }
         
-        const res = await fetch("/api/upload", {
-            method: "POST",
-            body: formData,
-            credentials: "include", // Include cookies in request
-            // Don't set Content-Type header - let browser set it with boundary for multipart/form-data
-        });
-
-        if (!res.ok) {
-            let errorMessage = "Erreur inconnue";
-            try {
-                const err = await res.json();
-                errorMessage = err.error || res.statusText || `Status ${res.status}`;
-                console.error("Upload error:", err);
-            } catch (e) {
-                // If response is not JSON, try to get text
-                try {
-                    const text = await res.text();
-                    errorMessage = text || `Status ${res.status}: ${res.statusText}`;
-                    console.error("Upload error (text):", text);
-                } catch (e2) {
-                    errorMessage = `Status ${res.status}: ${res.statusText}`;
-                    console.error("Upload error (status only):", res.status, res.statusText);
-                }
-            }
-            statusEl.textContent = "Erreur : " + errorMessage;
-            alert("Erreur : " + errorMessage); // Also show in alert for visibility
-            // Re-enable submit button on error
-            if (submitBtn) {
-                submitBtn.disabled = false;
-                submitBtn.textContent = "Téléverser et traiter";
-            }
-            return;
-        }
-
-        const data = await res.json();
+        // Upload all selected files sequentially
+        const files = Array.from(fileInputForUpload.files);
+        const totalFiles = files.length;
+        let successCount = 0;
+        let errorCount = 0;
+        
         statusEl.innerHTML = "";
+        const progressMsg = document.createElement("div");
+        progressMsg.textContent = `Téléversement de ${totalFiles} fichier(s)...`;
+        statusEl.appendChild(progressMsg);
         
-        // Check if this is an audio/text file (no job polling needed)
-        if (fileType === "audio" || fileType === "text") {
-            const successMsg = document.createElement("div");
-            successMsg.className = "status-success";
-            successMsg.textContent = data.message || "Fichier traité avec succès!";
-            statusEl.appendChild(successMsg);
+        for (let i = 0; i < files.length; i++) {
+            const file = files[i];
+            const fileFormData = new FormData();
             
-            // Show results if available
-            if (data.results) {
-                const resultsDiv = document.createElement("div");
-                resultsDiv.style.marginTop = "10px";
-                resultsDiv.innerHTML = "<strong>Fichiers générés:</strong><ul>";
-                for (const [key, path] of Object.entries(data.results)) {
-                    const li = document.createElement("li");
-                    const link = document.createElement("a");
-                    // Extract filename from path
-                    const filename = path.split(/[/\\]/).pop();
-                    link.href = `/files/${data.id}/${filename}`;
-                    link.textContent = key + " (" + filename + ")";
-                    link.target = "_blank";
-                    li.appendChild(link);
-                    resultsDiv.querySelector("ul").appendChild(li);
+            // Add the current file
+            fileFormData.append("file", file);
+            
+            // Add all other form fields (same for all files)
+            fileFormData.append("file_type", fileType);
+            checkedLangs.forEach(lang => {
+                fileFormData.append("languages", lang.value);
+            });
+            checkedOptions.forEach(opt => {
+                fileFormData.append("process_options", opt.value);
+            });
+            
+            const ttsSpeed = form.querySelector('input[name="tts_speed_multiplier"]')?.value || "1.0";
+            fileFormData.append("tts_speed_multiplier", ttsSpeed);
+            
+            if (folderPath) {
+                fileFormData.append("folder_path", folderPath);
+            }
+            fileFormData.append("is_private", isPrivate);
+            
+            if (fileType === "audio" || fileType === "text") {
+                const sourceLang = form.querySelector('select[name="source_language"]')?.value;
+                if (sourceLang) {
+                    fileFormData.append("source_language", sourceLang);
                 }
-                resultsDiv.innerHTML += "</ul>";
-                statusEl.appendChild(resultsDiv);
             }
             
-            fetchVideos(); // Refresh video list
-        } else {
-            // Video processing with job polling
-            const queuedMsg = document.createElement("div");
-            queuedMsg.textContent = `Téléversement réussi. La vidéo ${data.id} est en cours de traitement...`;
-            statusEl.appendChild(queuedMsg);
-            await pollJobStatus(data.id, statusEl);
+            // Update progress
+            if (totalFiles > 1) {
+                progressMsg.textContent = `Téléversement ${i + 1}/${totalFiles}: ${file.name}...`;
+            }
+            
+            try {
+                const res = await fetch("/api/upload", {
+                    method: "POST",
+                    body: fileFormData,
+                    credentials: "include", // Include cookies in request
+                    // Don't set Content-Type header - let browser set it with boundary for multipart/form-data
+                });
+
+                if (!res.ok) {
+                    let errorMessage = "Erreur inconnue";
+                    try {
+                        const err = await res.json();
+                        errorMessage = err.error || res.statusText || `Status ${res.status}`;
+                        console.error(`Upload error for file ${file.name}:`, err);
+                    } catch (e) {
+                        // If response is not JSON, try to get text
+                        try {
+                            const text = await res.text();
+                            errorMessage = text || `Status ${res.status}: ${res.statusText}`;
+                            console.error(`Upload error (text) for file ${file.name}:`, text);
+                        } catch (e2) {
+                            errorMessage = `Status ${res.status}: ${res.statusText}`;
+                            console.error(`Upload error (status only) for file ${file.name}:`, res.status, res.statusText);
+                        }
+                    }
+                    errorCount++;
+                    const errorMsg = document.createElement("div");
+                    errorMsg.className = "status-error";
+                    errorMsg.textContent = `Erreur pour ${file.name}: ${errorMessage}`;
+                    statusEl.appendChild(errorMsg);
+                    continue; // Continue with next file
+                }
+
+                const data = await res.json();
+                successCount++;
+                
+                // Check if this is an audio/text file (no job polling needed)
+                if (fileType === "audio" || fileType === "text") {
+                    const successMsg = document.createElement("div");
+                    successMsg.className = "status-success";
+                    successMsg.textContent = `${file.name}: ${data.message || "Fichier traité avec succès!"}`;
+                    statusEl.appendChild(successMsg);
+                    
+                    // Show results if available
+                    if (data.results) {
+                        const resultsDiv = document.createElement("div");
+                        resultsDiv.style.marginTop = "10px";
+                        resultsDiv.innerHTML = `<strong>Fichiers générés pour ${file.name}:</strong><ul>`;
+                        for (const [key, path] of Object.entries(data.results)) {
+                            const li = document.createElement("li");
+                            const link = document.createElement("a");
+                            // Extract filename from path
+                            const filename = path.split(/[/\\]/).pop();
+                            link.href = `/files/${data.id}/${filename}`;
+                            link.textContent = key + " (" + filename + ")";
+                            link.target = "_blank";
+                            li.appendChild(link);
+                            resultsDiv.querySelector("ul").appendChild(li);
+                        }
+                        resultsDiv.innerHTML += "</ul>";
+                        statusEl.appendChild(resultsDiv);
+                    }
+                } else {
+                    // Video processing with job polling
+                    const queuedMsg = document.createElement("div");
+                    queuedMsg.textContent = `${file.name}: Téléversement réussi. La vidéo ${data.id} est en cours de traitement...`;
+                    statusEl.appendChild(queuedMsg);
+                    await pollJobStatus(data.id, statusEl);
+                }
+            } catch (err) {
+                errorCount++;
+                console.error(`=== FORM SUBMIT ERROR for file ${file.name} ===`, err);
+                console.error("Error stack:", err.stack);
+                const errorMsg = document.createElement("div");
+                errorMsg.className = "status-error";
+                errorMsg.textContent = `Erreur pour ${file.name}: ${err.message}`;
+                statusEl.appendChild(errorMsg);
+            }
         }
         
-        // Re-enable submit button after successful upload
+        // Final summary
+        if (totalFiles > 1) {
+            const summaryMsg = document.createElement("div");
+            summaryMsg.style.marginTop = "10px";
+            summaryMsg.style.fontWeight = "bold";
+            if (successCount === totalFiles) {
+                summaryMsg.className = "status-success";
+                summaryMsg.textContent = `✓ Tous les fichiers (${successCount}) ont été téléversés avec succès!`;
+            } else {
+                summaryMsg.className = "status-error";
+                summaryMsg.textContent = `⚠ ${successCount} fichier(s) réussi(s), ${errorCount} erreur(s).`;
+            }
+            statusEl.appendChild(summaryMsg);
+        }
+        
+        // Refresh video list after all uploads
+        fetchVideos();
+        
+        // Re-enable submit button after all uploads complete
         if (submitBtn) {
             submitBtn.disabled = false;
             submitBtn.textContent = "Téléverser et traiter";
