@@ -1713,9 +1713,20 @@ if (uploadForm && isEditor) {
     const checkedLangs = [...form.querySelectorAll("input[name='languages']:checked")];
     const checkedOptions = [...form.querySelectorAll("input[name='process_options']:checked")];
     
+    // Debug logging BEFORE any checks
+    console.log("=== UPLOAD DEBUG START ===");
+    console.log("File type:", fileType);
+    console.log("Checked languages (raw):", checkedLangs);
+    console.log("Checked languages (values):", checkedLangs.map(l => l.value));
+    console.log("Checked languages count:", checkedLangs.length);
+    console.log("Checked options:", checkedOptions.map(o => o.value));
+    
     // Add file
     if (fileInputForUpload.files[0]) {
         formData.append("file", fileInputForUpload.files[0]);
+        console.log("File added to FormData");
+    } else {
+        console.warn("No file found in input!");
     }
     
     // Add file type
@@ -1723,15 +1734,20 @@ if (uploadForm && isEditor) {
     
     // For videos, languages are always required
     if (fileType === "video") {
+        console.log("Processing video upload...");
         if (checkedLangs.length === 0 || checkedLangs.length > 2) {
+            console.error("Language validation failed:", {
+                count: checkedLangs.length,
+                languages: checkedLangs.map(l => l.value)
+            });
             alert("Veuillez sélectionner une ou deux langues cibles.");
             return;
         }
         // Explicitly add languages to FormData for videos
-        console.log("Selected languages:", checkedLangs.map(l => l.value));
+        console.log("Adding languages to FormData:", checkedLangs.map(l => l.value));
         checkedLangs.forEach(lang => {
             formData.append("languages", lang.value);
-            console.log("Added language to FormData:", lang.value);
+            console.log("  ✓ Added language:", lang.value);
         });
         
         // Debug: log all FormData entries
@@ -1743,6 +1759,7 @@ if (uploadForm && isEditor) {
                 console.log(`  ${key}: ${value}`);
             }
         }
+        console.log("=== UPLOAD DEBUG END ===");
     }
     
     // For audio and text files, we need source language
