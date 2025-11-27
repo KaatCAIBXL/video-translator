@@ -1688,33 +1688,42 @@ if (fileTypeRadios.length > 0) {
 const uploadForm = document.getElementById("upload-form");
 if (uploadForm && isEditor) {
     uploadForm.addEventListener("submit", async (e) => {
+    console.log("=== FORM SUBMIT TRIGGERED ===");
     e.preventDefault();
     e.stopPropagation(); // Prevent iOS Safari from handling form differently
     
-    const form = e.target;
-    const statusEl = document.getElementById("upload-status");
-    if (!statusEl) {
-        console.error("Upload status element not found");
-        return;
-    }
-    
-    // Check if file is selected
-    const fileInputForUpload = document.getElementById("video-file");
-    if (!fileInputForUpload || !fileInputForUpload.files || fileInputForUpload.files.length === 0) {
-        alert("Veuillez sélectionner un fichier.");
-        return;
-    }
-    
-    statusEl.textContent = "Téléversement et traitement en cours... Cela peut prendre un moment.";
+    try {
+        const form = e.target;
+        console.log("Form element:", form);
+        
+        const statusEl = document.getElementById("upload-status");
+        if (!statusEl) {
+            console.error("Upload status element not found");
+            return;
+        }
+        
+        // Check if file is selected
+        const fileInputForUpload = document.getElementById("video-file");
+        console.log("File input:", fileInputForUpload);
+        console.log("File input files:", fileInputForUpload?.files);
+        console.log("File input files length:", fileInputForUpload?.files?.length);
+        
+        if (!fileInputForUpload || !fileInputForUpload.files || fileInputForUpload.files.length === 0) {
+            console.error("No file selected!");
+            alert("Veuillez sélectionner un fichier.");
+            return;
+        }
+        
+        statusEl.textContent = "Téléversement et traitement en cours... Cela peut prendre un moment.";
 
-    // Create new FormData instead of using form directly to avoid conflicts
-    const formData = new FormData();
-    const fileType = form.querySelector('input[name="file_type"]:checked')?.value || "video";
-    const checkedLangs = [...form.querySelectorAll("input[name='languages']:checked")];
-    const checkedOptions = [...form.querySelectorAll("input[name='process_options']:checked")];
-    
-    // Debug logging BEFORE any checks
-    console.log("=== UPLOAD DEBUG START ===");
+        // Create new FormData instead of using form directly to avoid conflicts
+        const formData = new FormData();
+        const fileType = form.querySelector('input[name="file_type"]:checked')?.value || "video";
+        const checkedLangs = [...form.querySelectorAll("input[name='languages']:checked")];
+        const checkedOptions = [...form.querySelectorAll("input[name='process_options']:checked")];
+        
+        // Debug logging BEFORE any checks
+        console.log("=== UPLOAD DEBUG START ===");
     console.log("File type:", fileType);
     console.log("Checked languages (raw):", checkedLangs);
     console.log("Checked languages (values):", checkedLangs.map(l => l.value));
@@ -1905,15 +1914,17 @@ if (uploadForm && isEditor) {
             submitBtn.textContent = "Téléverser et traiter";
         }
     } catch (err) {
-        console.error(err);
-        statusEl.textContent = "Erreur inconnue.";
+        console.error("=== FORM SUBMIT ERROR ===", err);
+        console.error("Error stack:", err.stack);
+        statusEl.textContent = "Erreur inconnue: " + err.message;
+        alert("Erreur: " + err.message);
         // Re-enable submit button on error
         if (submitBtn) {
             submitBtn.disabled = false;
             submitBtn.textContent = "Téléverser et traiter";
         }
     }
-});
+    });
 }
 
 // Folder management (editors only) - initialize when ready
