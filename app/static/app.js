@@ -1707,16 +1707,18 @@ if (uploadForm && isEditor) {
     
     statusEl.textContent = "Téléversement et traitement en cours... Cela peut prendre un moment.";
 
-    const formData = new FormData(form);
+    // Create new FormData instead of using form directly to avoid conflicts
+    const formData = new FormData();
     const fileType = form.querySelector('input[name="file_type"]:checked')?.value || "video";
     const checkedLangs = [...form.querySelectorAll("input[name='languages']:checked")];
     const checkedOptions = [...form.querySelectorAll("input[name='process_options']:checked")];
     
-    // Ensure file is included (iOS sometimes doesn't include it automatically)
+    // Add file
     if (fileInputForUpload.files[0]) {
-        formData.set("file", fileInputForUpload.files[0]);
+        formData.append("file", fileInputForUpload.files[0]);
     }
     
+    // Add file type
     formData.append("file_type", fileType);
     
     // For videos, languages are always required
@@ -1728,6 +1730,7 @@ if (uploadForm && isEditor) {
         // Explicitly add languages to FormData for videos
         checkedLangs.forEach(lang => {
             formData.append("languages", lang.value);
+            console.log("Added language to FormData:", lang.value);
         });
     }
     
@@ -1755,6 +1758,15 @@ if (uploadForm && isEditor) {
         alert("Veuillez sélectionner au moins une option de traitement.");
         return;
     }
+
+    // Add process options
+    checkedOptions.forEach(opt => {
+        formData.append("process_options", opt.value);
+    });
+    
+    // Add TTS speed multiplier
+    const ttsSpeed = form.querySelector('input[name="tts_speed_multiplier"]')?.value || "1.0";
+    formData.append("tts_speed_multiplier", ttsSpeed);
 
     // Add folder path - use folder privacy if folder is selected
     const folderPath = document.getElementById("folder-path-select")?.value || "";
