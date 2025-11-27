@@ -543,7 +543,7 @@ def translate_text_deepl(text: str, target_lang: str) -> str:
 
 
 def _remove_language_prefix(text: str, target_lang: str) -> str:
-    """Remove language name prefixes like 'Tshiluba:', 'Lingala:', etc. from translated text."""
+    """Remove language name prefixes like 'Tshiluba:', 'Lingala:', 'Kituba:', etc. from translated text."""
     if not text:
         return text
     
@@ -551,7 +551,7 @@ def _remove_language_prefix(text: str, target_lang: str) -> str:
     lang_name = LANGUAGE_LABELS.get(target_lang, target_lang)
     lang_code_upper = target_lang.upper()
     
-    # Patterns to remove: "Tshiluba:", "LINGALA:", "LUA:", etc.
+    # Patterns to remove: "Tshiluba:", "LINGALA:", "LUA:", "Kituba:", "Kikongo:", etc.
     patterns = [
         f"{lang_name}:",
         f"{lang_name.upper()}:",
@@ -559,6 +559,17 @@ def _remove_language_prefix(text: str, target_lang: str) -> str:
         f"{lang_code_upper}:",
         f"{target_lang.upper()}:",
     ]
+    
+    # Special cases: for Kituba (kg), also check for "Kituba:" and "Kikongo:" separately
+    if target_lang.lower() == "kg":
+        patterns.extend([
+            "Kituba:",
+            "KITUBA:",
+            "kituba:",
+            "Kikongo:",
+            "KIKONGO:",
+            "kikongo:",
+        ])
     
     text_cleaned = text.strip()
     for pattern in patterns:
@@ -835,6 +846,27 @@ async def tts_for_language(text: str, lang: str, speed_multiplier: float = 1.0) 
         except Exception as exc:
             logger.warning(
                 "ElevenLabs TTS mislukt voor Tshiluba, val terug op edge-tts: %s",
+                exc
+            )
+            # Fallback naar edge-tts
+            pass
+    
+    # Voor Kituba: gebruik ElevenLabs als API key beschikbaar is
+    if lang == "kg" and settings.KITUBA_TTS_API_KEY and settings.KITUBA_ELEVENLABS_VOICE_ID:
+        try:
+            # Gebruik de originele Kituba tekst (geen fonetische conversie nodig met ElevenLabs)
+            audio_bytes = await _elevenlabs_tts_to_bytes(
+                text, 
+                settings.KITUBA_ELEVENLABS_VOICE_ID, 
+                settings.KITUBA_TTS_API_KEY,
+                speed_multiplier=speed_multiplier
+            )
+            # Als speed_multiplier niet 1.0 is, moeten we de audio aanpassen met ffmpeg
+            # Voor nu retourneren we de audio zoals die is (speed kan later worden toegepast)
+            return audio_bytes
+        except Exception as exc:
+            logger.warning(
+                "ElevenLabs TTS mislukt voor Kituba, val terug op edge-tts: %s",
                 exc
             )
             # Fallback naar edge-tts
