@@ -296,6 +296,44 @@ def translate_with_deepl(text: str, source_lang: str, target_lang: str) -> str:
     return "\n\n".join(translated_blocks)
 
 
+def _remove_language_prefix(text: str, target_lang: str) -> str:
+    """Remove language name prefixes like 'Tshiluba:', 'Lingala:', etc. from translated text."""
+    if not text:
+        return text
+    
+    # Get possible language names that might be used as prefixes
+    language_name = BANTU_LANGUAGES.get(target_lang.lower(), target_lang.upper())
+    lang_code_upper = target_lang.upper()
+    
+    # Patterns to remove: "Tshiluba:", "LINGALA:", "LUA:", etc.
+    patterns = [
+        f"{language_name}:",
+        f"{language_name.upper()}:",
+        f"{language_name.lower()}:",
+        f"{lang_code_upper}:",
+        f"{target_lang.upper()}:",
+    ]
+    
+    text_cleaned = text.strip()
+    for pattern in patterns:
+        # Remove at start of line
+        if text_cleaned.startswith(pattern):
+            text_cleaned = text_cleaned[len(pattern):].strip()
+        # Also check for pattern at start of each line (for multi-line text)
+        lines = text_cleaned.split('\n')
+        cleaned_lines = []
+        for line in lines:
+            line_stripped = line.strip()
+            for pat in patterns:
+                if line_stripped.startswith(pat):
+                    line_stripped = line_stripped[len(pat):].strip()
+                    break
+            cleaned_lines.append(line_stripped)
+        text_cleaned = '\n'.join(cleaned_lines)
+    
+    return text_cleaned.strip()
+
+
 def translate_with_openai(text: str, source_lang: str, target_lang: str) -> str:
     """Translate text using OpenAI (for Bantu languages or when DeepL is not available)."""
     client = get_openai_client()
@@ -335,7 +373,10 @@ TEXTE:
                 ],
                 temperature=0.3,
             )
-            translated_blocks.append(response.choices[0].message.content.strip())
+            translated_text = response.choices[0].message.content.strip()
+            # Remove any language prefix that the AI might have added
+            translated_text = _remove_language_prefix(translated_text, target_lang)
+            translated_blocks.append(translated_text)
         
         return "\n\n".join(translated_blocks)
     except Exception as e:

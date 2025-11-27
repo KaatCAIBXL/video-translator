@@ -542,6 +542,44 @@ def translate_text_deepl(text: str, target_lang: str) -> str:
     ) from last_exc
 
 
+def _remove_language_prefix(text: str, target_lang: str) -> str:
+    """Remove language name prefixes like 'Tshiluba:', 'Lingala:', etc. from translated text."""
+    if not text:
+        return text
+    
+    # Get possible language names that might be used as prefixes
+    lang_name = LANGUAGE_LABELS.get(target_lang, target_lang)
+    lang_code_upper = target_lang.upper()
+    
+    # Patterns to remove: "Tshiluba:", "LINGALA:", "LUA:", etc.
+    patterns = [
+        f"{lang_name}:",
+        f"{lang_name.upper()}:",
+        f"{lang_name.lower()}:",
+        f"{lang_code_upper}:",
+        f"{target_lang.upper()}:",
+    ]
+    
+    text_cleaned = text.strip()
+    for pattern in patterns:
+        # Remove at start of line
+        if text_cleaned.startswith(pattern):
+            text_cleaned = text_cleaned[len(pattern):].strip()
+        # Also check for pattern at start of each line (for multi-line text)
+        lines = text_cleaned.split('\n')
+        cleaned_lines = []
+        for line in lines:
+            line_stripped = line.strip()
+            for pat in patterns:
+                if line_stripped.startswith(pat):
+                    line_stripped = line_stripped[len(pat):].strip()
+                    break
+            cleaned_lines.append(line_stripped)
+        text_cleaned = '\n'.join(cleaned_lines)
+    
+    return text_cleaned.strip()
+
+
 def translate_text_ai(text: str, target_lang: str) -> str:
     """Use OpenAI to translate into languages that DeepL does not support."""
     lang_name = LANGUAGE_LABELS.get(target_lang, target_lang)
@@ -558,7 +596,9 @@ def translate_text_ai(text: str, target_lang: str) -> str:
     except Exception as exc:
         raise RuntimeError(f"AI translation for {lang_name} failed: {exc}") from exc
 
-    return response.output_text
+    translated = response.output_text
+    # Remove any language prefix that the AI might have added
+    return _remove_language_prefix(translated, target_lang)
 
 
 def translate_segments(
