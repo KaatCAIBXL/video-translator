@@ -473,11 +473,6 @@ async def list_videos(request: Request):
 @app.post("/api/upload")
 async def upload_video(
     request: Request,
-    file_type: str = Form("video"),  # video, audio, or text
-    tts_speed_multiplier: float = Form(1.0),
-    folder_path: Optional[str] = Form(None),  # Optional folder path
-    is_private: bool = Form(False),  # Make video private
-    source_language: Optional[str] = Form("fr"),  # Source language for audio/text
     file: UploadFile = File(...)
 ):
     # Only editors can upload
@@ -490,8 +485,23 @@ async def upload_video(
     # Parse form data manually to handle multiple values with same name
     form_data = await request.form()
     
+    # Extract all form fields manually
+    file_type = form_data.get("file_type", "video").lower()
+    tts_speed_multiplier = float(form_data.get("tts_speed_multiplier", "1.0"))
+    folder_path = form_data.get("folder_path") or None
+    is_private = form_data.get("is_private", "false").lower() == "true"
+    source_language = form_data.get("source_language", "fr")
+    
     # Extract languages (can be multiple with same name)
     languages = form_data.getlist("languages")
+    
+    # Debug logging
+    logger.info(f"Received form data - languages: {languages}, file_type: {file_type}")
+    logger.info(f"All form keys: {list(form_data.keys())}")
+    for key in form_data.keys():
+        if key != "file":  # Skip file to avoid logging binary data
+            values = form_data.getlist(key)
+            logger.info(f"  {key}: {values}")
     
     # Extract process_options (can be multiple with same name)
     process_options = form_data.getlist("process_options")
@@ -514,6 +524,7 @@ async def upload_video(
     # Original video processing logic
     # For videos, languages are always required
     if not languages or len(languages) == 0:
+        logger.warning(f"No languages found in form data. Languages list: {languages}")
         return JSONResponse(
             {"error": "Please select one or two target languages"},
             status_code=400,
