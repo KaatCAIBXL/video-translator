@@ -1728,10 +1728,21 @@ if (uploadForm && isEditor) {
             return;
         }
         // Explicitly add languages to FormData for videos
+        console.log("Selected languages:", checkedLangs.map(l => l.value));
         checkedLangs.forEach(lang => {
             formData.append("languages", lang.value);
             console.log("Added language to FormData:", lang.value);
         });
+        
+        // Debug: log all FormData entries
+        console.log("FormData contents:");
+        for (const [key, value] of formData.entries()) {
+            if (key === "file") {
+                console.log(`  ${key}: [File object]`);
+            } else {
+                console.log(`  ${key}: ${value}`);
+            }
+        }
     }
     
     // For audio and text files, we need source language
@@ -1806,8 +1817,24 @@ if (uploadForm && isEditor) {
         });
 
         if (!res.ok) {
-            const err = await res.json();
-            statusEl.textContent = "Erreur : " + (err.error || res.statusText);
+            let errorMessage = "Erreur inconnue";
+            try {
+                const err = await res.json();
+                errorMessage = err.error || res.statusText || `Status ${res.status}`;
+                console.error("Upload error:", err);
+            } catch (e) {
+                // If response is not JSON, try to get text
+                try {
+                    const text = await res.text();
+                    errorMessage = text || `Status ${res.status}: ${res.statusText}`;
+                    console.error("Upload error (text):", text);
+                } catch (e2) {
+                    errorMessage = `Status ${res.status}: ${res.statusText}`;
+                    console.error("Upload error (status only):", res.status, res.statusText);
+                }
+            }
+            statusEl.textContent = "Erreur : " + errorMessage;
+            alert("Erreur : " + errorMessage); // Also show in alert for visibility
             // Re-enable submit button on error
             if (submitBtn) {
                 submitBtn.disabled = false;
