@@ -57,7 +57,7 @@ AVAILABLE_LANGUAGE_CODES: List[str] = [
 ]
 
 
-LANGUAGES_WITHOUT_DUBBING = {"mg"}  # Lingala (ln), Tshiluba (lua), and Kituba (kg) removed - now supported via ElevenLabs
+LANGUAGES_WITHOUT_DUBBING = set()  # All Bantu languages (Lingala, Tshiluba, Kituba, Malagasy) now supported via ElevenLabs
 
 def get_language_options() -> List[LanguageOption]:
     options: List[LanguageOption] = []

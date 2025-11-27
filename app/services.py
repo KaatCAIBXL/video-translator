@@ -571,6 +571,14 @@ def _remove_language_prefix(text: str, target_lang: str) -> str:
             "kikongo:",
         ])
     
+    # Special cases: for Malagasy (mg), also check for "Malagasy:" separately
+    if target_lang.lower() == "mg":
+        patterns.extend([
+            "Malagasy:",
+            "MALAGASY:",
+            "malagasy:",
+        ])
+    
     text_cleaned = text.strip()
     for pattern in patterns:
         # Remove at start of line
@@ -867,6 +875,27 @@ async def tts_for_language(text: str, lang: str, speed_multiplier: float = 1.0) 
         except Exception as exc:
             logger.warning(
                 "ElevenLabs TTS mislukt voor Kituba, val terug op edge-tts: %s",
+                exc
+            )
+            # Fallback naar edge-tts
+            pass
+    
+    # Voor Malagasy: gebruik ElevenLabs als API key beschikbaar is
+    if lang == "mg" and settings.MALAGASY_TTS_API_KEY and settings.MALAGASY_ELEVENLABS_VOICE_ID:
+        try:
+            # Gebruik de originele Malagasy tekst (geen fonetische conversie nodig met ElevenLabs)
+            audio_bytes = await _elevenlabs_tts_to_bytes(
+                text, 
+                settings.MALAGASY_ELEVENLABS_VOICE_ID, 
+                settings.MALAGASY_TTS_API_KEY,
+                speed_multiplier=speed_multiplier
+            )
+            # Als speed_multiplier niet 1.0 is, moeten we de audio aanpassen met ffmpeg
+            # Voor nu retourneren we de audio zoals die is (speed kan later worden toegepast)
+            return audio_bytes
+        except Exception as exc:
+            logger.warning(
+                "ElevenLabs TTS mislukt voor Malagasy, val terug op edge-tts: %s",
                 exc
             )
             # Fallback naar edge-tts

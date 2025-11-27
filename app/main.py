@@ -743,6 +743,13 @@ async def process_video_job(
                         f"Dubbing is niet beschikbaar voor {label}. ElevenLabs API key en voice ID moeten geconfigureerd zijn."
                     )
                     continue
+                # Check if Malagasy has ElevenLabs configuration
+                if lang == "mg" and (not settings.MALAGASY_TTS_API_KEY or not settings.MALAGASY_ELEVENLABS_VOICE_ID):
+                    label = LANGUAGE_LABELS.get(lang, lang.upper())
+                    warnings.append(
+                        f"Dubbing is niet beschikbaar voor {label}. ElevenLabs API key en voice ID moeten geconfigureerd zijn."
+                    )
+                    continue
                 temp_audio_path: Optional[Path] = None
                 try:
                     if create_dub_audio:
