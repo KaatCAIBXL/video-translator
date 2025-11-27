@@ -1986,15 +1986,20 @@ if (uploadForm && isEditor) {
             submitBtn.textContent = "Téléverser et traiter";
         }
     } catch (err) {
-        console.error("=== FORM SUBMIT ERROR ===", err);
+        console.error("=== INNER FORM SUBMIT ERROR ===", err);
         console.error("Error stack:", err.stack);
-        statusEl.textContent = "Erreur inconnue: " + err.message;
+        const statusEl = document.getElementById("upload-status");
+        if (statusEl) {
+            statusEl.textContent = "Erreur inconnue: " + err.message;
+        }
         alert("Erreur: " + err.message);
         // Re-enable submit button on error
+        const submitBtn = document.querySelector('#upload-form button[type="submit"]');
         if (submitBtn) {
             submitBtn.disabled = false;
             submitBtn.textContent = "Téléverser et traiter";
         }
+    }
     } catch (outerErr) {
         console.error("=== OUTER FORM SUBMIT ERROR ===", outerErr);
         console.error("Error stack:", outerErr.stack);
