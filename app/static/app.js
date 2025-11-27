@@ -259,9 +259,17 @@ function createVideoItem(video) {
             originalLabel.style.cursor = "pointer";
             audioWrapper.appendChild(originalLabel);
             
-            // Dub audio options
+            // Dub audio options - combine available_dubs and available_dub_audios
+            const allDubLangs = new Set();
             if (video.available_dubs && video.available_dubs.length > 0) {
-                video.available_dubs.forEach((lang) => {
+                video.available_dubs.forEach(lang => allDubLangs.add(lang));
+            }
+            if (video.available_dub_audios && video.available_dub_audios.length > 0) {
+                video.available_dub_audios.forEach(lang => allDubLangs.add(lang));
+            }
+            
+            if (allDubLangs.size > 0) {
+                Array.from(allDubLangs).sort().forEach((lang) => {
                     const dubRadio = document.createElement("input");
                     dubRadio.type = "radio";
                     dubRadio.name = `audio-${video.id}`;
@@ -296,6 +304,11 @@ function createVideoItem(video) {
             playOriginalBtn.style.display = "block";
             playOriginalBtn.onclick = () => {
                 if (selectedAudioMode === "dub" && selectedDubLang) {
+                    // Check if this language has a full video dub available (not just audio)
+                    if (!video.available_dubs || !video.available_dubs.includes(selectedDubLang)) {
+                        alert(`Le doublage vidéo n'est pas disponible pour ${selectedDubLang.toUpperCase()}. Seul l'audio doublé (MP3) est disponible pour cette langue.`);
+                        return;
+                    }
                     // Play with dubbing
                     if (selectedLangs.size > 0) {
                         playVideo(video, { mode: "dub", lang: selectedDubLang, langs: Array.from(selectedLangs) });
