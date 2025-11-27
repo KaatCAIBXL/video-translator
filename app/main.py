@@ -474,8 +474,6 @@ async def list_videos(request: Request):
 async def upload_video(
     request: Request,
     file_type: str = Form("video"),  # video, audio, or text
-    languages: Optional[List[str]] = Form(None),  # max. 2 talen aanvinken in frontend
-    process_options: Optional[List[str]] = Form(None),
     tts_speed_multiplier: float = Form(1.0),
     folder_path: Optional[str] = Form(None),  # Optional folder path
     is_private: bool = Form(False),  # Make video private
@@ -489,6 +487,15 @@ async def upload_video(
             status_code=403,
         )
     
+    # Parse form data manually to handle multiple values with same name
+    form_data = await request.form()
+    
+    # Extract languages (can be multiple with same name)
+    languages = form_data.getlist("languages")
+    
+    # Extract process_options (can be multiple with same name)
+    process_options = form_data.getlist("process_options")
+    
     file_type = file_type.lower()
     if file_type not in ["video", "audio", "text"]:
         return JSONResponse(
@@ -499,7 +506,8 @@ async def upload_video(
     # For audio/text files, handle differently
     if file_type in ["audio", "text"]:
         return await handle_audio_text_upload(
-            request, file_type, file, languages, process_options,
+            request, file_type, file, languages if languages else None, 
+            process_options if process_options else None,
             folder_path, is_private, source_language
         )
     
