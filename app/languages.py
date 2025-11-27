@@ -25,6 +25,7 @@ LANGUAGE_LABELS: Dict[str, str] = {
     "lua": "Tshiluba",
     "kg": "Kikongo (Kituba)",
     "mg": "Malagasy",
+    "yo": "Yoruba",
 }
 
 DEEPL_LANG_MAP: Dict[str, str] = {
@@ -54,10 +55,11 @@ AVAILABLE_LANGUAGE_CODES: List[str] = [
     "lua",
     "kg",
     "mg",
+    "yo",
 ]
 
 
-LANGUAGES_WITHOUT_DUBBING = set()  # All Bantu languages (Lingala, Tshiluba, Kituba, Malagasy) now supported via ElevenLabs
+LANGUAGES_WITHOUT_DUBBING = set()  # All Bantu languages (Lingala, Tshiluba, Kituba, Malagasy, Yoruba) now supported via ElevenLabs
 
 def get_language_options() -> List[LanguageOption]:
     options: List[LanguageOption] = []

@@ -11,7 +11,7 @@ load_dotenv(BASE_DIR / ".env")
 class Settings:
     OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
     DEEPL_API_KEY: str = os.getenv("DEEPL_API_KEY", "")
-    # Voor Tshiluba / Lingala / Kituba / Malagasy TTS, als je aparte provider gebruikt:
+    # Voor Tshiluba / Lingala / Kituba / Malagasy / Yoruba TTS, als je aparte provider gebruikt:
     LINGALA_TTS_API_KEY: str = os.getenv("LINGALA_TTS_API_KEY", "")
     LINGALA_ELEVENLABS_VOICE_ID: str = os.getenv("LINGALA_ELEVENLABS_VOICE_ID", "")
     TSHILUBA_TTS_API_KEY: str = os.getenv("TSHILUBA_TTS_API_KEY", "")
@@ -20,6 +20,8 @@ class Settings:
     KITUBA_ELEVENLABS_VOICE_ID: str = os.getenv("KITUBA_ELEVENLABS_VOICE_ID", "")
     MALAGASY_TTS_API_KEY: str = os.getenv("MALAGASY_TTS_API_KEY", "")
     MALAGASY_ELEVENLABS_VOICE_ID: str = os.getenv("MALAGASY_ELEVENLABS_VOICE_ID", "")
+    YORUBA_TTS_API_KEY: str = os.getenv("YORUBA_TTS_API_KEY", "")
+    YORUBA_ELEVENLABS_VOICE_ID: str = os.getenv("YORUBA_ELEVENLABS_VOICE_ID", "")
 
     # ffmpeg tuning
     WHISPER_MAX_UPLOAD_MB: int = int(os.getenv("WHISPER_MAX_UPLOAD_MB", "24"))

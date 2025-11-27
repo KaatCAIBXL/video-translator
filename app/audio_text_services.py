@@ -336,6 +336,14 @@ def _remove_language_prefix(text: str, target_lang: str) -> str:
             "malagasy:",
         ])
     
+    # Special cases: for Yoruba (yo), also check for "Yoruba:" separately
+    if target_lang.lower() == "yo":
+        patterns.extend([
+            "Yoruba:",
+            "YORUBA:",
+            "yoruba:",
+        ])
+    
     text_cleaned = text.strip()
     for pattern in patterns:
         # Remove at start of line
@@ -498,6 +506,23 @@ async def generate_tts_audio(text: str, language: str, output_path: Path) -> Non
             return
         except Exception as e:
             logger.warning(f"ElevenLabs TTS failed for Malagasy, falling back to edge-tts: {e}")
+            # Fallback naar edge-tts
+            pass
+    
+    # Voor Yoruba: gebruik ElevenLabs als API key beschikbaar is
+    if lang == "yo" and settings.YORUBA_TTS_API_KEY and settings.YORUBA_ELEVENLABS_VOICE_ID:
+        try:
+            audio_bytes = await _elevenlabs_tts_to_bytes(
+                text,
+                settings.YORUBA_ELEVENLABS_VOICE_ID,
+                settings.YORUBA_TTS_API_KEY,
+                speed_multiplier=1.0
+            )
+            output_path.write_bytes(audio_bytes)
+            logger.info(f"ElevenLabs TTS audio generated for Yoruba: {output_path}")
+            return
+        except Exception as e:
+            logger.warning(f"ElevenLabs TTS failed for Yoruba, falling back to edge-tts: {e}")
             # Fallback naar edge-tts
             pass
     
