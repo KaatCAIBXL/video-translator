@@ -475,8 +475,15 @@ async def upload_video(
     request: Request,
     file: UploadFile = File(...)
 ):
+    # Debug: check session and role
+    session_id = request.cookies.get("session_id")
+    role = get_role_from_request(request)
+    logger.info(f"Upload request - session_id: {session_id}, role: {role}, is_editor: {is_editor(request)}")
+    logger.info(f"All cookies: {request.cookies}")
+    
     # Only editors can upload
     if not is_editor(request):
+        logger.warning(f"Upload denied - session_id: {session_id}, role: {role}")
         return JSONResponse(
             {"error": "Seuls les éditeurs peuvent télécharger des fichiers."},
             status_code=403,

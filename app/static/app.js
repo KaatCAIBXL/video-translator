@@ -1839,6 +1839,7 @@ if (uploadForm && isEditor) {
         const res = await fetch("/api/upload", {
             method: "POST",
             body: formData,
+            credentials: "include", // Include cookies in request
             // Don't set Content-Type header - let browser set it with boundary for multipart/form-data
         });
 
