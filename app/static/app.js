@@ -542,6 +542,26 @@ function createVideoItem(video) {
             });
         }
 
+        // Download transcription if available
+        if (video.has_transcription) {
+            const downloadTranscriptionBtn = document.createElement("button");
+            downloadTranscriptionBtn.textContent = "📄 Télécharger la transcription (TXT)";
+            downloadTranscriptionBtn.style.marginBottom = "5px";
+            downloadTranscriptionBtn.style.padding = "8px";
+            downloadTranscriptionBtn.style.backgroundColor = "#28a745";
+            downloadTranscriptionBtn.style.color = "white";
+            downloadTranscriptionBtn.style.border = "none";
+            downloadTranscriptionBtn.style.borderRadius = "3px";
+            downloadTranscriptionBtn.style.cursor = "pointer";
+            downloadTranscriptionBtn.onclick = () => {
+                const link = document.createElement("a");
+                link.href = `/files/${encodeURIComponent(video.id)}/transcribed.txt`;
+                link.download = `${baseName}_transcribed.txt`;
+                link.click();
+            };
+            downloads.appendChild(downloadTranscriptionBtn);
+        }
+
         if (video.available_subtitles && video.available_subtitles.length > 0) {
             // If 2 languages available, download combined, otherwise download first language
             const downloadSubtitlesBtn = document.createElement("button");

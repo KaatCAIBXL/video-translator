@@ -352,6 +352,9 @@ async def list_videos(request: Request):
                     dub_audios.sort()
                     combined.sort()
                     
+                    # Check if transcribed.txt exists
+                    has_transcription = (item / "transcribed.txt").exists()
+                    
                     items.append(
                         VideoListItem(
                             id=meta.id,
@@ -361,6 +364,7 @@ async def list_videos(request: Request):
                             available_dubs=dubs,
                             available_dub_audios=dub_audios,
                             available_combined_subtitles=combined,
+                            has_transcription=has_transcription,
                             folder_path=video_folder_path,
                             is_private=video_is_private,
                         )
