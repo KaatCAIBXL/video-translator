@@ -27,6 +27,76 @@ function sleep(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+// Progress bar and time estimation functions
+function createProgressBar(container) {
+    const progressContainer = document.createElement("div");
+    progressContainer.className = "progress-container";
+    
+    const progressText = document.createElement("div");
+    progressText.className = "progress-text";
+    progressText.textContent = "0%";
+    
+    const progressBarWrapper = document.createElement("div");
+    progressBarWrapper.className = "progress-bar-wrapper";
+    
+    const progressBar = document.createElement("div");
+    progressBar.className = "progress-bar";
+    progressBar.style.width = "0%";
+    
+    const timeRemaining = document.createElement("div");
+    timeRemaining.className = "time-remaining";
+    timeRemaining.textContent = "Calcul en cours...";
+    
+    progressBarWrapper.appendChild(progressBar);
+    progressContainer.appendChild(progressText);
+    progressContainer.appendChild(progressBarWrapper);
+    progressContainer.appendChild(timeRemaining);
+    
+    container.appendChild(progressContainer);
+    
+    return {
+        container: progressContainer,
+        text: progressText,
+        bar: progressBar,
+        timeRemaining: timeRemaining
+    };
+}
+
+function updateProgress(progressObj, percentage, elapsedSeconds = 0) {
+    const clampedPercentage = Math.max(0, Math.min(100, percentage));
+    progressObj.bar.style.width = clampedPercentage + "%";
+    progressObj.text.textContent = Math.round(clampedPercentage) + "%";
+    
+    // Calculate estimated time remaining
+    if (elapsedSeconds > 0 && clampedPercentage > 0 && clampedPercentage < 100) {
+        const estimatedTotalSeconds = (elapsedSeconds / clampedPercentage) * 100;
+        const remainingSeconds = estimatedTotalSeconds - elapsedSeconds;
+        
+        if (remainingSeconds > 0) {
+            const hours = Math.floor(remainingSeconds / 3600);
+            const minutes = Math.floor((remainingSeconds % 3600) / 60);
+            const seconds = Math.floor(remainingSeconds % 60);
+            
+            let timeString = "";
+            if (hours > 0) {
+                timeString = `${hours}h ${minutes}m`;
+            } else if (minutes > 0) {
+                timeString = `${minutes}m ${seconds}s`;
+            } else {
+                timeString = `${seconds}s`;
+            }
+            
+            progressObj.timeRemaining.textContent = `Temps restant estimé: ${timeString}`;
+        } else {
+            progressObj.timeRemaining.textContent = "Presque terminé...";
+        }
+    } else if (clampedPercentage >= 100) {
+        progressObj.timeRemaining.textContent = "Terminé!";
+    } else {
+        progressObj.timeRemaining.textContent = "Calcul en cours...";
+    }
+}
+
 function renderWarnings(container, warnings) {
     if (!Array.isArray(warnings) || warnings.length === 0) {
         return;
@@ -50,14 +120,21 @@ function renderWarnings(container, warnings) {
     container.appendChild(warningBlock);
 }
 
-async function pollJobStatus(jobId, statusEl) {
+async function pollJobStatus(jobId, statusEl, progressObj = null, startTime = null) {
     const pollIntervalMs = 3000;
     const timeoutMs = 10 * 60 * 1000; // 10 minuten
-    const start = Date.now();
+    const start = startTime || Date.now();
     let slowProcessingWarned = false;
-    const progressEl = document.createElement("div");
-    progressEl.textContent = `La tâche ${jobId} est en attente...`;
-    statusEl.appendChild(progressEl);
+    
+    // Use existing progress bar or create message
+    if (!progressObj) {
+        const progressEl = document.createElement("div");
+        progressEl.textContent = `La tâche ${jobId} est en attente...`;
+        statusEl.appendChild(progressEl);
+    }
+    
+    // Progress starts at 20% (upload complete), goes to 100% during processing
+    let currentProgress = 20;
 
     while (true) {
         let job;
@@ -68,12 +145,36 @@ async function pollJobStatus(jobId, statusEl) {
             }
             job = await res.json();
         } catch (err) {
-            progressEl.className = "status-error";
-            progressEl.textContent = `Impossible de vérifier l'état ${err.message}`;
+            // Clear progress interval
+            if (statusEl.dataset.progressInterval) {
+                clearInterval(parseInt(statusEl.dataset.progressInterval));
+            }
+            
+            if (progressObj) {
+                statusEl.innerHTML = "";
+            } else {
+                const progressEl = statusEl.querySelector("div") || document.createElement("div");
+                progressEl.className = "status-error";
+                progressEl.textContent = `Impossible de vérifier l'état ${err.message}`;
+                if (!statusEl.contains(progressEl)) {
+                    statusEl.appendChild(progressEl);
+                }
+            }
             return;
         }
 
         if (job.status === "completed") {
+            // Clear progress interval
+            if (statusEl.dataset.progressInterval) {
+                clearInterval(parseInt(statusEl.dataset.progressInterval));
+            }
+            
+            // Show 100% complete
+            if (progressObj) {
+                updateProgress(progressObj, 100, (Date.now() - start) / 1000);
+                await sleep(500); // Brief pause to show 100%
+            }
+            
             statusEl.innerHTML = "";
             const successMsg = document.createElement("div");
             successMsg.className = "status-success";
@@ -88,6 +189,11 @@ async function pollJobStatus(jobId, statusEl) {
         }
 
         if (job.status === "failed") {
+            // Clear progress interval
+            if (statusEl.dataset.progressInterval) {
+                clearInterval(parseInt(statusEl.dataset.progressInterval));
+            }
+            
             statusEl.innerHTML = "";
             const errorMsg = document.createElement("div");
             errorMsg.className = "status-error";
@@ -97,7 +203,22 @@ async function pollJobStatus(jobId, statusEl) {
             return;
         }
 
-        progressEl.textContent = `Tâche ${job.id} :${job.status}...`;
+        // Update progress: gradually increase from 20% to 95% during processing
+        const elapsedSeconds = (Date.now() - start) / 1000;
+        // Estimate progress based on time (rough estimate)
+        // Start at 20%, gradually increase, but cap at 95% until completed
+        currentProgress = Math.min(95, 20 + (elapsedSeconds / 120) * 75); // Rough estimate: 2 minutes to reach 95%
+        
+        if (progressObj) {
+            statusEl.dataset.currentProgress = currentProgress.toString();
+            updateProgress(progressObj, currentProgress, elapsedSeconds);
+        } else {
+            const progressEl = statusEl.querySelector("div") || document.createElement("div");
+            progressEl.textContent = `Tâche ${job.id} :${job.status}... (${Math.round(currentProgress)}%)`;
+            if (!statusEl.contains(progressEl)) {
+                statusEl.appendChild(progressEl);
+            }
+        }
 
         if (!slowProcessingWarned && Date.now() - start > timeoutMs) {
             slowProcessingWarned = true;
@@ -1718,7 +1839,23 @@ if (uploadForm && isEditor) {
             return;
         }
         
-        statusEl.textContent = "Téléversement et traitement en cours... Cela peut prendre un moment.";
+        // Create progress bar instead of simple text
+        statusEl.innerHTML = "";
+        const progressObj = createProgressBar(statusEl);
+        const startTime = Date.now();
+        
+        // Update progress periodically
+        const progressInterval = setInterval(() => {
+            const elapsedSeconds = (Date.now() - startTime) / 1000;
+            // Estimate progress: start at 5%, gradually increase
+            // This is a rough estimate - actual progress will be updated during upload/processing
+            const estimatedProgress = Math.min(95, 5 + (elapsedSeconds / 60) * 10); // Rough estimate
+            updateProgress(progressObj, estimatedProgress, elapsedSeconds);
+        }, 1000); // Update every second
+        
+        // Store progress object and interval for later cleanup
+        statusEl.dataset.progressInterval = progressInterval;
+        statusEl.dataset.progressStartTime = startTime;
 
         // Create new FormData instead of using form directly to avoid conflicts
         const formData = new FormData();
@@ -1841,10 +1978,38 @@ if (uploadForm && isEditor) {
         let successCount = 0;
         let errorCount = 0;
         
-        statusEl.innerHTML = "";
-        const progressMsg = document.createElement("div");
-        progressMsg.textContent = `Téléversement de ${totalFiles} fichier(s)...`;
-        statusEl.appendChild(progressMsg);
+        // Get or create progress bar
+        let progressObj = null;
+        let progressInterval = null;
+        const startTime = statusEl.dataset.progressStartTime ? parseInt(statusEl.dataset.progressStartTime) : Date.now();
+        
+        if (statusEl.querySelector(".progress-container")) {
+            // Reuse existing progress bar
+            const container = statusEl.querySelector(".progress-container");
+            progressObj = {
+                container: container,
+                text: container.querySelector(".progress-text"),
+                bar: container.querySelector(".progress-bar"),
+                timeRemaining: container.querySelector(".time-remaining")
+            };
+            // Clear existing interval
+            if (statusEl.dataset.progressInterval) {
+                clearInterval(parseInt(statusEl.dataset.progressInterval));
+            }
+        } else {
+            statusEl.innerHTML = "";
+            progressObj = createProgressBar(statusEl);
+        }
+        
+        // Update progress periodically
+        progressInterval = setInterval(() => {
+            const elapsedSeconds = (Date.now() - startTime) / 1000;
+            // Get current progress from dataset or estimate
+            const currentProgress = parseFloat(statusEl.dataset.currentProgress || "5");
+            updateProgress(progressObj, currentProgress, elapsedSeconds);
+        }, 1000);
+        statusEl.dataset.progressInterval = progressInterval;
+        statusEl.dataset.progressStartTime = startTime;
         
         for (let i = 0; i < files.length; i++) {
             const file = files[i];
@@ -1877,10 +2042,13 @@ if (uploadForm && isEditor) {
                 }
             }
             
-            // Update progress
-            if (totalFiles > 1) {
-                progressMsg.textContent = `Téléversement ${i + 1}/${totalFiles}: ${file.name}...`;
-            }
+            // Update progress: Upload phase (0-20% for videos, 0-30% for audio/text)
+            const uploadProgress = fileType === "video" ? 20 : 30;
+            // Progress per file: each file gets a portion of the upload progress
+            const fileProgress = ((i / totalFiles) * uploadProgress) + ((i + 1) / totalFiles) * uploadProgress * 0.8;
+            statusEl.dataset.currentProgress = fileProgress.toString();
+            const elapsedSeconds = (Date.now() - startTime) / 1000;
+            updateProgress(progressObj, fileProgress, elapsedSeconds);
             
             try {
                 const res = await fetch("/api/upload", {
@@ -1918,10 +2086,44 @@ if (uploadForm && isEditor) {
                 const data = await res.json();
                 successCount++;
                 
+                // Update progress: Upload complete, now processing
+                const uploadCompleteProgress = fileType === "video" ? 20 : 30;
+                statusEl.dataset.currentProgress = uploadCompleteProgress.toString();
+                const elapsedSeconds = (Date.now() - startTime) / 1000;
+                updateProgress(progressObj, uploadCompleteProgress, elapsedSeconds);
+                
                 // Check if this is an audio/text file (no job polling needed)
                 if (fileType === "audio" || fileType === "text") {
+                    // Simulate processing progress for audio/text (30% to 100%)
+                    let processingProgress = uploadCompleteProgress;
+                    const processingInterval = setInterval(() => {
+                        processingProgress = Math.min(100, processingProgress + 2);
+                        statusEl.dataset.currentProgress = processingProgress.toString();
+                        const elapsedSeconds = (Date.now() - startTime) / 1000;
+                        updateProgress(progressObj, processingProgress, elapsedSeconds);
+                        
+                        if (processingProgress >= 100) {
+                            clearInterval(processingInterval);
+                            // Clear progress interval
+                            if (statusEl.dataset.progressInterval) {
+                                clearInterval(parseInt(statusEl.dataset.progressInterval));
+                            }
+                        }
+                    }, 500);
+                    
+                    // Wait a bit to show progress, then show results
+                    await sleep(1000);
+                    clearInterval(processingInterval);
+                    if (statusEl.dataset.progressInterval) {
+                        clearInterval(parseInt(statusEl.dataset.progressInterval));
+                    }
+                    
+                    // Show 100% complete
+                    updateProgress(progressObj, 100, (Date.now() - startTime) / 1000);
+                    
                     const successMsg = document.createElement("div");
                     successMsg.className = "status-success";
+                    successMsg.style.marginTop = "15px";
                     successMsg.textContent = `${file.name}: ${data.message || "Fichier traité avec succès!"}`;
                     statusEl.appendChild(successMsg);
                     
@@ -1945,11 +2147,8 @@ if (uploadForm && isEditor) {
                         statusEl.appendChild(resultsDiv);
                     }
                 } else {
-                    // Video processing with job polling
-                    const queuedMsg = document.createElement("div");
-                    queuedMsg.textContent = `${file.name}: Téléversement réussi. La vidéo ${data.id} est en cours de traitement...`;
-                    statusEl.appendChild(queuedMsg);
-                    await pollJobStatus(data.id, statusEl);
+                    // Video processing with job polling - pass progress object
+                    await pollJobStatus(data.id, statusEl, progressObj, startTime);
                 }
             } catch (err) {
                 errorCount++;
@@ -1960,6 +2159,11 @@ if (uploadForm && isEditor) {
                 errorMsg.textContent = `Erreur pour ${file.name}: ${err.message}`;
                 statusEl.appendChild(errorMsg);
             }
+        }
+        
+        // Clear progress interval
+        if (statusEl.dataset.progressInterval) {
+            clearInterval(parseInt(statusEl.dataset.progressInterval));
         }
         
         // Final summary
@@ -2005,6 +2209,11 @@ if (uploadForm && isEditor) {
         console.error("Error stack:", outerErr.stack);
         const statusEl = document.getElementById("upload-status");
         if (statusEl) {
+            // Clear progress interval
+            if (statusEl.dataset.progressInterval) {
+                clearInterval(parseInt(statusEl.dataset.progressInterval));
+            }
+            statusEl.innerHTML = "";
             statusEl.textContent = "Erreur inconnue: " + outerErr.message;
         }
         alert("Erreur: " + outerErr.message);
