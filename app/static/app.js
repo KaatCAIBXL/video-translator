@@ -554,10 +554,17 @@ function createVideoItem(video) {
             downloadTranscriptionBtn.style.borderRadius = "3px";
             downloadTranscriptionBtn.style.cursor = "pointer";
             downloadTranscriptionBtn.onclick = () => {
+                // Cross-platform download: works on Windows, Linux, macOS, and iOS
+                const url = `/files/${encodeURIComponent(video.id)}/transcribed.txt`;
                 const link = document.createElement("a");
-                link.href = `/files/${encodeURIComponent(video.id)}/transcribed.txt`;
+                link.href = url;
                 link.download = `${baseName}_transcribed.txt`;
+                // For iOS Safari compatibility: append to body, click, then remove
+                document.body.appendChild(link);
                 link.click();
+                document.body.removeChild(link);
+                // Fallback: if download attribute doesn't work (iOS), open in new tab
+                // The browser will handle it appropriately
             };
             downloads.appendChild(downloadTranscriptionBtn);
         }

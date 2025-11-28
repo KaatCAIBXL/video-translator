@@ -1479,10 +1479,18 @@ async def download_file(request: Request, file_id: str, filename: str):
                 logger.warning(f"Download denied - session_id: {session_id}, role: {role}, file_id: {file_id}, filename: {filename}, is_private: {is_private}")
                 return JSONResponse({"error": "Accès refusé."}, status_code=403)
             
+            # Set proper content type for text files
+            content_type = "application/octet-stream"
+            if filename.endswith(".txt"):
+                content_type = "text/plain; charset=utf-8"
+            
             return FileResponse(
                 path=str(file_path),
                 filename=filename,
-                media_type="application/octet-stream",
+                media_type=content_type,
+                headers={
+                    "Content-Disposition": f'attachment; filename="{filename}"',
+                },
             )
     
     # If not found as directory-based, try to find as loose file
@@ -1509,10 +1517,18 @@ async def download_file(request: Request, file_id: str, filename: str):
         if not is_editor(request) and _is_folder_private(folder_path):
             return JSONResponse({"error": "Accès refusé."}, status_code=403)
         
+        # Set proper content type for text files
+        content_type = "application/octet-stream"
+        if loose_file.name.endswith(".txt"):
+            content_type = "text/plain; charset=utf-8"
+        
         return FileResponse(
             path=str(loose_file),
             filename=loose_file.name,
-            media_type="application/octet-stream",
+            media_type=content_type,
+            headers={
+                "Content-Disposition": f'attachment; filename="{loose_file.name}"',
+            },
         )
     
     return JSONResponse({"error": "Fichier non trouvé."}, status_code=404)
