@@ -10,6 +10,7 @@ import os
 import re
 import tempfile
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
@@ -137,45 +138,70 @@ def split_audio_efficient(audio_path: Path, chunk_length_ms: int = 60000) -> Lis
 # TRANSCRIPTION (Whisper)
 # ============================================================
 def transcribe_audio_whisper_api(audio_path: Path, language: str = "fr") -> str:
-    """Transcribe audio using Whisper API."""
+    """Transcribe audio using Whisper API with optimized settings for speed."""
     try:
         client = get_openai_client()
         with open(audio_path, "rb") as audio_file:
             transcript = client.audio.transcriptions.create(
                 model="whisper-1",
                 file=audio_file,
-                language=language
+                language=language,
+                temperature=0.0,  # More deterministic, faster processing
+                response_format="text"  # Simpler format, faster response
             )
-            return transcript.text.strip()
+            return transcript.strip() if isinstance(transcript, str) else transcript.text.strip()
     except Exception as e:
         logger.error(f"Whisper API error for {audio_path}: {e}")
         return ""
 
 
-def transcribe_long_audio(audio_path: Path, language: str = "fr") -> str:
-    """Split long audio and transcribe each chunk."""
+def transcribe_long_audio(audio_path: Path, language: str = "fr", max_workers: int = 3) -> str:
+    """Split long audio and transcribe each chunk in parallel for faster processing."""
     chunks = split_audio_efficient(audio_path)
     if not chunks:
         return ""
     
-    full_text = ""
     total = len(chunks)
+    logger.info(f"Transcribing {total} chunks in parallel (max {max_workers} workers)...")
     
-    for idx, chunk in enumerate(chunks):
-        logger.info(f"Processing chunk {idx + 1}/{total}...")
-        text = transcribe_audio_whisper_api(chunk, language=language)
-        full_text += text + "\n"
-        
-        # Clean up chunk
-        try:
-            chunk.unlink()
-        except Exception:
-            pass
-        
-        progress = math.ceil(((idx + 1) / total) * 100)
-        logger.info(f"{progress}% complete")
+    # Store results with their index to maintain order
+    results = {}
+    full_text_parts = []
     
-    return full_text.strip()
+    # Process chunks in parallel
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        # Submit all transcription tasks
+        future_to_chunk = {
+            executor.submit(transcribe_audio_whisper_api, chunk, language): (idx, chunk)
+            for idx, chunk in enumerate(chunks)
+        }
+        
+        # Process completed tasks as they finish
+        completed = 0
+        for future in as_completed(future_to_chunk):
+            idx, chunk = future_to_chunk[future]
+            try:
+                text = future.result()
+                results[idx] = text
+                completed += 1
+                progress = math.ceil((completed / total) * 100)
+                logger.info(f"Chunk {idx + 1}/{total} completed ({progress}% total)")
+            except Exception as e:
+                logger.error(f"Error transcribing chunk {idx + 1}: {e}")
+                results[idx] = ""
+            finally:
+                # Clean up chunk file
+                try:
+                    chunk.unlink()
+                except Exception:
+                    pass
+    
+    # Reconstruct text in correct order
+    for idx in range(total):
+        if idx in results and results[idx]:
+            full_text_parts.append(results[idx])
+    
+    return "\n".join(full_text_parts).strip()
 
 
 # ============================================================

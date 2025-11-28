@@ -4,6 +4,7 @@ import math
 import subprocess
 import tempfile
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import List, Dict, Optional, Tuple
 
@@ -302,11 +303,13 @@ def transcribe_audio_whisper(audio_path: Path) -> Dict:
         logger.warning("Could not determine audio duration for chunking: %s", exc)
         audio_duration = 0.0
 
+    # Use smaller chunks for faster initial processing (300 seconds = 5 minutes)
+    # This allows processing to start sooner and complete faster overall
     segment_seconds = _select_chunk_duration(
         audio_path.stat().st_size,
         audio_duration,
         max_bytes,
-        default_seconds=600,
+        default_seconds=300,  # Reduced from 600 to 300 for faster processing
     )
 
     approx_single_chunk = max_bytes / PCM16_MONO_16KHZ_BYTES_PER_SECOND
