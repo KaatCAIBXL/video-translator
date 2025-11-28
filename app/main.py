@@ -5,6 +5,8 @@ import re
 import shutil
 import tempfile
 import uuid
+import requests
+import base64
 from fastapi import FastAPI, UploadFile, File, Form, Request
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, RedirectResponse
@@ -48,7 +50,11 @@ from .languages import (
 from .models import VideoListItem, VideoMetadata, TranslationSegment, Character
 from .job_store import job_store, JobStatus
 from .stable_diffusion_service import StableDiffusionService, create_video_from_images
-from .character_service import character_service
+try:
+    from .character_service import character_service
+except Exception as e:
+    logging.warning(f"Could not import character_service: {e}")
+    character_service = None
 
 app = FastAPI()
 ensure_dirs()
@@ -215,18 +221,26 @@ async def index(request: Request):
     if not role:
         return RedirectResponse(url="/select-role", status_code=302)
     
-    return templates.TemplateResponse(
-        "index.html",
-        {
-            "request": request,
-            "available_languages": LANGUAGE_OPTIONS,
-            "is_editor": is_editor(request),
-            "is_admin": is_admin(request),
-            "can_generate_video": can_generate_video(request),
-            "can_manage_characters": can_manage_characters(request),
-            "can_read_admin_messages": can_read_admin_messages(request),
-        },
-    )
+    try:
+        return templates.TemplateResponse(
+            "index.html",
+            {
+                "request": request,
+                "available_languages": LANGUAGE_OPTIONS,
+                "is_editor": is_editor(request),
+                "is_admin": is_admin(request),
+                "can_generate_video": can_generate_video(request),
+                "can_manage_characters": can_manage_characters(request),
+                "can_read_admin_messages": can_read_admin_messages(request),
+            },
+        )
+    except Exception as e:
+        logger = logging.getLogger(__name__)
+        logger.exception(f"Error rendering index template: {e}")
+        return JSONResponse(
+            {"error": f"Internal server error: {str(e)}"},
+            status_code=500
+        )
 
 @app.get("/select-role")
 async def select_role(request: Request):
@@ -1951,6 +1965,12 @@ async def list_characters(request: Request):
             status_code=403
         )
     
+    if not character_service:
+        return JSONResponse(
+            {"error": "Character service is not available."},
+            status_code=503
+        )
+    
     characters = character_service.list_characters()
     return JSONResponse([char.model_dump() for char in characters])
 
@@ -2137,6 +2157,147 @@ async def get_character(request: Request, character_id: str):
         )
     
     return JSONResponse(character.model_dump())
+
+
+# ---------- Image Generation with ModelsLab Flux 2 Pro ----------
+
+@app.post("/api/generate-image")
+async def generate_image(request: Request):
+    """Generate an image using ModelsLab Flux 2 Pro Text To Image API."""
+    if not is_admin(request):
+        return JSONResponse(
+            {"error": "Seuls les administrateurs peuvent générer des images."},
+            status_code=403
+        )
+    
+    if not settings.MODELLAB_API_KEY:
+        return JSONResponse(
+            {"error": "ModelsLab API key niet geconfigureerd."},
+            status_code=503
+        )
+    
+    try:
+        form_data = await request.form()
+        prompt = form_data.get("prompt", "").strip()
+        width = int(form_data.get("width", 1024))
+        height = int(form_data.get("height", 1024))
+        
+        if not prompt:
+            return JSONResponse(
+                {"error": "Le prompt est requis."},
+                status_code=400
+            )
+        
+        # Valideer dimensies
+        if width < 64 or width > 2048 or height < 64 or height > 2048:
+            return JSONResponse(
+                {"error": "Les dimensions doivent être entre 64 et 2048 pixels."},
+                status_code=400
+            )
+        
+        # ModelsLab API call
+        api_url = settings.MODELLAB_API_URL
+        headers = {
+            "Authorization": f"Bearer {settings.MODELLAB_API_KEY}",
+            "Content-Type": "application/json"
+        }
+        
+        payload = {
+            "model": "flux-2-pro",
+            "prompt": prompt,
+            "width": width,
+            "height": height,
+            "num_images": 1
+        }
+        
+        logger.info(f"Generating image with ModelsLab API: prompt={prompt[:50]}..., width={width}, height={height}")
+        
+        response = requests.post(api_url, json=payload, headers=headers, timeout=120)
+        response.raise_for_status()
+        
+        result = response.json()
+        
+        # Haal de afbeelding data op
+        if "data" in result and len(result["data"]) > 0:
+            image_data = result["data"][0]
+            
+            # Als de API een URL retourneert
+            if "url" in image_data:
+                image_url = image_data["url"]
+                # Download de afbeelding
+                img_response = requests.get(image_url, timeout=30)
+                img_response.raise_for_status()
+                image_bytes = img_response.content
+            # Als de API base64 data retourneert
+            elif "b64_json" in image_data:
+                image_bytes = base64.b64decode(image_data["b64_json"])
+            else:
+                logger.error(f"Unknown response format from ModelsLab API: {result}")
+                return JSONResponse(
+                    {"error": "Format de réponse inconnu de l'API ModelsLab."},
+                    status_code=500
+                )
+            
+            # Sla de afbeelding op in een tijdelijk bestand
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp:
+                tmp.write(image_bytes)
+                image_path = tmp.name
+            
+            # Return base64 encoded image for display
+            image_base64 = base64.b64encode(image_bytes).decode('utf-8')
+            
+            return JSONResponse({
+                "success": True,
+                "image": f"data:image/png;base64,{image_base64}",
+                "image_path": image_path
+            })
+        
+        logger.error(f"No image data in ModelsLab API response: {result}")
+        return JSONResponse(
+            {"error": "Aucune donnée d'image dans la réponse de l'API."},
+            status_code=500
+        )
+        
+    except requests.exceptions.RequestException as e:
+        logger.exception("Error calling ModelsLab API")
+        error_msg = str(e)
+        if hasattr(e, 'response') and e.response is not None:
+            try:
+                error_detail = e.response.json()
+                error_msg = f"{error_msg}: {error_detail}"
+            except:
+                error_msg = f"{error_msg}: {e.response.text}"
+        return JSONResponse(
+            {"error": f"Erreur lors de l'appel à l'API ModelsLab: {error_msg}"},
+            status_code=500
+        )
+    except Exception as e:
+        logger.exception("Unexpected error generating image")
+        return JSONResponse(
+            {"error": f"Erreur inattendue: {str(e)}"},
+            status_code=500
+        )
+
+
+@app.get("/api/generated-image/{image_id}")
+async def get_generated_image(request: Request, image_id: str):
+    """Download a generated image."""
+    if not is_admin(request):
+        return JSONResponse(
+            {"error": "Seuls les administrateurs peuvent télécharger des images."},
+            status_code=403
+        )
+    
+    # In een echte implementatie zou je de image_id gebruiken om het bestand op te halen
+    # Voor nu gebruiken we een eenvoudige implementatie
+    image_path = Path(tempfile.gettempdir()) / image_id
+    if image_path.exists():
+        return FileResponse(image_path, media_type="image/png")
+    else:
+        return JSONResponse(
+            {"error": "Image non trouvée."},
+            status_code=404
+        )
 
 
 @app.delete("/api/characters/{character_id}")

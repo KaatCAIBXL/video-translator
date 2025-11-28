@@ -3331,17 +3331,89 @@ window.addEventListener("load", () => {
     fetchVideos();
     populateFolderDropdown();
     checkTextToVideoEnabled();
-    // Only fetch characters if the characters section exists (admin only)
-    if (document.getElementById("characters-section")) {
-        fetchCharacters(); // Load characters
-    }
     fetchAdminMessages(); // Load admin messages if admin
     // Refresh folder dropdown when videos are fetched (in case folders changed)
     setInterval(populateFolderDropdown, 5000);
-    // Only refresh characters if the characters section exists
-    if (document.getElementById("characters-section")) {
-        setInterval(fetchCharacters, 10000); // Refresh characters every 10 seconds
-    }
     setInterval(fetchAdminMessages, 30000); // Refresh admin messages every 30 seconds
 });
+
+// Image Generation with ModelsLab Flux 2 Pro
+const imageGenerationForm = document.getElementById("image-generation-form");
+if (imageGenerationForm) {
+    imageGenerationForm.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        
+        const promptInput = document.getElementById("image-prompt-input");
+        const widthInput = document.getElementById("image-width");
+        const heightInput = document.getElementById("image-height");
+        const generateBtn = document.getElementById("generate-image-btn");
+        const statusDiv = document.getElementById("image-generation-status");
+        const imageContainer = document.getElementById("generated-image-container");
+        const generatedImage = document.getElementById("generated-image");
+        const downloadLink = document.getElementById("download-image-link");
+        
+        const prompt = promptInput.value.trim();
+        const width = parseInt(widthInput.value) || 1024;
+        const height = parseInt(heightInput.value) || 1024;
+        
+        if (!prompt) {
+            statusDiv.textContent = "❌ Veuillez entrer un prompt.";
+            statusDiv.style.display = "block";
+            statusDiv.style.color = "#dc3545";
+            return;
+        }
+        
+        // Disable button and show loading
+        generateBtn.disabled = true;
+        generateBtn.textContent = "⏳ Génération en cours...";
+        statusDiv.textContent = "⏳ Génération de l'image en cours, veuillez patienter...";
+        statusDiv.style.display = "block";
+        statusDiv.style.color = "#007bff";
+        imageContainer.style.display = "none";
+        
+        try {
+            const formData = new FormData();
+            formData.append("prompt", prompt);
+            formData.append("width", width);
+            formData.append("height", height);
+            
+            const response = await fetch("/api/generate-image", {
+                method: "POST",
+                body: formData,
+                credentials: "include"
+            });
+            
+            const result = await response.json();
+            
+            if (!response.ok) {
+                throw new Error(result.error || "Erreur lors de la génération");
+            }
+            
+            if (result.success && result.image) {
+                // Display the image
+                generatedImage.src = result.image;
+                imageContainer.style.display = "block";
+                
+                // Create download link
+                const blob = await fetch(result.image).then(r => r.blob());
+                const url = URL.createObjectURL(blob);
+                downloadLink.href = url;
+                downloadLink.download = `generated-image-${Date.now()}.png`;
+                
+                statusDiv.textContent = "✅ Image générée avec succès!";
+                statusDiv.style.color = "#28a745";
+            } else {
+                throw new Error("Aucune image retournée");
+            }
+        } catch (err) {
+            console.error("Error generating image", err);
+            statusDiv.textContent = `❌ Erreur: ${err.message}`;
+            statusDiv.style.color = "#dc3545";
+            imageContainer.style.display = "none";
+        } finally {
+            generateBtn.disabled = false;
+            generateBtn.textContent = "🎨 Générer l'image";
+        }
+    });
+}
 

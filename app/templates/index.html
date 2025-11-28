@@ -83,57 +83,46 @@
  </section>
  {% endif %}
 
- {% if can_manage_characters %}
- <!-- Character Management (Dreambooth) - Admin Only -->
- <section id="characters-section" style="display: block; margin-bottom: 30px; padding: 20px; border: 2px solid #007bff; background: #f0f8ff;">
-     <h2>👤 Gestion des Personnages (Admin uniquement)</h2>
-     <button type="button" id="create-character-btn" style="margin-bottom: 20px; padding: 10px 20px; background: #28a745; color: white; border: none; border-radius: 5px; cursor: pointer;">
-         + Personnage
-     </button>
-     <div id="characters-list"></div>
-     
-     <!-- Character Creation Modal -->
-     <div id="character-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000;">
-         <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 30px; border-radius: 10px; max-width: 600px; width: 90%; max-height: 90vh; overflow-y: auto;">
-             <h3>Créer un nouveau personnage</h3>
-             <form id="character-form">
-                 <label style="display: block; margin-top: 15px;">
-                     Nom du personnage :
-                     <input type="text" name="name" id="character-name" required style="width: 100%; padding: 8px; margin-top: 5px;">
-                 </label>
-                 <label style="display: block; margin-top: 15px;">
-                     Token unique (minuscules, lettres/chiffres/underscores) :
-                     <input type="text" name="token" id="character-token" required pattern="[a-z0-9_]+" style="width: 100%; padding: 8px; margin-top: 5px;">
-                     <small style="color: #666;">Exemple: joepenna, bingo, personnage1</small>
-                 </label>
-                 <label style="display: block; margin-top: 15px;">
-                     Description (caractéristiques) :
-                     <textarea name="description" id="character-description" rows="3" style="width: 100%; padding: 8px; margin-top: 5px;" placeholder="Exemple: lief, lachend, dynamisch, oud, pastor"></textarea>
-                 </label>
-                 <label style="display: block; margin-top: 15px;">
-                     Classe (person, dog, etc.) :
-                     <input type="text" name="class_word" id="character-class" value="person" required style="width: 100%; padding: 8px; margin-top: 5px;">
-                 </label>
-                 <div style="margin-top: 20px;">
-                     <button type="submit" style="padding: 10px 20px; background: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer; margin-right: 10px;">
-                         Créer
-                     </button>
-                     <button type="button" id="cancel-character-btn" style="padding: 10px 20px; background: #6c757d; color: white; border: none; border-radius: 5px; cursor: pointer;">
-                         Annuler
-                     </button>
-                 </div>
-             </form>
+ {% if is_admin %}
+ <!-- Image Generation with ModelsLab Flux 2 Pro - Admin Only -->
+ <section id="image-generation-section" style="display: block; margin-bottom: 30px; padding: 20px; border: 2px solid #007bff; background: #f0f8ff;">
+     <h2>🎨 Générer une image avec Flux 2 Pro (Admin)</h2>
+     <p style="color: #666; font-size: 0.9em; margin-bottom: 15px;">
+         Créez une image à partir d'un prompt texte en utilisant ModelsLab Flux 2 Pro Text To Image.
+     </p>
+     <form id="image-generation-form">
+         <fieldset>
+             <legend>Prompt</legend>
+             <label>
+                 Description de l'image :
+                 <textarea name="prompt" id="image-prompt-input" rows="4" style="width: 100%; padding: 8px; font-family: inherit;" placeholder="Décrivez l'image que vous souhaitez générer..." required></textarea>
+             </label>
+         </fieldset>
+         <fieldset>
+             <legend>Paramètres</legend>
+             <label style="display: inline-block; margin-right: 20px;">
+                 Largeur :
+                 <input type="number" name="width" id="image-width" value="1024" min="64" max="2048" step="64" style="width: 100px; padding: 8px;">
+             </label>
+             <label style="display: inline-block;">
+                 Hauteur :
+                 <input type="number" name="height" id="image-height" value="1024" min="64" max="2048" step="64" style="width: 100px; padding: 8px;">
+             </label>
+         </fieldset>
+         <button type="submit" id="generate-image-btn" style="margin-top: 15px; padding: 10px 20px; background: #28a745; color: white; border: none; border-radius: 5px; cursor: pointer;">
+             🎨 Générer l'image
+         </button>
+     </form>
+     <div id="image-generation-status" style="margin-top: 15px; padding: 10px; display: none;"></div>
+     <div id="generated-image-container" style="margin-top: 20px; display: none;">
+         <h3>Image générée :</h3>
+         <div id="generated-image-wrapper" style="margin-top: 10px;">
+             <img id="generated-image" src="" alt="Generated image" style="max-width: 100%; border: 1px solid #ddd; border-radius: 5px;">
          </div>
-     </div>
-     
-     <!-- Character Detail Modal -->
-     <div id="character-detail-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000;">
-         <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 30px; border-radius: 10px; max-width: 800px; width: 90%; max-height: 90vh; overflow-y: auto;">
-             <h3 id="character-detail-name"></h3>
-             <div id="character-detail-content"></div>
-             <button type="button" id="close-character-detail-btn" style="margin-top: 20px; padding: 10px 20px; background: #6c757d; color: white; border: none; border-radius: 5px; cursor: pointer;">
-                 Fermer
-             </button>
+         <div style="margin-top: 10px;">
+             <a id="download-image-link" href="" download style="padding: 10px 20px; background: #007bff; color: white; text-decoration: none; border-radius: 5px; display: inline-block;">
+                 📥 Télécharger l'image
+             </a>
          </div>
      </div>
  </section>

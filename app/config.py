@@ -11,6 +11,8 @@ load_dotenv(BASE_DIR / ".env")
 class Settings:
     OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
     DEEPL_API_KEY: str = os.getenv("DEEPL_API_KEY", "")
+    MODELLAB_API_KEY: str = os.getenv("MODELLAB_API_KEY", "") or os.getenv("FLUX2PRO_API_KEY", "")
+    MODELLAB_API_URL: str = os.getenv("MODELLAB_API_URL", "https://api.modelslab.com/v1/images/generations")
     # Voor Tshiluba / Lingala / Kituba / Malagasy / Yoruba TTS, als je aparte provider gebruikt:
     LINGALA_TTS_API_KEY: str = os.getenv("LINGALA_TTS_API_KEY", "")
     LINGALA_ELEVENLABS_VOICE_ID: str = os.getenv("LINGALA_ELEVENLABS_VOICE_ID", "")
