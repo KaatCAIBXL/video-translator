@@ -3331,11 +3331,17 @@ window.addEventListener("load", () => {
     fetchVideos();
     populateFolderDropdown();
     checkTextToVideoEnabled();
-    fetchCharacters(); // Load characters
+    // Only fetch characters if the characters section exists (admin only)
+    if (document.getElementById("characters-section")) {
+        fetchCharacters(); // Load characters
+    }
     fetchAdminMessages(); // Load admin messages if admin
     // Refresh folder dropdown when videos are fetched (in case folders changed)
     setInterval(populateFolderDropdown, 5000);
-    setInterval(fetchCharacters, 10000); // Refresh characters every 10 seconds
+    // Only refresh characters if the characters section exists
+    if (document.getElementById("characters-section")) {
+        setInterval(fetchCharacters, 10000); // Refresh characters every 10 seconds
+    }
     setInterval(fetchAdminMessages, 30000); // Refresh admin messages every 30 seconds
 });
 

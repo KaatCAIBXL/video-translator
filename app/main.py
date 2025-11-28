@@ -1944,10 +1944,10 @@ async def process_text_to_video_job(
 @app.get("/api/characters")
 async def list_characters(request: Request):
     """List all characters."""
-    # Both admin and editor can view characters, but only admin can manage them
-    if not is_editor(request):
+    # Only admin can view characters
+    if not can_manage_characters(request):
         return JSONResponse(
-            {"error": "Seuls les éditeurs et administrateurs peuvent voir les personnages."},
+            {"error": "Seuls les administrateurs peuvent voir les personnages."},
             status_code=403
         )
     
@@ -2123,9 +2123,9 @@ async def train_character_endpoint(request: Request, character_id: str):
 @app.get("/api/characters/{character_id}")
 async def get_character(request: Request, character_id: str):
     """Get character details."""
-    if not is_editor(request):
+    if not can_manage_characters(request):
         return JSONResponse(
-            {"error": "Seuls les éditeurs peuvent voir les personnages."},
+            {"error": "Seuls les administrateurs peuvent voir les personnages."},
             status_code=403
         )
     
