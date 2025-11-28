@@ -30,6 +30,7 @@ from .services import (
     save_metadata,
     load_metadata,
     get_audio_stream_start_offset,
+    filter_amara_segments,
 )
 from .audio_text_services import (
     transcribe_long_audio,
@@ -743,7 +744,9 @@ async def process_video_job(
         if create_subtitles and translations:
             for lang, segs in translations.items():
                 vtt_path = video_dir / f"subs_{lang}.vtt"
-                paired_segments = pair_translation_segments(segs)
+                # Filter out Amara.org segments before pairing and generating VTT
+                filtered_segs = filter_amara_segments(segs)
+                paired_segments = pair_translation_segments(filtered_segs)
                 await run_in_threadpool(generate_vtt, paired_segments, vtt_path)
 
         # Combined subtitles option removed - no longer needed
@@ -800,8 +803,10 @@ async def process_video_job(
                         temp_audio_path = Path(tmp.name)
                         audio_path_target = temp_audio_path
 
+                    # Filter out Amara.org segments before generating dub audio
+                    filtered_segs = filter_amara_segments(segs)
                     await generate_dub_audio(
-                        segs,
+                        filtered_segs,
                         lang,
                         audio_path_target,
                         speed_multiplier=tts_speed_multiplier,

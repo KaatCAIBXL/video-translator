@@ -438,6 +438,34 @@ def _pair_segments(segments: List[Segment]) -> List[Segment]:
 
 
 # ---------- Vertaling ----------
+
+def filter_amara_segments(
+    segments: List[TranslationSegment],
+) -> List[TranslationSegment]:
+    """Filter out segments that contain 'Amara.org' in any language variant."""
+    filtered = []
+    for seg in segments:
+        if not seg.text or not seg.text.strip():
+            continue
+        # Check for Amara.org in various language variants (case-insensitive)
+        text_lower = seg.text.lower()
+        if "amara" in text_lower and "org" in text_lower:
+            # Skip this segment - it contains Amara.org reference
+            continue
+        # Also check for common subtitle attribution phrases
+        if any(phrase in text_lower for phrase in [
+            "ondertiteling ingediend door",
+            "subtitles submitted by",
+            "sous-titres soumis par",
+            "subtítulos enviados por",
+            "sottotitoli inviati da"
+        ]):
+            # Skip attribution segments
+            continue
+        filtered.append(seg)
+    return filtered
+
+
 def pair_translation_segments(
     segments: List[TranslationSegment],
 ) -> List[TranslationSegment]:
@@ -997,10 +1025,13 @@ async def generate_dub_audio(
     if not translated_segments:
         raise RuntimeError("No translated segments available for dubbing")
 
+    # Filter out Amara.org segments and ensure we process the segments in chronological order
+    amara_filtered = filter_amara_segments(translated_segments)
+    
     # Ensure we process the segments in chronological order and skip empty
     # entries up front.
     filtered_segments = [
-        seg for seg in sorted(translated_segments, key=lambda s: s.start)
+        seg for seg in sorted(amara_filtered, key=lambda s: s.start)
         if seg.text and seg.text.strip()
     ]
 
@@ -1008,6 +1039,9 @@ async def generate_dub_audio(
         raise RuntimeError("Translated segments do not contain any text")
 
     required_silence_ms = max(0, int(round((leading_silence or 0.0) * 1000)))
+    
+    # Calculate the actual start time of the first segment (relative to video start)
+    first_segment_start_ms = max(0, int(round(filtered_segments[0].start * 1000)))
 
 
     with tempfile.TemporaryDirectory(prefix="dub_segments_") as tmpdir:
@@ -1020,16 +1054,18 @@ async def generate_dub_audio(
             )
             segment_path = Path(tmpdir) / f"segment_{idx}.mp3"
             segment_path.write_bytes(audio_bytes)
-            delay_ms = max(0, int(round(seg.start * 1000)))
+            # Calculate delay relative to the first segment start time
+            # This ensures the first segment starts at the same time as the original audio
+            delay_ms = max(0, int(round(seg.start * 1000))) - first_segment_start_ms
             segment_audio.append((segment_path, delay_ms))
             segment_delays.append(delay_ms)
 
         if not segment_audio:
             raise RuntimeError("Failed to create any TTS segments for dubbing")
 
-        extra_delay_ms = _calculate_leading_delay_adjustment(
-            segment_delays, required_silence_ms
-        )
+        # The first segment should start at the original audio start time
+        # Add the first segment start time + required silence to all delays
+        base_delay_ms = first_segment_start_ms + required_silence_ms
 
         ffmpeg_cmd = ["ffmpeg", "-y"]
         for path, _ in segment_audio:
@@ -1039,8 +1075,9 @@ async def generate_dub_audio(
         mix_inputs: List[str] = []
         for idx, (_, delay_ms) in enumerate(segment_audio):
             label = f"a{idx}"
-            # Apply delay with extra_delay_ms adjustment for leading silence
-            total_delay_ms = delay_ms + extra_delay_ms
+            # Apply delay: base_delay ensures first segment starts at correct time
+            # delay_ms is already relative to first segment, so add base_delay
+            total_delay_ms = delay_ms + base_delay_ms
             filter_parts.append(
                 f"[{idx}:a]adelay={total_delay_ms}|{total_delay_ms}[{label}]"
             )
