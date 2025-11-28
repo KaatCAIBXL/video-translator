@@ -10,7 +10,7 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from .auth import get_role_from_request, is_editor, create_session
+from .auth import get_role_from_request, is_editor, is_admin, create_session
 
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
@@ -221,6 +221,7 @@ async def index(request: Request):
             "request": request,
             "available_languages": LANGUAGE_OPTIONS,
             "is_editor": is_editor(request),
+            "is_admin": is_admin(request),
         },
     )
 
@@ -232,7 +233,7 @@ async def select_role(request: Request):
 @app.post("/api/set-role")
 async def set_role(request: Request, role: str = Form(...)):
     """Set the user's role and create a session."""
-    if role not in ("viewer", "editor"):
+    if role not in ("viewer", "editor", "admin"):
         return JSONResponse({"error": "Rôle invalide"}, status_code=400)
     
     session_id = create_session(role)
@@ -1765,10 +1766,10 @@ async def generate_video_from_text(request: Request):
             status_code=503
         )
     
-    # Only editors can use this feature
-    if not is_editor(request):
+    # Only admins can use this feature
+    if not is_admin(request):
         return JSONResponse(
-            {"error": "Seuls les éditeurs peuvent générer des vidéos."},
+            {"error": "Seuls les administrateurs peuvent générer des vidéos."},
             status_code=403
         )
     

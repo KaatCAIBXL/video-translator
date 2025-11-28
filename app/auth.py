@@ -26,10 +26,15 @@ def get_role_from_request(request: Request) -> Optional[str]:
 def is_editor(request: Request) -> bool:
     """Check if the user is an editor."""
     role = get_role_from_request(request)
-    return role == "editor"
+    return role == "editor" or role == "admin"  # Admins can also edit
+
+def is_admin(request: Request) -> bool:
+    """Check if the user is an admin."""
+    role = get_role_from_request(request)
+    return role == "admin"
 
 def is_viewer(request: Request) -> bool:
     """Check if the user is a viewer."""
     role = get_role_from_request(request)
-    return role == "viewer" or role == "editor"  # Editors can also view
+    return role == "viewer" or role == "editor" or role == "admin"  # All roles can view
 

@@ -7,7 +7,11 @@
  </head>
  <body>
  <h1>Traduction et doublage vidéo</h1>
- {% if is_editor %}
+ {% if is_admin %}
+ <div id="role-indicator" style="background: #dc3545; color: white; padding: 10px; margin-bottom: 20px;">
+     Mode de admin actif
+ </div>
+ {% elif is_editor %}
  <div id="role-indicator" style="background: #007bff; color: white; padding: 10px; margin-bottom: 20px;">
      Mode I-tech privé actif
  </div>
@@ -272,6 +276,31 @@
      {% if is_editor %}
      <div id="folder-management" style="margin-top: 20px;">
          <button type="button" id="create-folder-btn">Créer un nouveau dossier</button>
+     </div>
+     {% endif %}
+     
+     <!-- Message to Admin Section (for viewers and editors) -->
+     {% if not is_admin %}
+     <div id="message-to-admin-section" style="margin-top: 30px; padding: 20px; border: 2px solid #ffc107; background: #fff3cd; border-radius: 5px;">
+         <h3>📧 Signaler un problème à l'admin</h3>
+         <p style="color: #856404; margin-bottom: 15px;">Vous pouvez envoyer un message à l'administrateur pour signaler un problème ou poser une question.</p>
+         <form id="message-to-admin-form">
+             <textarea id="admin-message-input" rows="4" style="width: 100%; padding: 8px; margin-bottom: 10px; border: 1px solid #ccc; border-radius: 3px;" placeholder="Décrivez votre problème ou question..."></textarea>
+             <button type="submit" style="padding: 10px 20px; background: #ffc107; color: #000; border: none; border-radius: 5px; cursor: pointer; font-weight: bold;">
+                 Envoyer le message
+             </button>
+         </form>
+         <div id="message-status" style="margin-top: 10px; display: none;"></div>
+     </div>
+     {% endif %}
+     
+     <!-- Admin Messages Section -->
+     {% if is_admin %}
+     <div id="admin-messages-section" style="margin-top: 30px; padding: 20px; border: 2px solid #dc3545; background: #f8d7da; border-radius: 5px;">
+         <h3>📬 Messages reçus</h3>
+         <div id="admin-messages-list" style="margin-top: 15px;">
+             <p>Chargement des messages...</p>
+         </div>
      </div>
      {% endif %}
  </section>

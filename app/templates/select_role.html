@@ -68,6 +68,15 @@
                 <button type="submit">Continuer en tant qu'éditeur</button>
             </form>
         </div>
+        
+        <div class="role-option">
+            <h3>de admin</h3>
+            <p>Gérer le système, créer des vidéos avec IA et administrer</p>
+            <form method="POST" action="/api/set-role">
+                <input type="hidden" name="role" value="admin">
+                <button type="submit">Continuer en tant qu'admin</button>
+            </form>
+        </div>
     </div>
 </body>
 </html>

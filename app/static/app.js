@@ -3160,13 +3160,175 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
+// Message to Admin functionality
+const messageToAdminForm = document.getElementById("message-to-admin-form");
+if (messageToAdminForm) {
+    messageToAdminForm.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        
+        const messageInput = document.getElementById("admin-message-input");
+        const statusDiv = document.getElementById("message-status");
+        const message = messageInput.value.trim();
+        
+        if (!message) {
+            statusDiv.textContent = "Veuillez entrer un message.";
+            statusDiv.style.display = "block";
+            statusDiv.style.color = "#dc3545";
+            return;
+        }
+        
+        try {
+            const formData = new FormData();
+            formData.append("message", message);
+            
+            const response = await fetch("/api/messages", {
+                method: "POST",
+                body: formData,
+                credentials: "include"
+            });
+            
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.error || "Erreur lors de l'envoi");
+            }
+            
+            statusDiv.textContent = "✅ Message envoyé avec succès !";
+            statusDiv.style.display = "block";
+            statusDiv.style.color = "#28a745";
+            messageInput.value = "";
+            
+            // Clear status after 3 seconds
+            setTimeout(() => {
+                statusDiv.style.display = "none";
+            }, 3000);
+            
+        } catch (err) {
+            statusDiv.textContent = `❌ Erreur: ${err.message}`;
+            statusDiv.style.display = "block";
+            statusDiv.style.color = "#dc3545";
+        }
+    });
+}
+
+// Admin Messages functionality
+async function fetchAdminMessages() {
+    const messagesList = document.getElementById("admin-messages-list");
+    if (!messagesList) return;
+    
+    try {
+        const response = await fetch("/api/messages", {
+            credentials: "include"
+        });
+        
+        if (!response.ok) {
+            messagesList.innerHTML = "<p style='color: #dc3545;'>Erreur lors du chargement des messages.</p>";
+            return;
+        }
+        
+        const messages = await response.json();
+        
+        if (messages.length === 0) {
+            messagesList.innerHTML = "<p>Aucun message reçu.</p>";
+            return;
+        }
+        
+        let html = "";
+        messages.forEach(msg => {
+            const isRead = msg.read || false;
+            const date = new Date(msg.created_at).toLocaleString("fr-FR");
+            const unreadBadge = !isRead ? '<span style="background: #dc3545; color: white; padding: 2px 8px; border-radius: 3px; font-size: 0.8em; margin-left: 10px;">Nouveau</span>' : '';
+            
+            html += `
+                <div style="border: 1px solid #ddd; padding: 15px; margin-bottom: 10px; border-radius: 5px; background: white; ${!isRead ? 'border-left: 4px solid #dc3545;' : ''}">
+                    <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 10px;">
+                        <div>
+                            <strong>${escapeHtml(msg.sender_name || msg.sender_role)}</strong>
+                            <span style="color: #666; font-size: 0.9em;">(${msg.sender_role})</span>
+                            ${unreadBadge}
+                        </div>
+                        <div style="color: #666; font-size: 0.9em;">${date}</div>
+                    </div>
+                    <p style="margin: 10px 0; white-space: pre-wrap;">${escapeHtml(msg.message)}</p>
+                    <div style="margin-top: 10px;">
+                        ${!isRead ? `
+                            <button type="button" class="mark-read-btn" data-id="${msg.id}" style="padding: 5px 10px; background: #28a745; color: white; border: none; border-radius: 3px; cursor: pointer; margin-right: 5px;">
+                                Marquer comme lu
+                            </button>
+                        ` : ''}
+                        <button type="button" class="delete-message-btn" data-id="${msg.id}" style="padding: 5px 10px; background: #dc3545; color: white; border: none; border-radius: 3px; cursor: pointer;">
+                            Supprimer
+                        </button>
+                    </div>
+                </div>
+            `;
+        });
+        
+        messagesList.innerHTML = html;
+        
+        // Add event listeners
+        document.querySelectorAll(".mark-read-btn").forEach(btn => {
+            btn.addEventListener("click", async () => {
+                const messageId = btn.getAttribute("data-id");
+                await markMessageAsRead(messageId);
+            });
+        });
+        
+        document.querySelectorAll(".delete-message-btn").forEach(btn => {
+            btn.addEventListener("click", async () => {
+                const messageId = btn.getAttribute("data-id");
+                if (confirm("Êtes-vous sûr de vouloir supprimer ce message ?")) {
+                    await deleteMessage(messageId);
+                }
+            });
+        });
+        
+    } catch (err) {
+        console.error("Error fetching admin messages", err);
+        messagesList.innerHTML = "<p style='color: #dc3545;'>Erreur lors du chargement des messages.</p>";
+    }
+}
+
+async function markMessageAsRead(messageId) {
+    try {
+        const response = await fetch(`/api/messages/${messageId}/read`, {
+            method: "PUT",
+            credentials: "include"
+        });
+        
+        if (response.ok) {
+            await fetchAdminMessages();
+        }
+    } catch (err) {
+        console.error("Error marking message as read", err);
+        alert("Erreur lors du marquage du message");
+    }
+}
+
+async function deleteMessage(messageId) {
+    try {
+        const response = await fetch(`/api/messages/${messageId}`, {
+            method: "DELETE",
+            credentials: "include"
+        });
+        
+        if (response.ok) {
+            await fetchAdminMessages();
+        }
+    } catch (err) {
+        console.error("Error deleting message", err);
+        alert("Erreur lors de la suppression du message");
+    }
+}
+
 window.addEventListener("load", () => {
     fetchVideos();
     populateFolderDropdown();
     checkTextToVideoEnabled();
     fetchCharacters(); // Load characters
+    fetchAdminMessages(); // Load admin messages if admin
     // Refresh folder dropdown when videos are fetched (in case folders changed)
     setInterval(populateFolderDropdown, 5000);
     setInterval(fetchCharacters, 10000); // Refresh characters every 10 seconds
+    setInterval(fetchAdminMessages, 30000); // Refresh admin messages every 30 seconds
 });
 
