@@ -342,4 +342,90 @@ def create_video_from_images(
         except Exception as e:
             logger.exception(f"Error creating video from images: {e}")
             return False
+    
+    async def _generate_image_external_api(
+        self,
+        prompt: str,
+        negative_prompt: str = "",
+        width: int = 512,
+        height: int = 512,
+        steps: int = 20,
+        cfg_scale: float = 7.0,
+        seed: int = -1,
+        **kwargs
+    ):
+        """
+        Generate image using external API service (e.g., Diffus.me).
+        
+        Note: This requires an API key and is a paid service.
+        Check https://www.diffus.me/docs/api/v3 for API documentation.
+        """
+        if not self.external_api_key:
+            logger.error("External API key is required but not provided")
+            return None
+        
+        if not PIL_AVAILABLE:
+            logger.error("PIL (Pillow) is not installed. Cannot process images.")
+            return None
+        
+        try:
+            # Prepare request for external API (Diffus.me format)
+            # Note: Adjust this based on actual Diffus.me API v3 documentation
+            payload = {
+                "prompt": prompt,
+                "negative_prompt": negative_prompt,
+                "width": width,
+                "height": height,
+                "steps": steps,
+                "cfg_scale": cfg_scale,
+                "seed": seed if seed != -1 else None,
+                **kwargs
+            }
+            
+            headers = {
+                "Authorization": f"Bearer {self.external_api_key}",
+                "Content-Type": "application/json"
+            }
+            
+            # Run in thread pool to avoid blocking
+            loop = asyncio.get_event_loop()
+            response = await loop.run_in_executor(
+                None,
+                lambda: requests.post(
+                    f"{self.external_api_url}/generate",  # Adjust endpoint based on actual API
+                    json=payload,
+                    headers=headers,
+                    timeout=self.timeout
+                )
+            )
+            
+            if response.status_code != 200:
+                logger.error(f"External API error: {response.status_code} - {response.text}")
+                return None
+            
+            result = response.json()
+            
+            # Handle different response formats
+            # Diffus.me might return image URL or base64 data
+            if "image" in result:
+                # Base64 encoded image
+                image_data = base64.b64decode(result["image"])
+                image = Image.open(io.BytesIO(image_data))
+                return image
+            elif "image_url" in result:
+                # Image URL - download it
+                img_response = await loop.run_in_executor(
+                    None,
+                    lambda: requests.get(result["image_url"], timeout=30)
+                )
+                if img_response.status_code == 200:
+                    image = Image.open(io.BytesIO(img_response.content))
+                    return image
+            else:
+                logger.error(f"Unexpected API response format: {result}")
+                return None
+                
+        except Exception as e:
+            logger.exception(f"Error generating image with external API: {e}")
+            return None
 
