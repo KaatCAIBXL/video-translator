@@ -884,6 +884,10 @@ def _video_base_stem(meta: Optional[VideoMetadata], fallback: Path) -> str:
 
 @app.get("/videos/{video_id}/original")
 async def get_original_video(request: Request, video_id: str):
+    session_id = request.cookies.get("session_id")
+    role = get_role_from_request(request)
+    logger.info(f"Get original video request - session_id: {session_id}, role: {role}, is_editor: {is_editor(request)}, video_id: {video_id}")
+    
     # First try to find as a video directory
     video_dir = _find_video_directory(video_id)
     if video_dir and video_dir.exists():
@@ -891,6 +895,7 @@ async def get_original_video(request: Request, video_id: str):
         info = _load_video_info(video_dir)
         video_is_private = info.get("is_private", False) or _is_folder_private(info.get("folder_path"))
         if video_is_private and not is_editor(request):
+            logger.warning(f"Get original video denied - session_id: {session_id}, role: {role}, video_id: {video_id}, is_private: {video_is_private}")
             return JSONResponse({"error": "Accès refusé"}, status_code=403)
 
         original_path = _find_original_video(video_dir)
@@ -1216,7 +1221,12 @@ async def upload_file_to_folder(
     file: UploadFile = File(...)
 ):
     """Upload a file (video, audio, or text) directly to a folder without processing."""
+    session_id = request.cookies.get("session_id")
+    role = get_role_from_request(request)
+    logger.info(f"Upload file to folder request - session_id: {session_id}, role: {role}, is_editor: {is_editor(request)}, filename: {file.filename}")
+    
     if not is_editor(request):
+        logger.warning(f"Upload to folder denied - session_id: {session_id}, role: {role}, filename: {file.filename}")
         return JSONResponse({"error": "Seuls les éditeurs peuvent télécharger des fichiers."}, status_code=403)
     
     folder_dir = settings.PROCESSED_DIR / folder_path
@@ -1419,6 +1429,10 @@ async def handle_audio_text_upload(
 @app.get("/files/{file_id}/{filename:path}")
 async def download_file(request: Request, file_id: str, filename: str):
     """Download a processed file (transcribed text, translated text, generated audio, etc.) or a loose file."""
+    session_id = request.cookies.get("session_id")
+    role = get_role_from_request(request)
+    logger.info(f"Download file request - session_id: {session_id}, role: {role}, is_editor: {is_editor(request)}, file_id: {file_id}, filename: {filename}")
+    
     # First try to find as a directory-based file (processed files)
     file_dir = _find_video_directory(file_id)
     if file_dir:
@@ -1429,6 +1443,7 @@ async def download_file(request: Request, file_id: str, filename: str):
             is_private = info.get("is_private", False)
             folder_path = info.get("folder_path")
             if not is_editor(request) and (is_private or _is_folder_private(folder_path)):
+                logger.warning(f"Download denied - session_id: {session_id}, role: {role}, file_id: {file_id}, filename: {filename}, is_private: {is_private}")
                 return JSONResponse({"error": "Accès refusé."}, status_code=403)
             
             return FileResponse(
