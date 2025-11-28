@@ -413,6 +413,9 @@ async def list_videos(request: Request):
                                 # Use directory name as ID (same as video)
                                 file_id = item.name
                                 
+                                # Check if transcribed.txt exists for audio/text files
+                                has_transcription = (item / "transcribed.txt").exists()
+                                
                                 items.append(
                                     VideoListItem(
                                         id=file_id,
@@ -422,6 +425,7 @@ async def list_videos(request: Request):
                                         available_dubs=[],
                                         available_dub_audios=[],
                                         available_combined_subtitles=[],
+                                        has_transcription=has_transcription,
                                         folder_path=file_folder_path,
                                         is_private=file_is_private,
                         )
