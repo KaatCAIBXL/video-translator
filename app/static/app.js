@@ -1877,23 +1877,31 @@ if (uploadForm && isEditor) {
     // Add file type
     formData.append("file_type", fileType);
     
-    // For videos, languages are always required
+    // For videos, languages are required only if subs, dub_audio, or dub_video are selected
     if (fileType === "video") {
         console.log("Processing video upload...");
-        if (checkedLangs.length === 0 || checkedLangs.length > 2) {
-            console.error("Language validation failed:", {
-                count: checkedLangs.length,
-                languages: checkedLangs.map(l => l.value)
+        const needsLanguages = checkedOptions.some(opt => 
+            opt.value === "subs" || opt.value === "dub_audio" || opt.value === "dub_video"
+        );
+        
+        if (needsLanguages) {
+            if (checkedLangs.length === 0 || checkedLangs.length > 2) {
+                console.error("Language validation failed:", {
+                    count: checkedLangs.length,
+                    languages: checkedLangs.map(l => l.value)
+                });
+                alert("Veuillez sélectionner une ou deux langues cibles.");
+                return;
+            }
+            // Explicitly add languages to FormData for videos
+            console.log("Adding languages to FormData:", checkedLangs.map(l => l.value));
+            checkedLangs.forEach(lang => {
+                formData.append("languages", lang.value);
+                console.log("  ✓ Added language:", lang.value);
             });
-            alert("Veuillez sélectionner une ou deux langues cibles.");
-            return;
+        } else {
+            console.log("No languages needed (only transcribe selected)");
         }
-        // Explicitly add languages to FormData for videos
-        console.log("Adding languages to FormData:", checkedLangs.map(l => l.value));
-        checkedLangs.forEach(lang => {
-            formData.append("languages", lang.value);
-            console.log("  ✓ Added language:", lang.value);
-        });
         
         // Debug: log all FormData entries
         console.log("FormData contents:");

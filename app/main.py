@@ -529,32 +529,46 @@ async def upload_video(
         )
     
     # Original video processing logic
-    # For videos, languages are always required
-    if not languages or len(languages) == 0:
-        logger.warning(f"No languages found in form data. Languages list: {languages}")
-        return JSONResponse(
-            {"error": "Please select one or two target languages"},
-            status_code=400,
-        )
+    # For videos, languages are required only if subs, dub_audio, or dub_video are selected
+    normalized_options = []
+    if process_options:
+        normalized_options = [opt.lower().strip() for opt in process_options if opt.strip()]
     
-    normalized_langs = [lang.lower() for lang in languages]
+    needs_languages = any(opt in normalized_options for opt in ["subs", "dub_audio", "dub_video"])
+    
+    if needs_languages:
+        if not languages or len(languages) == 0:
+            logger.warning(f"No languages found in form data. Languages list: {languages}")
+            return JSONResponse(
+                {"error": "Please select one or two target languages"},
+                status_code=400,
+            )
+        
+        normalized_langs = [lang.lower() for lang in languages]
 
-    if len(normalized_langs) == 0 or len(normalized_langs) > 2:
-        return JSONResponse(
-            {"error": "Please select one or two target languages"},
-            status_code=400,
-        )
-    invalid = [lang for lang in normalized_langs if lang not in ALLOWED_LANGUAGE_CODES]
-    if invalid:
-        return JSONResponse(
-            {
-                "error": (
-                    "Unsupported language codes requested: "
-                    + ", ".join(sorted(set(invalid)))
-                )
-            },
-            status_code=400,
-        )
+        if len(normalized_langs) == 0 or len(normalized_langs) > 2:
+            return JSONResponse(
+                {"error": "Please select one or two target languages"},
+                status_code=400,
+            )
+    else:
+        # No languages needed if only transcribe is selected
+        normalized_langs = []
+        languages = []
+    
+    # Only validate language codes if languages are provided
+    if normalized_langs:
+        invalid = [lang for lang in normalized_langs if lang not in ALLOWED_LANGUAGE_CODES]
+        if invalid:
+            return JSONResponse(
+                {
+                    "error": (
+                        "Unsupported language codes requested: "
+                        + ", ".join(sorted(set(invalid)))
+                    )
+                },
+                status_code=400,
+            )
 
     if process_options is None:
         normalized_options = list(DEFAULT_PROCESS_OPTIONS)
@@ -703,22 +717,30 @@ async def process_video_job(
                     logger.exception(f"Error saving transcription file: {e}")
                     warnings.append(f"Kon transcriptiebestand niet opslaan: {str(e)}")
 
-        sentence_segments = build_sentence_segments(
-            whisper_result, base_offset=audio_offset
-        )
-        sentence_pairs = build_sentence_pairs(
-            whisper_result, base_offset=audio_offset
-        )
-        translations, translation_warnings = await run_in_threadpool(
-            translate_segments, sentence_segments, languages
+        # Only process translations if languages are provided and subs/dub options are selected
+        translations = {}
+        if languages and (create_subtitles or needs_dub_assets):
+            sentence_segments = build_sentence_segments(
+                whisper_result, base_offset=audio_offset
+            )
+            sentence_pairs = build_sentence_pairs(
+                whisper_result, base_offset=audio_offset
+            )
+            translations, translation_warnings = await run_in_threadpool(
+                translate_segments, sentence_segments, languages
+            )
+            warnings.extend(translation_warnings)
 
-        )
-        warnings.extend(translation_warnings)
+            if not translations:
+                raise RuntimeError("Translations failed for all requested languages.")
+        elif create_subtitles or needs_dub_assets:
+            # If subs/dub are selected but no languages provided, skip them
+            if create_subtitles:
+                warnings.append("Sous-titres non générés: aucune langue cible sélectionnée.")
+            if needs_dub_assets:
+                warnings.append("Doublage non généré: aucune langue cible sélectionnée.")
 
-        if not translations:
-            raise RuntimeError("Translations failed for all requested languages.")
-
-        if create_subtitles:
+        if create_subtitles and translations:
             for lang, segs in translations.items():
                 vtt_path = video_dir / f"subs_{lang}.vtt"
                 paired_segments = pair_translation_segments(segs)
@@ -726,7 +748,7 @@ async def process_video_job(
 
         # Combined subtitles option removed - no longer needed
 
-        if needs_dub_assets:
+        if needs_dub_assets and translations:
             for lang, segs in translations.items():
                 if lang in LANGUAGES_WITHOUT_DUBBING:
                     label = LANGUAGE_LABELS.get(lang, lang.upper())
