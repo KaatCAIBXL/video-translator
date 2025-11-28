@@ -10,4 +10,5 @@ ffmpeg-python
 edge-tts
 deepl
 pydub
+pillow
 

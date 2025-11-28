@@ -8,7 +8,12 @@ import requests
 import time
 from pathlib import Path
 from typing import List, Optional, Dict, Any
-from PIL import Image
+try:
+    from PIL import Image
+    PIL_AVAILABLE = True
+except ImportError:
+    PIL_AVAILABLE = False
+    Image = None
 import io
 import base64
 
@@ -78,7 +83,7 @@ class StableDiffusionService:
         seed: int = -1,
         sampler_name: str = "DPM++ 2M Karras",
         **kwargs
-    ) -> Optional[Image.Image]:
+    ):
         """
         Generate a single image from text prompt.
         
@@ -136,6 +141,10 @@ class StableDiffusionService:
                 return None
             
             # Decode base64 image
+            if not PIL_AVAILABLE:
+                logger.error("PIL (Pillow) is not installed. Cannot process images.")
+                return None
+            
             image_data = base64.b64decode(images[0])
             image = Image.open(io.BytesIO(image_data))
             
@@ -156,7 +165,7 @@ class StableDiffusionService:
         steps: int = 20,
         cfg_scale: float = 7.0,
         **kwargs
-    ) -> List[Image.Image]:
+    ) -> List:
         """
         Generate multiple images from text, optionally splitting by sentences.
         
@@ -220,7 +229,7 @@ class StableDiffusionService:
 
 
 def create_video_from_images(
-    images: List[Image.Image],
+    images: List,
     output_path: Path,
     fps: float = 2.0,
     duration_per_image: float = 2.0,
@@ -241,6 +250,10 @@ def create_video_from_images(
     """
     import subprocess
     import tempfile
+    
+    if not PIL_AVAILABLE:
+        logger.error("PIL (Pillow) is not installed. Cannot create video from images.")
+        return False
     
     if not images:
         logger.error("No images provided for video creation")
