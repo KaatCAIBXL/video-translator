@@ -21,21 +21,37 @@ logger = logging.getLogger(__name__)
 
 
 class StableDiffusionService:
-    """Service for interacting with Stable Diffusion WebUI API."""
+    """
+    Service for generating images with Stable Diffusion.
     
-    def __init__(self, api_url: str = "http://127.0.0.1:7860", timeout: int = 300):
+    Supports two modes:
+    1. WebUI API mode (default): Uses Stable Diffusion WebUI (Automatic1111) running locally
+       - No external API needed, everything runs on your machine
+       - Requires WebUI to be running on http://127.0.0.1:7860
+    2. Direct library mode: Uses diffusers library directly (no WebUI needed)
+       - More complex setup, but no separate WebUI process required
+    """
+    
+    def __init__(self, api_url: str = "http://127.0.0.1:7860", timeout: int = 300, use_direct: bool = False, direct_model: str = "runwayml/stable-diffusion-v1-5"):
         """
         Initialize Stable Diffusion service.
         
         Args:
             api_url: Base URL of Stable Diffusion WebUI API (default: http://127.0.0.1:7860)
             timeout: Request timeout in seconds (default: 300)
+            use_direct: If True, use diffusers library directly instead of WebUI API
+            direct_model: HuggingFace model ID for direct mode (default: runwayml/stable-diffusion-v1-5)
         """
+        self.use_direct = use_direct
+        self.direct_model = direct_model
         self.api_url = api_url.rstrip("/")
         self.timeout = timeout
         self.txt2img_endpoint = f"{self.api_url}/sdapi/v1/txt2img"
         self.progress_endpoint = f"{self.api_url}/sdapi/v1/progress"
         self.options_endpoint = f"{self.api_url}/sdapi/v1/options"
+        
+        # For direct mode, we'll load the pipeline lazily
+        self._direct_pipeline = None
         
     def check_connection(self) -> bool:
         """Check if Stable Diffusion WebUI is accessible."""

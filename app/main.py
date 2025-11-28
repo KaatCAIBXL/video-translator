@@ -1798,9 +1798,13 @@ async def generate_video_from_text(request: Request):
             )
         
         # Initialize Stable Diffusion service
+        # Note: This uses LOCAL Stable Diffusion WebUI (no external API needed)
+        # The WebUI runs on your machine at http://127.0.0.1:7860
         sd_service = StableDiffusionService(
             api_url=settings.STABLE_DIFFUSION_API_URL,
-            timeout=600
+            timeout=600,
+            use_direct=settings.STABLE_DIFFUSION_USE_DIRECT,
+            direct_model=settings.STABLE_DIFFUSION_DIRECT_MODEL
         )
         
         # Check connection
