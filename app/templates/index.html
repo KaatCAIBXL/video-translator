@@ -83,8 +83,8 @@
  </section>
  {% endif %}
 
- {% if is_editor %}
- <!-- Character Management (Dreambooth) -->
+ {% if is_admin %}
+ <!-- Character Management (Dreambooth) - Admin Only -->
  <section id="characters-section" style="display: block; margin-bottom: 30px; padding: 20px; border: 2px solid #007bff; background: #f0f8ff;">
      <h2>👤 Gestion des Personnages</h2>
      <button type="button" id="create-character-btn" style="margin-bottom: 20px; padding: 10px 20px; background: #28a745; color: white; border: none; border-radius: 5px; cursor: pointer;">
@@ -260,10 +260,6 @@
                      <input type="checkbox" name="process_options" value="improve_text">
                      Améliorer le texte (avec IA)
                  </label>
-                 <label>
-                     <input type="checkbox" name="process_options" value="translate">
-                     Traduire
-                 </label>
              </div>
              <div id="text-options" style="display: none;">
                  <label>
@@ -342,20 +338,6 @@
      {% endif %}
      
      <!-- Message to Admin Section (for viewers and editors) -->
-     {% if not is_admin %}
-     <div id="message-to-admin-section" style="margin-top: 30px; padding: 20px; border: 2px solid #ffc107; background: #fff3cd; border-radius: 5px;">
-         <h3>📧 Signaler un problème à l'admin</h3>
-         <p style="color: #856404; margin-bottom: 15px;">Vous pouvez envoyer un message à l'administrateur pour signaler un problème ou poser une question.</p>
-         <form id="message-to-admin-form">
-             <textarea id="admin-message-input" rows="4" style="width: 100%; padding: 8px; margin-bottom: 10px; border: 1px solid #ccc; border-radius: 3px;" placeholder="Décrivez votre problème ou question..."></textarea>
-             <button type="submit" style="padding: 10px 20px; background: #ffc107; color: #000; border: none; border-radius: 5px; cursor: pointer; font-weight: bold;">
-                 Envoyer le message
-             </button>
-         </form>
-         <div id="message-status" style="margin-top: 10px; display: none;"></div>
-     </div>
-     {% endif %}
-     
      <!-- Admin Messages Section -->
      {% if is_admin %}
      <div id="admin-messages-section" style="margin-top: 30px; padding: 20px; border: 2px solid #dc3545; background: #f8d7da; border-radius: 5px;">
