@@ -2232,6 +2232,28 @@ async def generate_image(request: Request):
         
         logger.info(f"ModelsLab API response: {result}")
         
+        # Check for error status - ModelsLab returns status and message for errors
+        if "status" in result:
+            status_value = result.get("status")
+            # If status is not success/processing/completed, it's likely an error
+            if status_value not in ["success", "processing", "completed", "succeeded"]:
+                error_msg = result.get("message", f"Unknown error from ModelsLab API. Status: {status_value}")
+                logger.error(f"ModelsLab API error: {error_msg}, Status: {status_value}")
+                return JSONResponse(
+                    {"error": f"Erreur de l'API ModelsLab: {error_msg}"},
+                    status_code=500
+                )
+            
+            # If status is processing, the API might return an ID to check later
+            if status_value == "processing" and "id" in result:
+                # For async processing, we'd need to poll for the result
+                # For now, return an error asking to check the API documentation
+                logger.warning(f"ModelsLab API returned processing status with ID: {result.get('id')}")
+                return JSONResponse(
+                    {"error": "L'API retourne un statut 'processing'. La génération d'images peut être asynchrone. Vérifiez la documentation de l'API."},
+                    status_code=500
+                )
+        
         # Haal de afbeelding data op - ModelsLab kan verschillende response formats hebben
         image_bytes = None
         
@@ -2241,16 +2263,30 @@ async def generate_image(request: Request):
             img_response = requests.get(image_url, timeout=30)
             img_response.raise_for_status()
             image_bytes = img_response.content
-        # Format 2: Image URL in status field
-        elif "status" in result and "output" in result.get("status", []):
-            image_url = result["status"]["output"][0] if isinstance(result["status"]["output"], list) else result["status"]["output"]
+        # Format 2: Check if message contains image URL
+        elif "message" in result and isinstance(result["message"], str) and (result["message"].startswith("http") or result["message"].startswith("https")):
+            image_url = result["message"]
             img_response = requests.get(image_url, timeout=30)
             img_response.raise_for_status()
             image_bytes = img_response.content
-        # Format 3: Base64 encoded image
+        # Format 3: Image URL in status field (dict)
+        elif "status" in result and isinstance(result["status"], dict) and "output" in result["status"]:
+            output = result["status"]["output"]
+            if isinstance(output, list) and len(output) > 0:
+                image_url = output[0]
+            elif isinstance(output, str):
+                image_url = output
+            else:
+                image_url = None
+            
+            if image_url:
+                img_response = requests.get(image_url, timeout=30)
+                img_response.raise_for_status()
+                image_bytes = img_response.content
+        # Format 4: Base64 encoded image
         elif "image" in result:
             image_bytes = base64.b64decode(result["image"])
-        # Format 4: Standard OpenAI-style format
+        # Format 5: Standard OpenAI-style format
         elif "data" in result and len(result["data"]) > 0:
             image_data = result["data"][0]
             if "url" in image_data:
@@ -2260,11 +2296,27 @@ async def generate_image(request: Request):
                 image_bytes = img_response.content
             elif "b64_json" in image_data:
                 image_bytes = base64.b64decode(image_data["b64_json"])
+        # Format 6: Check if status contains the image URL directly
+        elif "status" in result and isinstance(result["status"], str) and result["status"].startswith("http"):
+            image_url = result["status"]
+            img_response = requests.get(image_url, timeout=30)
+            img_response.raise_for_status()
+            image_bytes = img_response.content
         
         if not image_bytes:
-            logger.error(f"Could not extract image from ModelsLab API response: {result}")
+            # Log the full response for debugging
+            logger.error(f"Could not extract image from ModelsLab API response. Full response: {json.dumps(result, indent=2)}")
+            error_msg = f"Impossible d'extraire l'image de la réponse de l'API. Format: {list(result.keys())}"
+            if "message" in result:
+                error_msg += f" - Message: {result['message']}"
+            if "status" in result:
+                error_msg += f" - Status: {result['status']}"
+            # Include full response in error for debugging
             return JSONResponse(
-                {"error": f"Impossible d'extraire l'image de la réponse de l'API. Format: {list(result.keys())}"},
+                {
+                    "error": error_msg,
+                    "api_response": result  # Include full response for debugging
+                },
                 status_code=500
             )
             
