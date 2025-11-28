@@ -34,3 +34,15 @@ class FolderItem(BaseModel):
     path: str
     is_private: bool = False
     parent_path: Optional[str] = None
+
+class Character(BaseModel):
+    id: str
+    name: str
+    token: str  # Unique token for this character (e.g., "joepenna", "bingo")
+    description: str  # Character description (e.g., "lief, lachend, dynamisch")
+    class_word: str = "person"  # Class word for Dreambooth (person, dog, etc.)
+    status: str = "pending"  # pending, training, completed, failed
+    training_images_count: int = 0
+    model_path: Optional[str] = None  # Path to trained model
+    created_at: str = ""
+    error: Optional[str] = None

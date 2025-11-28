@@ -2621,7 +2621,9 @@ if (textToVideoForm) {
         try {
             const formData = new FormData();
             formData.append("text", text);
-            if (modelInput.value.trim()) {
+            if (characterSelect && characterSelect.value) {
+                formData.append("character_id", characterSelect.value);
+            } else if (modelInput.value.trim()) {
                 formData.append("model_name", modelInput.value.trim());
             }
             formData.append("image_per_sentence", sentenceCheckbox.checked ? "true" : "false");
@@ -2744,13 +2746,427 @@ if (textToVideoForm) {
         populateTextToVideoFolderDropdown();
         setInterval(populateTextToVideoFolderDropdown, 5000);
     }
+    
+    // Populate character dropdown for text-to-video
+    const textToVideoCharacterSelect = document.getElementById("text-to-video-character");
+    if (textToVideoCharacterSelect) {
+        async function populateTextToVideoCharacterDropdown() {
+            try {
+                const response = await fetch("/api/characters", {
+                    credentials: "include"
+                });
+                if (!response.ok) return;
+                
+                const chars = await response.json();
+                const currentValue = textToVideoCharacterSelect.value;
+                
+                // Clear existing options (keep first "Aucun personnage" option)
+                while (textToVideoCharacterSelect.children.length > 1) {
+                    textToVideoCharacterSelect.remove(1);
+                }
+                
+                // Add only completed characters
+                chars.filter(char => char.status === "completed").forEach(char => {
+                    const option = document.createElement("option");
+                    option.value = char.id;
+                    option.textContent = `${char.name} (${char.token})`;
+                    textToVideoCharacterSelect.appendChild(option);
+                });
+                
+                if (currentValue && Array.from(textToVideoCharacterSelect.options).some(opt => opt.value === currentValue)) {
+                    textToVideoCharacterSelect.value = currentValue;
+                }
+            } catch (err) {
+                console.error("Failed to load characters for text-to-video dropdown", err);
+            }
+        }
+        
+        populateTextToVideoCharacterDropdown();
+        setInterval(populateTextToVideoCharacterDropdown, 10000);
+    }
+}
+
+// Character Management
+let characters = [];
+
+async function fetchCharacters() {
+    try {
+        const response = await fetch("/api/characters", {
+            credentials: "include"
+        });
+        if (!response.ok) return;
+        
+        characters = await response.json();
+        renderCharacters();
+    } catch (err) {
+        console.error("Error fetching characters", err);
+    }
+}
+
+function renderCharacters() {
+    const listDiv = document.getElementById("characters-list");
+    if (!listDiv) return;
+    
+    if (characters.length === 0) {
+        listDiv.innerHTML = "<p>Aucun personnage créé. Cliquez sur '+ Personnage' pour en créer un.</p>";
+        return;
+    }
+    
+    listDiv.innerHTML = "";
+    
+    characters.forEach(char => {
+        const charDiv = document.createElement("div");
+        charDiv.style.cssText = "border: 1px solid #ddd; padding: 15px; margin-bottom: 10px; border-radius: 5px; background: white;";
+        
+        const statusColors = {
+            "pending": "#ffc107",
+            "training": "#007bff",
+            "completed": "#28a745",
+            "failed": "#dc3545"
+        };
+        
+        const statusLabels = {
+            "pending": "En attente",
+            "training": "Entraînement en cours",
+            "completed": "Terminé",
+            "failed": "Échec"
+        };
+        
+        charDiv.innerHTML = `
+            <div style="display: flex; justify-content: space-between; align-items: start;">
+                <div style="flex: 1;">
+                    <h4 style="margin: 0 0 5px 0;">${escapeHtml(char.name)}</h4>
+                    <p style="margin: 5px 0; color: #666;">
+                        <strong>Token:</strong> <code>${escapeHtml(char.token)}</code> ${char.class_word ? `<code>${escapeHtml(char.class_word)}</code>` : ''}
+                    </p>
+                    ${char.description ? `<p style="margin: 5px 0; color: #666;"><strong>Description:</strong> ${escapeHtml(char.description)}</p>` : ''}
+                    <p style="margin: 5px 0;">
+                        <span style="background: ${statusColors[char.status] || '#6c757d'}; color: white; padding: 3px 8px; border-radius: 3px; font-size: 0.9em;">
+                            ${statusLabels[char.status] || char.status}
+                        </span>
+                    </p>
+                    <p style="margin: 5px 0; color: #666; font-size: 0.9em;">
+                        Images d'entraînement: ${char.training_images_count}
+                    </p>
+                    ${char.error ? `<p style="margin: 5px 0; color: #dc3545; font-size: 0.9em;">Erreur: ${escapeHtml(char.error)}</p>` : ''}
+                </div>
+                <div style="margin-left: 15px;">
+                    <button type="button" class="view-character-btn" data-id="${char.id}" style="padding: 5px 10px; background: #007bff; color: white; border: none; border-radius: 3px; cursor: pointer; margin-bottom: 5px; display: block; width: 100%;">
+                        Voir détails
+                    </button>
+                    ${char.status === "completed" ? `
+                        <button type="button" class="use-character-btn" data-id="${char.id}" data-token="${char.token}" style="padding: 5px 10px; background: #28a745; color: white; border: none; border-radius: 3px; cursor: pointer; margin-bottom: 5px; display: block; width: 100%;">
+                            Utiliser
+                        </button>
+                    ` : ''}
+                    <button type="button" class="delete-character-btn" data-id="${char.id}" style="padding: 5px 10px; background: #dc3545; color: white; border: none; border-radius: 3px; cursor: pointer; display: block; width: 100%;">
+                        Supprimer
+                    </button>
+                </div>
+            </div>
+        `;
+        
+        listDiv.appendChild(charDiv);
+    });
+    
+    // Add event listeners
+    document.querySelectorAll(".view-character-btn").forEach(btn => {
+        btn.addEventListener("click", () => {
+            const charId = btn.getAttribute("data-id");
+            showCharacterDetail(charId);
+        });
+    });
+    
+    document.querySelectorAll(".use-character-btn").forEach(btn => {
+        btn.addEventListener("click", () => {
+            const charId = btn.getAttribute("data-id");
+            const token = btn.getAttribute("data-token");
+            useCharacterInVideo(token);
+        });
+    });
+    
+    document.querySelectorAll(".delete-character-btn").forEach(btn => {
+        btn.addEventListener("click", () => {
+            const charId = btn.getAttribute("data-id");
+            if (confirm("Êtes-vous sûr de vouloir supprimer ce personnage ?")) {
+                deleteCharacter(charId);
+            }
+        });
+    });
+}
+
+async function showCharacterDetail(characterId) {
+    try {
+        const response = await fetch(`/api/characters/${characterId}`, {
+            credentials: "include"
+        });
+        if (!response.ok) {
+            alert("Erreur lors du chargement du personnage");
+            return;
+        }
+        
+        const char = await response.json();
+        const modal = document.getElementById("character-detail-modal");
+        const nameDiv = document.getElementById("character-detail-name");
+        const contentDiv = document.getElementById("character-detail-content");
+        
+        nameDiv.textContent = char.name;
+        
+        contentDiv.innerHTML = `
+            <div style="margin-bottom: 15px;">
+                <strong>Token:</strong> <code>${escapeHtml(char.token)}</code> <code>${escapeHtml(char.class_word)}</code>
+            </div>
+            <div style="margin-bottom: 15px;">
+                <strong>Description:</strong> ${escapeHtml(char.description || "Aucune")}
+            </div>
+            <div style="margin-bottom: 15px;">
+                <strong>Statut:</strong> ${char.status}
+            </div>
+            <div style="margin-bottom: 15px;">
+                <strong>Images d'entraînement:</strong> ${char.training_images_count}
+            </div>
+            ${char.model_path ? `<div style="margin-bottom: 15px;"><strong>Modèle:</strong> ${escapeHtml(char.model_path)}</div>` : ''}
+            ${char.error ? `<div style="margin-bottom: 15px; color: #dc3545;"><strong>Erreur:</strong> ${escapeHtml(char.error)}</div>` : ''}
+            <div style="margin-top: 20px;">
+                <h4>Ajouter des images d'entraînement</h4>
+                <input type="file" id="character-images-input" multiple accept="image/*" style="margin-bottom: 10px;">
+                <button type="button" id="upload-character-images-btn" data-id="${char.id}" style="padding: 8px 15px; background: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer;">
+                    Télécharger les images
+                </button>
+            </div>
+            ${char.status === "pending" && char.training_images_count > 0 ? `
+                <div style="margin-top: 20px;">
+                    <button type="button" id="train-character-btn" data-id="${char.id}" style="padding: 10px 20px; background: #28a745; color: white; border: none; border-radius: 5px; cursor: pointer;">
+                        Démarrer l'entraînement
+                    </button>
+                </div>
+            ` : ''}
+        `;
+        
+        modal.style.display = "block";
+        
+        // Add event listeners
+        const uploadBtn = document.getElementById("upload-character-images-btn");
+        if (uploadBtn) {
+            uploadBtn.addEventListener("click", async () => {
+                const input = document.getElementById("character-images-input");
+                if (!input.files || input.files.length === 0) {
+                    alert("Veuillez sélectionner des images");
+                    return;
+                }
+                
+                await uploadCharacterImages(char.id, input.files);
+            });
+        }
+        
+        const trainBtn = document.getElementById("train-character-btn");
+        if (trainBtn) {
+            trainBtn.addEventListener("click", async () => {
+                await trainCharacter(char.id);
+            });
+        }
+        
+    } catch (err) {
+        console.error("Error showing character detail", err);
+        alert("Erreur lors du chargement du personnage");
+    }
+}
+
+async function uploadCharacterImages(characterId, files) {
+    try {
+        const formData = new FormData();
+        for (let i = 0; i < files.length; i++) {
+            formData.append("files", files[i]);
+        }
+        
+        const response = await fetch(`/api/characters/${characterId}/images`, {
+            method: "POST",
+            body: formData,
+            credentials: "include"
+        });
+        
+        if (!response.ok) {
+            const error = await response.json();
+            alert(error.error || "Erreur lors du téléchargement");
+            return;
+        }
+        
+        const result = await response.json();
+        alert(result.message);
+        await fetchCharacters();
+        await showCharacterDetail(characterId); // Refresh detail view
+    } catch (err) {
+        console.error("Error uploading images", err);
+        alert("Erreur lors du téléchargement des images");
+    }
+}
+
+async function trainCharacter(characterId) {
+    if (!confirm("Démarrer l'entraînement ? Cela peut prendre beaucoup de temps.")) {
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/api/characters/${characterId}/train`, {
+            method: "POST",
+            credentials: "include"
+        });
+        
+        if (!response.ok) {
+            const error = await response.json();
+            alert(error.error || "Erreur lors du démarrage de l'entraînement");
+            return;
+        }
+        
+        alert("Entraînement démarré. Vous pouvez fermer cette fenêtre et vérifier le statut plus tard.");
+        await fetchCharacters();
+        await showCharacterDetail(characterId);
+    } catch (err) {
+        console.error("Error training character", err);
+        alert("Erreur lors du démarrage de l'entraînement");
+    }
+}
+
+async function deleteCharacter(characterId) {
+    try {
+        const response = await fetch(`/api/characters/${characterId}`, {
+            method: "DELETE",
+            credentials: "include"
+        });
+        
+        if (!response.ok) {
+            const error = await response.json();
+            alert(error.error || "Erreur lors de la suppression");
+            return;
+        }
+        
+        await fetchCharacters();
+    } catch (err) {
+        console.error("Error deleting character", err);
+        alert("Erreur lors de la suppression");
+    }
+}
+
+function useCharacterInVideo(token) {
+    // Set the character token in the text-to-video form
+    const textToVideoInput = document.getElementById("text-to-video-input");
+    if (textToVideoInput) {
+        // Show text-to-video section if hidden
+        const textToVideoSection = document.getElementById("text-to-video-section");
+        if (textToVideoSection) {
+            textToVideoSection.style.display = "block";
+        }
+        
+        // Add token to prompt
+        const currentText = textToVideoInput.value.trim();
+        if (currentText) {
+            textToVideoInput.value = `${currentText}, ${token} person`;
+        } else {
+            textToVideoInput.value = `${token} person`;
+        }
+        
+        // Scroll to text-to-video section
+        textToVideoSection?.scrollIntoView({ behavior: "smooth" });
+    }
+}
+
+// Character form handling
+const createCharacterBtn = document.getElementById("create-character-btn");
+const characterModal = document.getElementById("character-modal");
+const characterForm = document.getElementById("character-form");
+const cancelCharacterBtn = document.getElementById("cancel-character-btn");
+const closeCharacterDetailBtn = document.getElementById("close-character-detail-btn");
+
+if (createCharacterBtn) {
+    createCharacterBtn.addEventListener("click", () => {
+        if (characterModal) {
+            characterModal.style.display = "block";
+            document.getElementById("character-name")?.focus();
+        }
+    });
+}
+
+if (cancelCharacterBtn) {
+    cancelCharacterBtn.addEventListener("click", () => {
+        if (characterModal) {
+            characterModal.style.display = "none";
+            characterForm?.reset();
+        }
+    });
+}
+
+if (closeCharacterDetailBtn) {
+    closeCharacterDetailBtn.addEventListener("click", () => {
+        const modal = document.getElementById("character-detail-modal");
+        if (modal) {
+            modal.style.display = "none";
+        }
+    });
+}
+
+// Close modals when clicking outside
+if (characterModal) {
+    characterModal.addEventListener("click", (e) => {
+        if (e.target === characterModal) {
+            characterModal.style.display = "none";
+            characterForm?.reset();
+        }
+    });
+}
+
+const characterDetailModal = document.getElementById("character-detail-modal");
+if (characterDetailModal) {
+    characterDetailModal.addEventListener("click", (e) => {
+        if (e.target === characterDetailModal) {
+            characterDetailModal.style.display = "none";
+        }
+    });
+}
+
+if (characterForm) {
+    characterForm.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        
+        const formData = new FormData(characterForm);
+        
+        try {
+            const response = await fetch("/api/characters", {
+                method: "POST",
+                body: formData,
+                credentials: "include"
+            });
+            
+            if (!response.ok) {
+                const error = await response.json();
+                alert(error.error || "Erreur lors de la création");
+                return;
+            }
+            
+            const character = await response.json();
+            alert(`Personnage "${character.name}" créé avec succès !`);
+            characterModal.style.display = "none";
+            characterForm.reset();
+            await fetchCharacters();
+        } catch (err) {
+            console.error("Error creating character", err);
+            alert("Erreur lors de la création du personnage");
+        }
+    });
+}
+
+function escapeHtml(text) {
+    const div = document.createElement("div");
+    div.textContent = text;
+    return div.innerHTML;
 }
 
 window.addEventListener("load", () => {
     fetchVideos();
     populateFolderDropdown();
     checkTextToVideoEnabled();
+    fetchCharacters(); // Load characters
     // Refresh folder dropdown when videos are fetched (in case folders changed)
     setInterval(populateFolderDropdown, 5000);
+    setInterval(fetchCharacters, 10000); // Refresh characters every 10 seconds
 });
 

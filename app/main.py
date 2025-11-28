@@ -45,9 +45,10 @@ from .languages import (
     LANGUAGES_WITHOUT_DUBBING,
     LANGUAGE_LABELS,
 )
-from .models import VideoListItem, VideoMetadata, TranslationSegment
+from .models import VideoListItem, VideoMetadata, TranslationSegment, Character
 from .job_store import job_store, JobStatus
 from .stable_diffusion_service import StableDiffusionService, create_video_from_images
+from .character_service import character_service
 
 app = FastAPI()
 ensure_dirs()
@@ -1770,10 +1771,20 @@ async def generate_video_from_text(request: Request):
     try:
         form_data = await request.form()
         text = form_data.get("text", "").strip()
+        character_id = form_data.get("character_id") or None
         model_name = form_data.get("model_name") or settings.STABLE_DIFFUSION_MODEL
         folder_path = form_data.get("folder_path") or None
         is_private = form_data.get("is_private", "false").lower() == "true"
         image_per_sentence = form_data.get("image_per_sentence", "true").lower() == "true"
+        
+        # If character is selected, use its model and enhance prompt
+        if character_id:
+            character = character_service.get_character(character_id)
+            if character:
+                if character.status == "completed" and character.model_path:
+                    model_name = character.model_path
+                # Enhance prompt with character token
+                text = character_service.get_character_token_prompt(character, text)
         
         if not text:
             return JSONResponse(
@@ -1910,3 +1921,220 @@ async def process_text_to_video_job(
     except Exception as e:
         logger.exception(f"Error processing text-to-video job {video_id}")
         job_store.mark_failed(video_id, str(e))
+
+
+# ---------- Character Management (Dreambooth) ----------
+
+@app.get("/api/characters")
+async def list_characters(request: Request):
+    """List all characters."""
+    if not is_editor(request):
+        return JSONResponse(
+            {"error": "Seuls les éditeurs peuvent voir les personnages."},
+            status_code=403
+        )
+    
+    characters = character_service.list_characters()
+    return JSONResponse([char.model_dump() for char in characters])
+
+
+@app.post("/api/characters")
+async def create_character(request: Request):
+    """Create a new character."""
+    if not is_editor(request):
+        return JSONResponse(
+            {"error": "Seuls les éditeurs peuvent créer des personnages."},
+            status_code=403
+        )
+    
+    try:
+        form_data = await request.form()
+        name = form_data.get("name", "").strip()
+        token = form_data.get("token", "").strip()
+        description = form_data.get("description", "").strip()
+        class_word = form_data.get("class_word", "person").strip()
+        
+        if not name or not token:
+            return JSONResponse(
+                {"error": "Le nom et le token sont requis."},
+                status_code=400
+            )
+        
+        # Validate token (should be lowercase, alphanumeric + underscore)
+        if not token.replace("_", "").isalnum() or not token.islower():
+            return JSONResponse(
+                {"error": "Le token doit être en minuscules et contenir uniquement des lettres, chiffres et underscores."},
+                status_code=400
+            )
+        
+        # Check if token already exists
+        existing = character_service.list_characters()
+        if any(char.token == token for char in existing):
+            return JSONResponse(
+                {"error": f"Un personnage avec le token '{token}' existe déjà."},
+                status_code=400
+            )
+        
+        character = character_service.create_character(
+            name=name,
+            token=token,
+            description=description,
+            class_word=class_word
+        )
+        
+        return JSONResponse(character.model_dump())
+        
+    except Exception as e:
+        logger.exception("Error creating character")
+        return JSONResponse(
+            {"error": f"Erreur lors de la création: {str(e)}"},
+            status_code=500
+        )
+
+
+@app.post("/api/characters/{character_id}/images")
+async def upload_character_images(
+    request: Request,
+    character_id: str,
+    files: List[UploadFile] = File(...)
+):
+    """Upload training images for a character."""
+    if not is_editor(request):
+        return JSONResponse(
+            {"error": "Seuls les éditeurs peuvent télécharger des images."},
+            status_code=403
+        )
+    
+    character = character_service.get_character(character_id)
+    if not character:
+        return JSONResponse(
+            {"error": "Personnage non trouvé."},
+            status_code=404
+        )
+    
+    if character.status == "training":
+        return JSONResponse(
+            {"error": "Le personnage est en cours d'entraînement. Attendez la fin de l'entraînement."},
+            status_code=400
+        )
+    
+    try:
+        import tempfile
+        uploaded_files = []
+        
+        for file in files:
+            # Validate file type
+            if not file.filename.lower().endswith(('.jpg', '.jpeg', '.png', '.webp')):
+                continue
+            
+            # Save to temporary location
+            with tempfile.NamedTemporaryFile(delete=False, suffix=Path(file.filename).suffix) as tmp:
+                content = await file.read()
+                tmp.write(content)
+                uploaded_files.append(Path(tmp.name))
+        
+        # Add images to character
+        count = character_service.add_training_images(character_id, uploaded_files)
+        
+        # Clean up temp files
+        for tmp_file in uploaded_files:
+            try:
+                tmp_file.unlink()
+            except:
+                pass
+        
+        # Reload character to get updated count
+        character = character_service.get_character(character_id)
+        
+        return JSONResponse({
+            "message": f"{count} image(s) ajoutée(s).",
+            "character": character.model_dump() if character else None
+        })
+        
+    except Exception as e:
+        logger.exception("Error uploading character images")
+        return JSONResponse(
+            {"error": f"Erreur lors du téléchargement: {str(e)}"},
+            status_code=500
+        )
+
+
+@app.post("/api/characters/{character_id}/train")
+async def train_character_endpoint(request: Request, character_id: str):
+    """Start training a character."""
+    if not is_editor(request):
+        return JSONResponse(
+            {"error": "Seuls les éditeurs peuvent entraîner des personnages."},
+            status_code=403
+        )
+    
+    if not settings.DREAMBOOTH_ENABLED:
+        return JSONResponse(
+            {"error": "Dreambooth n'est pas activé."},
+            status_code=503
+        )
+    
+    character = character_service.get_character(character_id)
+    if not character:
+        return JSONResponse(
+            {"error": "Personnage non trouvé."},
+            status_code=404
+        )
+    
+    if character.status == "training":
+        return JSONResponse(
+            {"error": "Le personnage est déjà en cours d'entraînement."},
+            status_code=400
+        )
+    
+    training_images_dir = character_service.get_training_images_dir(character_id)
+    if not training_images_dir.exists() or len(list(training_images_dir.glob("*"))) == 0:
+        return JSONResponse(
+            {"error": "Aucune image d'entraînement trouvée. Ajoutez des images avant d'entraîner."},
+            status_code=400
+        )
+    
+    # Start training in background
+    asyncio.create_task(character_service.train_character(character_id))
+    
+    return JSONResponse({
+        "message": "Entraînement démarré.",
+        "character_id": character_id
+    })
+
+
+@app.get("/api/characters/{character_id}")
+async def get_character(request: Request, character_id: str):
+    """Get character details."""
+    if not is_editor(request):
+        return JSONResponse(
+            {"error": "Seuls les éditeurs peuvent voir les personnages."},
+            status_code=403
+        )
+    
+    character = character_service.get_character(character_id)
+    if not character:
+        return JSONResponse(
+            {"error": "Personnage non trouvé."},
+            status_code=404
+        )
+    
+    return JSONResponse(character.model_dump())
+
+
+@app.delete("/api/characters/{character_id}")
+async def delete_character_endpoint(request: Request, character_id: str):
+    """Delete a character."""
+    if not is_editor(request):
+        return JSONResponse(
+            {"error": "Seuls les éditeurs peuvent supprimer des personnages."},
+            status_code=403
+        )
+    
+    if character_service.delete_character(character_id):
+        return JSONResponse({"message": "Personnage supprimé."})
+    else:
+        return JSONResponse(
+            {"error": "Personnage non trouvé."},
+            status_code=404
+        )

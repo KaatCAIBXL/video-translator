@@ -40,7 +40,17 @@ class Settings:
     STABLE_DIFFUSION_FPS: float = float(os.getenv("STABLE_DIFFUSION_FPS", "2.0"))
     STABLE_DIFFUSION_DURATION_PER_IMAGE: float = float(os.getenv("STABLE_DIFFUSION_DURATION_PER_IMAGE", "2.0"))
 
+    # Dreambooth settings
+    DREAMBOOTH_ENABLED: bool = os.getenv("DREAMBOOTH_ENABLED", "false").lower() == "true"
+    DREAMBOOTH_PATH: Path = Path(os.getenv("DREAMBOOTH_PATH", str(BASE_DIR / "dreambooth")))
+    DREAMBOOTH_BASE_MODEL: str = os.getenv("DREAMBOOTH_BASE_MODEL", "")  # Path to base model .ckpt file
+    DREAMBOOTH_REGULARIZATION_IMAGES: str = os.getenv("DREAMBOOTH_REGULARIZATION_IMAGES", "")  # Path to regularization images
+    DREAMBOOTH_MAX_TRAINING_STEPS: int = int(os.getenv("DREAMBOOTH_MAX_TRAINING_STEPS", "3000"))
+    DREAMBOOTH_LEARNING_RATE: float = float(os.getenv("DREAMBOOTH_LEARNING_RATE", "1.0e-06"))
+    DREAMBOOTH_SAVE_EVERY_X_STEPS: int = int(os.getenv("DREAMBOOTH_SAVE_EVERY_X_STEPS", "500"))
+
     UPLOAD_DIR: Path = BASE_DIR / "data" / "uploads"
     PROCESSED_DIR: Path = BASE_DIR / "data" / "processed"
+    CHARACTERS_DIR: Path = BASE_DIR / "data" / "characters"
 
 settings = Settings()
