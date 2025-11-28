@@ -703,7 +703,12 @@ async def process_video_job(
     try:
         await run_in_threadpool(extract_audio, video_path, audio_path)
 
-        whisper_result = await run_in_threadpool(transcribe_audio_whisper, audio_path)
+        try:
+            whisper_result = await run_in_threadpool(transcribe_audio_whisper, audio_path)
+        except Exception as transcribe_exc:
+            logger.exception(f"Transcription failed for video {video_id}: {transcribe_exc}")
+            raise RuntimeError(f"Transcription failed: {str(transcribe_exc)}") from transcribe_exc
+        
         original_lang = whisper_result.get("language", "unknown")
 
         # Save transcription text file if transcribe option is enabled
@@ -862,16 +867,33 @@ async def process_video_job(
 
     except RuntimeError as exc:
         logger.warning("Error while processing job %s: %s", video_id, exc)
+        error_message = str(exc)
+        # Provide more specific error messages for common issues
+        if "transcription" in error_message.lower() or "whisper" in error_message.lower():
+            error_message = f"Transcription error: {error_message}"
+        elif "translation" in error_message.lower():
+            error_message = f"Translation error: {error_message}"
+        elif "dub" in error_message.lower() or "tts" in error_message.lower():
+            error_message = f"Audio dubbing error: {error_message}"
         job_store.mark_failed(
             video_id,
-            str(exc),
+            error_message,
             warnings=warnings,
         )
-    except Exception:
-        logger.exception("Unexpected error while processing job %s", video_id)
+    except Exception as exc:
+        logger.exception("Unexpected error while processing job %s: %s", video_id, exc)
+        # Try to provide a more helpful error message
+        error_message = f"Something went wrong while processing the video: {str(exc)}"
+        # Check for common error types
+        if "transcription" in str(exc).lower() or "whisper" in str(exc).lower():
+            error_message = f"Transcription failed: {str(exc)}"
+        elif "translation" in str(exc).lower():
+            error_message = f"Translation failed: {str(exc)}"
+        elif "dub" in str(exc).lower() or "tts" in str(exc).lower():
+            error_message = f"Audio dubbing failed: {str(exc)}"
         job_store.mark_failed(
             video_id,
-            "Something went wrong while processing the video.",
+            error_message,
             warnings=warnings,
         )
 
