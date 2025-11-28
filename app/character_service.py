@@ -33,7 +33,7 @@ class CharacterService:
         """Get JSON file path for character metadata."""
         return self._get_character_dir(character_id) / "character.json"
     
-    def _get_training_images_dir(self, character_id: str) -> Path:
+    def get_training_images_dir(self, character_id: str) -> Path:
         """Get directory for training images."""
         return self._get_character_dir(character_id) / "training_images"
     
