@@ -1478,28 +1478,32 @@ async def delete_video(request: Request, video_id: str):
     if not is_editor(request):
         return JSONResponse({"error": "Seuls les éditeurs peuvent supprimer des vidéos."}, status_code=403)
     
-    # Find video directory (could be in a folder)
-    def _find_video_dir(directory: Path) -> Optional[Path]:
-        for item in directory.iterdir():
-            if item.is_dir():
-                meta = _load_video_metadata(item)
-                if meta and meta.id == video_id:
-                    return item
-                # Recursively search
-                found = _find_video_dir(item)
-                if found:
-                    return found
-        return None
-    
-    video_dir = _find_video_dir(settings.PROCESSED_DIR)
-    if not video_dir:
+    # Use the existing _find_video_directory function which properly searches recursively
+    video_dir = _find_video_directory(video_id)
+    if not video_dir or not video_dir.exists():
+        logger.warning(f"Video directory not found for ID: {video_id}")
         return JSONResponse({"error": "Vidéo non trouvée."}, status_code=404)
     
     try:
+        # Verify the directory still exists before attempting deletion
+        if not video_dir.exists():
+            logger.warning(f"Video directory does not exist: {video_dir}")
+            return JSONResponse({"error": "Vidéo non trouvée."}, status_code=404)
+        
+        # Double-check metadata to ensure we're deleting the right video
+        meta = _load_video_metadata(video_dir)
+        if not meta or meta.id != video_id:
+            logger.warning(f"Video ID mismatch: expected {video_id}, got {meta.id if meta else 'None'}")
+            return JSONResponse({"error": "Vidéo non trouvée."}, status_code=404)
+        
         shutil.rmtree(video_dir)
+        logger.info(f"Successfully deleted video {video_id} from {video_dir}")
         return JSONResponse({"message": "Vidéo supprimée avec succès."})
+    except FileNotFoundError:
+        logger.warning(f"Video directory already deleted: {video_dir}")
+        return JSONResponse({"error": "Vidéo non trouvée."}, status_code=404)
     except Exception as e:
-        logger.exception("Failed to delete video")
+        logger.exception(f"Failed to delete video {video_id} from {video_dir}: {e}")
         return JSONResponse({"error": f"Impossible de supprimer la vidéo: {e}"}, status_code=500)
 
 @app.put("/api/videos/{video_id}/rename")
