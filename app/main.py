@@ -725,6 +725,7 @@ async def process_video_job(
 
         # Only process translations if languages are provided and subs/dub options are selected
         translations = {}
+        sentence_pairs = []  # Initialize to empty list for transcription-only jobs
         if languages and (create_subtitles or needs_dub_assets):
             sentence_segments = build_sentence_segments(
                 whisper_result, base_offset=audio_offset
