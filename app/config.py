@@ -30,13 +30,17 @@ class Settings:
     )
 
     # Stable Diffusion settings
-    # Option 1: Use Stable Diffusion WebUI API (local, no external API needed)
+    # Option 1: Use Stable Diffusion WebUI API (local, no external API needed, FREE)
     STABLE_DIFFUSION_API_URL: str = os.getenv("STABLE_DIFFUSION_API_URL", "http://127.0.0.1:7860")
     STABLE_DIFFUSION_MODEL: str = os.getenv("STABLE_DIFFUSION_MODEL", "")  # Dreambooth model name
     STABLE_DIFFUSION_ENABLED: bool = os.getenv("STABLE_DIFFUSION_ENABLED", "false").lower() == "true"
     # Option 2: Use diffusers library directly (alternative, no WebUI needed)
     STABLE_DIFFUSION_USE_DIRECT: bool = os.getenv("STABLE_DIFFUSION_USE_DIRECT", "false").lower() == "true"
     STABLE_DIFFUSION_DIRECT_MODEL: str = os.getenv("STABLE_DIFFUSION_DIRECT_MODEL", "runwayml/stable-diffusion-v1-5")
+    # Option 3: Use external API service (e.g., Diffus.me - PAID, but easier setup)
+    STABLE_DIFFUSION_USE_EXTERNAL_API: bool = os.getenv("STABLE_DIFFUSION_USE_EXTERNAL_API", "false").lower() == "true"
+    STABLE_DIFFUSION_EXTERNAL_API_URL: str = os.getenv("STABLE_DIFFUSION_EXTERNAL_API_URL", "https://api.diffus.me/v3")
+    STABLE_DIFFUSION_EXTERNAL_API_KEY: str = os.getenv("STABLE_DIFFUSION_EXTERNAL_API_KEY", "")
     STABLE_DIFFUSION_IMAGE_WIDTH: int = int(os.getenv("STABLE_DIFFUSION_IMAGE_WIDTH", "512"))
     STABLE_DIFFUSION_IMAGE_HEIGHT: int = int(os.getenv("STABLE_DIFFUSION_IMAGE_HEIGHT", "512"))
     STABLE_DIFFUSION_STEPS: int = int(os.getenv("STABLE_DIFFUSION_STEPS", "20"))

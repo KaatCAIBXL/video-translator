@@ -32,7 +32,7 @@ class StableDiffusionService:
        - More complex setup, but no separate WebUI process required
     """
     
-    def __init__(self, api_url: str = "http://127.0.0.1:7860", timeout: int = 300, use_direct: bool = False, direct_model: str = "runwayml/stable-diffusion-v1-5"):
+    def __init__(self, api_url: str = "http://127.0.0.1:7860", timeout: int = 300, use_direct: bool = False, direct_model: str = "runwayml/stable-diffusion-v1-5", use_external_api: bool = False, external_api_url: str = "", external_api_key: str = ""):
         """
         Initialize Stable Diffusion service.
         
@@ -41,9 +41,15 @@ class StableDiffusionService:
             timeout: Request timeout in seconds (default: 300)
             use_direct: If True, use diffusers library directly instead of WebUI API
             direct_model: HuggingFace model ID for direct mode (default: runwayml/stable-diffusion-v1-5)
+            use_external_api: If True, use external API service (e.g., Diffus.me)
+            external_api_url: URL of external API service
+            external_api_key: API key for external service
         """
         self.use_direct = use_direct
+        self.use_external_api = use_external_api
         self.direct_model = direct_model
+        self.external_api_url = external_api_url.rstrip("/") if external_api_url else ""
+        self.external_api_key = external_api_key
         self.api_url = api_url.rstrip("/")
         self.timeout = timeout
         self.txt2img_endpoint = f"{self.api_url}/sdapi/v1/txt2img"
@@ -138,6 +144,12 @@ class StableDiffusionService:
         }
         
         try:
+            # Use external API if configured
+            if self.use_external_api:
+                return await self._generate_image_external_api(
+                    prompt, negative_prompt, width, height, steps, cfg_scale, seed, **kwargs
+                )
+            
             # Run in thread pool to avoid blocking
             loop = asyncio.get_event_loop()
             response = await loop.run_in_executor(
