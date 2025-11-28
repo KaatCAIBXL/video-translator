@@ -934,8 +934,10 @@ async function preloadVideoForOffline(videoId, mode = "original", lang = null, a
             infoEl.appendChild(progressMsg);
         }
         
-        // Cache video
-        const response = await fetch(url);
+        // Cache video - include credentials to send session cookie
+        const response = await fetch(url, {
+            credentials: "include"  // Include cookies (session_id) in request
+        });
         if (response.ok) {
             await cache.put(url, response.clone());
             
@@ -944,7 +946,9 @@ async function preloadVideoForOffline(videoId, mode = "original", lang = null, a
                 progressMsg.textContent = "Mise en cache de la vidéo et des sous-titres...";
                 for (const subLang of availableSubtitles) {
                     try {
-                        const subResponse = await fetch(`/videos/${encodeURIComponent(videoId)}/subs/${encodeURIComponent(subLang)}`);
+                        const subResponse = await fetch(`/videos/${encodeURIComponent(videoId)}/subs/${encodeURIComponent(subLang)}`, {
+                            credentials: "include"  // Include cookies (session_id) in request
+                        });
                         if (subResponse.ok) {
                             await cache.put(`/videos/${encodeURIComponent(videoId)}/subs/${encodeURIComponent(subLang)}`, subResponse.clone());
                         }
