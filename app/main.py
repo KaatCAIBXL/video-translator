@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+import re
 import shutil
 import tempfile
 import uuid
@@ -46,6 +47,7 @@ from .languages import (
 )
 from .models import VideoListItem, VideoMetadata, TranslationSegment
 from .job_store import job_store, JobStatus
+from .stable_diffusion_service import StableDiffusionService, create_video_from_images
 
 app = FastAPI()
 ensure_dirs()
@@ -1743,3 +1745,168 @@ async def save_subtitle_edit(request: Request, video_id: str, lang: str, content
         return JSONResponse({"message": "Sous-titres mis à jour avec succès."})
     except Exception as e:
         return JSONResponse({"error": f"Impossible de sauvegarder les sous-titres: {e}"}, status_code=500)
+
+
+# ---------- Text-to-Video Generation (Stable Diffusion) ----------
+# Hidden feature - only accessible when STABLE_DIFFUSION_ENABLED is True
+
+@app.post("/api/text-to-video")
+async def generate_video_from_text(request: Request):
+    """Generate a video from text using Stable Diffusion WebUI."""
+    # Check if feature is enabled
+    if not settings.STABLE_DIFFUSION_ENABLED:
+        return JSONResponse(
+            {"error": "Text-to-video feature is not enabled."},
+            status_code=503
+        )
+    
+    # Only editors can use this feature
+    if not is_editor(request):
+        return JSONResponse(
+            {"error": "Seuls les éditeurs peuvent générer des vidéos."},
+            status_code=403
+        )
+    
+    try:
+        form_data = await request.form()
+        text = form_data.get("text", "").strip()
+        model_name = form_data.get("model_name") or settings.STABLE_DIFFUSION_MODEL
+        folder_path = form_data.get("folder_path") or None
+        is_private = form_data.get("is_private", "false").lower() == "true"
+        image_per_sentence = form_data.get("image_per_sentence", "true").lower() == "true"
+        
+        if not text:
+            return JSONResponse(
+                {"error": "Le texte est requis."},
+                status_code=400
+            )
+        
+        # Initialize Stable Diffusion service
+        sd_service = StableDiffusionService(
+            api_url=settings.STABLE_DIFFUSION_API_URL,
+            timeout=600
+        )
+        
+        # Check connection
+        if not sd_service.check_connection():
+            return JSONResponse(
+                {"error": "Stable Diffusion WebUI n'est pas accessible. Vérifiez que le serveur est démarré."},
+                status_code=503
+            )
+        
+        # Create job ID
+        video_id = str(uuid.uuid4())
+        job_store.create_job(video_id, "text-to-video")
+        job_store.mark_processing(video_id)
+        
+        # Process in background
+        asyncio.create_task(
+            process_text_to_video_job(
+                video_id=video_id,
+                text=text,
+                model_name=model_name,
+                folder_path=folder_path,
+                is_private=is_private,
+                image_per_sentence=image_per_sentence,
+                sd_service=sd_service
+            )
+        )
+        
+        return JSONResponse({
+            "job_id": video_id,
+            "message": "Génération de vidéo démarrée."
+        })
+        
+    except Exception as e:
+        logger.exception("Error in text-to-video generation")
+        return JSONResponse(
+            {"error": f"Erreur lors de la génération: {str(e)}"},
+            status_code=500
+        )
+
+
+async def process_text_to_video_job(
+    *,
+    video_id: str,
+    text: str,
+    model_name: Optional[str],
+    folder_path: Optional[str],
+    is_private: bool,
+    image_per_sentence: bool,
+    sd_service: StableDiffusionService
+):
+    """Process text-to-video generation job."""
+    try:
+        # Create video directory
+        if folder_path:
+            video_dir = settings.PROCESSED_DIR / folder_path.replace("/", "\\") / video_id
+        else:
+            video_dir = settings.PROCESSED_DIR / video_id
+        
+        video_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Split text into sentences if needed
+        sentences = None
+        if image_per_sentence:
+            # Simple sentence splitting (can be improved)
+            sentences = [s.strip() for s in re.split(r'[.!?]+', text) if s.strip()]
+        
+        # Generate images
+        logger.info(f"Generating images for text-to-video job {video_id}")
+        images = await sd_service.generate_images_for_text(
+            text=text,
+            sentences=sentences,
+            model_name=model_name,
+            image_per_sentence=image_per_sentence,
+            width=settings.STABLE_DIFFUSION_IMAGE_WIDTH,
+            height=settings.STABLE_DIFFUSION_IMAGE_HEIGHT,
+            steps=settings.STABLE_DIFFUSION_STEPS,
+            cfg_scale=settings.STABLE_DIFFUSION_CFG_SCALE
+        )
+        
+        if not images:
+            raise RuntimeError("Aucune image générée")
+        
+        # Create video from images
+        video_path = video_dir / "original.mp4"
+        logger.info(f"Creating video from {len(images)} images")
+        success = await run_in_threadpool(
+            create_video_from_images,
+            images,
+            video_path,
+            fps=settings.STABLE_DIFFUSION_FPS,
+            duration_per_image=settings.STABLE_DIFFUSION_DURATION_PER_IMAGE
+        )
+        
+        if not success:
+            raise RuntimeError("Échec de la création de la vidéo")
+        
+        # Save metadata
+        metadata = VideoMetadata(
+            id=video_id,
+            filename=f"text_to_video_{video_id}.mp4",
+            original_language="fr",  # Default, can be made configurable
+            sentence_pairs=[],
+            translations={}
+        )
+        
+        meta_path = video_dir / "metadata.json"
+        save_metadata(meta_path, metadata)
+        
+        # Save info.json
+        info = {
+            "file_type": "video",
+            "is_private": is_private,
+            "folder_path": folder_path,
+            "source": "text-to-video",
+            "original_text": text
+        }
+        info_path = video_dir / "info.json"
+        info_path.write_text(json.dumps(info, indent=2, ensure_ascii=False), encoding="utf-8")
+        
+        job_store.mark_completed(video_id)
+        logger.info(f"Text-to-video job {video_id} completed successfully")
+        
+    except Exception as e:
+        logger.exception(f"Error processing text-to-video job {video_id}")
+        job_store.mark_failed(video_id, str(e))

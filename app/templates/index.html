@@ -18,6 +18,54 @@
  {% endif %}
  
  {% if is_editor %}
+ <!-- Text-to-Video Generation (Hidden Feature) -->
+ <section id="text-to-video-section" style="display: none; margin-bottom: 30px; padding: 20px; border: 2px dashed #ccc; background: #f9f9f9;">
+     <h2>🎬 Générer une vidéo à partir de texte (Stable Diffusion)</h2>
+     <p style="color: #666; font-size: 0.9em; margin-bottom: 15px;">
+         Cette fonctionnalité génère une vidéo à partir de texte en utilisant Stable Diffusion WebUI et des modèles Dreambooth.
+     </p>
+     <form id="text-to-video-form">
+         <fieldset>
+             <legend>Texte</legend>
+             <label>
+                 Texte à convertir en vidéo :
+                 <textarea name="text" id="text-to-video-input" rows="5" style="width: 100%; padding: 8px; font-family: inherit;" placeholder="Entrez le texte ici..."></textarea>
+             </label>
+         </fieldset>
+         <fieldset>
+             <legend>Paramètres</legend>
+             <label>
+                 Modèle Dreambooth (optionnel) :
+                 <input type="text" name="model_name" id="text-to-video-model" placeholder="Nom du modèle (laisser vide pour le modèle par défaut)" style="width: 100%; padding: 8px;">
+             </label>
+             <label style="margin-top: 10px; display: block;">
+                 <input type="checkbox" name="image_per_sentence" id="text-to-video-sentence" checked>
+                 Générer une image par phrase
+             </label>
+         </fieldset>
+         <fieldset>
+             <legend>Dossier (optionnel)</legend>
+             <label>
+                 Dossier :
+                 <select name="folder_path" id="text-to-video-folder">
+                     <option value="">Aucun dossier (racine)</option>
+                 </select>
+             </label>
+         </fieldset>
+         <fieldset>
+             <legend>Confidentialité</legend>
+             <label>
+                 <input type="checkbox" name="is_private" id="text-to-video-private">
+                 Fichier privé (visible uniquement par les éditeurs)
+             </label>
+         </fieldset>
+         <button type="submit" id="text-to-video-submit" style="margin-top: 15px; padding: 10px 20px; background: #28a745; color: white; border: none; border-radius: 5px; cursor: pointer;">
+             Générer la vidéo
+         </button>
+     </form>
+     <div id="text-to-video-status" style="margin-top: 15px; padding: 10px; display: none;"></div>
+ </section>
+
  <section id="upload" style="display: block;">
      <h2>Télécharger et traiter un fichier</h2>
      <form id="upload-form">

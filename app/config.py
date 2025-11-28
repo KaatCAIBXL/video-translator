@@ -29,6 +29,17 @@ class Settings:
         os.getenv("FFMPEG_HWACCEL_ARGS", "")
     )
 
+    # Stable Diffusion WebUI settings
+    STABLE_DIFFUSION_API_URL: str = os.getenv("STABLE_DIFFUSION_API_URL", "http://127.0.0.1:7860")
+    STABLE_DIFFUSION_MODEL: str = os.getenv("STABLE_DIFFUSION_MODEL", "")  # Dreambooth model name
+    STABLE_DIFFUSION_ENABLED: bool = os.getenv("STABLE_DIFFUSION_ENABLED", "false").lower() == "true"
+    STABLE_DIFFUSION_IMAGE_WIDTH: int = int(os.getenv("STABLE_DIFFUSION_IMAGE_WIDTH", "512"))
+    STABLE_DIFFUSION_IMAGE_HEIGHT: int = int(os.getenv("STABLE_DIFFUSION_IMAGE_HEIGHT", "512"))
+    STABLE_DIFFUSION_STEPS: int = int(os.getenv("STABLE_DIFFUSION_STEPS", "20"))
+    STABLE_DIFFUSION_CFG_SCALE: float = float(os.getenv("STABLE_DIFFUSION_CFG_SCALE", "7.0"))
+    STABLE_DIFFUSION_FPS: float = float(os.getenv("STABLE_DIFFUSION_FPS", "2.0"))
+    STABLE_DIFFUSION_DURATION_PER_IMAGE: float = float(os.getenv("STABLE_DIFFUSION_DURATION_PER_IMAGE", "2.0"))
+
     UPLOAD_DIR: Path = BASE_DIR / "data" / "uploads"
     PROCESSED_DIR: Path = BASE_DIR / "data" / "processed"
 

@@ -2570,9 +2570,186 @@ async function populateFolderDropdown() {
     }
 }
 
+// Text-to-Video Generation (Hidden Feature)
+// Only show if feature is enabled (check via API)
+async function checkTextToVideoEnabled() {
+    try {
+        // Try to fetch a test endpoint or check config
+        // For now, we'll check if the form exists and show it conditionally
+        const textToVideoSection = document.getElementById("text-to-video-section");
+        if (textToVideoSection) {
+            // Initially hidden - can be enabled via environment variable
+            // For now, keep it hidden until explicitly enabled
+            textToVideoSection.style.display = "none";
+        }
+    } catch (err) {
+        console.error("Error checking text-to-video feature", err);
+    }
+}
+
+// Handle text-to-video form submission
+const textToVideoForm = document.getElementById("text-to-video-form");
+if (textToVideoForm) {
+    textToVideoForm.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        
+        const submitBtn = document.getElementById("text-to-video-submit");
+        const statusDiv = document.getElementById("text-to-video-status");
+        const textInput = document.getElementById("text-to-video-input");
+        const modelInput = document.getElementById("text-to-video-model");
+        const sentenceCheckbox = document.getElementById("text-to-video-sentence");
+        const folderSelect = document.getElementById("text-to-video-folder");
+        const privateCheckbox = document.getElementById("text-to-video-private");
+        
+        const text = textInput.value.trim();
+        if (!text) {
+            statusDiv.textContent = "Erreur: Veuillez entrer du texte.";
+            statusDiv.style.display = "block";
+            statusDiv.style.color = "#dc3545";
+            return;
+        }
+        
+        // Disable submit button
+        submitBtn.disabled = true;
+        submitBtn.textContent = "Génération en cours...";
+        
+        // Show status
+        statusDiv.textContent = "Démarrage de la génération...";
+        statusDiv.style.display = "block";
+        statusDiv.style.color = "#007bff";
+        
+        try {
+            const formData = new FormData();
+            formData.append("text", text);
+            if (modelInput.value.trim()) {
+                formData.append("model_name", modelInput.value.trim());
+            }
+            formData.append("image_per_sentence", sentenceCheckbox.checked ? "true" : "false");
+            if (folderSelect.value) {
+                formData.append("folder_path", folderSelect.value);
+            }
+            formData.append("is_private", privateCheckbox.checked ? "true" : "false");
+            
+            const response = await fetch("/api/text-to-video", {
+                method: "POST",
+                body: formData,
+                credentials: "include"
+            });
+            
+            const result = await response.json();
+            
+            if (!response.ok) {
+                throw new Error(result.error || "Erreur lors de la génération");
+            }
+            
+            const jobId = result.job_id;
+            statusDiv.textContent = `Génération démarrée (ID: ${jobId}). Suivi du statut...`;
+            
+            // Poll job status
+            const pollInterval = setInterval(async () => {
+                try {
+                    const statusResponse = await fetch(`/api/jobs/${jobId}`, {
+                        credentials: "include"
+                    });
+                    
+                    if (statusResponse.ok) {
+                        const statusData = await statusResponse.json();
+                        const status = statusData.status;
+                        
+                        if (status === "completed") {
+                            clearInterval(pollInterval);
+                            statusDiv.textContent = "✅ Vidéo générée avec succès!";
+                            statusDiv.style.color = "#28a745";
+                            submitBtn.disabled = false;
+                            submitBtn.textContent = "Générer la vidéo";
+                            
+                            // Refresh video list
+                            await fetchVideos();
+                            
+                            // Clear form
+                            textInput.value = "";
+                            modelInput.value = "";
+                        } else if (status === "failed") {
+                            clearInterval(pollInterval);
+                            statusDiv.textContent = `❌ Erreur: ${statusData.error || "Échec de la génération"}`;
+                            statusDiv.style.color = "#dc3545";
+                            submitBtn.disabled = false;
+                            submitBtn.textContent = "Générer la vidéo";
+                        } else {
+                            // Still processing
+                            statusDiv.textContent = `⏳ Génération en cours... (${status})`;
+                        }
+                    }
+                } catch (err) {
+                    console.error("Error polling job status", err);
+                }
+            }, 2000); // Poll every 2 seconds
+            
+            // Stop polling after 10 minutes
+            setTimeout(() => {
+                clearInterval(pollInterval);
+                if (submitBtn.disabled) {
+                    statusDiv.textContent = "⚠️ Le processus prend plus de temps que prévu. Vérifiez la bibliothèque pour voir si la vidéo a été générée.";
+                    statusDiv.style.color = "#ffc107";
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = "Générer la vidéo";
+                }
+            }, 600000); // 10 minutes
+            
+        } catch (err) {
+            statusDiv.textContent = `❌ Erreur: ${err.message}`;
+            statusDiv.style.color = "#dc3545";
+            submitBtn.disabled = false;
+            submitBtn.textContent = "Générer la vidéo";
+        }
+    });
+    
+    // Populate folder dropdown for text-to-video form
+    const textToVideoFolderSelect = document.getElementById("text-to-video-folder");
+    if (textToVideoFolderSelect) {
+        // Reuse the same populateFolderDropdown function
+        // But we need to also populate this dropdown
+        async function populateTextToVideoFolderDropdown() {
+            try {
+                const response = await fetch("/api/folders", {
+                    credentials: "include"
+                });
+                if (!response.ok) return;
+                
+                const folders = await response.json();
+                const currentValue = textToVideoFolderSelect.value;
+                
+                // Clear existing options (keep first "Aucun dossier" option)
+                while (textToVideoFolderSelect.children.length > 1) {
+                    textToVideoFolderSelect.remove(1);
+                }
+                
+                const sortedFolders = [...folders].sort((a, b) => a.path.localeCompare(b.path));
+                sortedFolders.forEach(folder => {
+                    const option = document.createElement("option");
+                    option.value = folder.path;
+                    option.textContent = folder.path + (folder.is_private ? " [PRIVÉ]" : "");
+                    textToVideoFolderSelect.appendChild(option);
+                });
+                
+                if (currentValue && Array.from(textToVideoFolderSelect.options).some(opt => opt.value === currentValue)) {
+                    textToVideoFolderSelect.value = currentValue;
+                }
+            } catch (err) {
+                console.error("Failed to load folders for text-to-video dropdown", err);
+            }
+        }
+        
+        // Populate on load and refresh periodically
+        populateTextToVideoFolderDropdown();
+        setInterval(populateTextToVideoFolderDropdown, 5000);
+    }
+}
+
 window.addEventListener("load", () => {
     fetchVideos();
     populateFolderDropdown();
+    checkTextToVideoEnabled();
     // Refresh folder dropdown when videos are fetched (in case folders changed)
     setInterval(populateFolderDropdown, 5000);
 });
