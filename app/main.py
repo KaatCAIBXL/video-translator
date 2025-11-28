@@ -2202,41 +2202,71 @@ async def generate_image(request: Request):
             "Content-Type": "application/json"
         }
         
+        # ModelsLab API payload format
         payload = {
-            "model": "flux-2-pro",
+            "key": settings.MODELLAB_API_KEY,
+            "model_id": "flux-2-pro",
             "prompt": prompt,
-            "width": width,
-            "height": height,
-            "num_images": 1
+            "width": str(width),
+            "height": str(height),
+            "samples": "1",
+            "num_inference_steps": "28",
+            "guidance_scale": "3.5"
         }
         
-        logger.info(f"Generating image with ModelsLab API: prompt={prompt[:50]}..., width={width}, height={height}")
+        logger.info(f"Generating image with ModelsLab API: prompt={prompt[:50]}..., width={width}, height={height}, url={api_url}")
         
-        response = requests.post(api_url, json=payload, headers=headers, timeout=120)
-        response.raise_for_status()
+        try:
+            response = requests.post(api_url, json=payload, headers=headers, timeout=120)
+            response.raise_for_status()
+            result = response.json()
+        except requests.exceptions.RequestException as e:
+            logger.error(f"ModelsLab API request failed: {e}")
+            if hasattr(e, 'response') and e.response is not None:
+                try:
+                    error_detail = e.response.json()
+                    logger.error(f"API error response: {error_detail}")
+                except:
+                    logger.error(f"API error response text: {e.response.text}")
+            raise
         
-        result = response.json()
+        logger.info(f"ModelsLab API response: {result}")
         
-        # Haal de afbeelding data op
-        if "data" in result and len(result["data"]) > 0:
+        # Haal de afbeelding data op - ModelsLab kan verschillende response formats hebben
+        image_bytes = None
+        
+        # Format 1: Direct image URL in response
+        if "output" in result and isinstance(result["output"], list) and len(result["output"]) > 0:
+            image_url = result["output"][0]
+            img_response = requests.get(image_url, timeout=30)
+            img_response.raise_for_status()
+            image_bytes = img_response.content
+        # Format 2: Image URL in status field
+        elif "status" in result and "output" in result.get("status", []):
+            image_url = result["status"]["output"][0] if isinstance(result["status"]["output"], list) else result["status"]["output"]
+            img_response = requests.get(image_url, timeout=30)
+            img_response.raise_for_status()
+            image_bytes = img_response.content
+        # Format 3: Base64 encoded image
+        elif "image" in result:
+            image_bytes = base64.b64decode(result["image"])
+        # Format 4: Standard OpenAI-style format
+        elif "data" in result and len(result["data"]) > 0:
             image_data = result["data"][0]
-            
-            # Als de API een URL retourneert
             if "url" in image_data:
                 image_url = image_data["url"]
-                # Download de afbeelding
                 img_response = requests.get(image_url, timeout=30)
                 img_response.raise_for_status()
                 image_bytes = img_response.content
-            # Als de API base64 data retourneert
             elif "b64_json" in image_data:
                 image_bytes = base64.b64decode(image_data["b64_json"])
-            else:
-                logger.error(f"Unknown response format from ModelsLab API: {result}")
-                return JSONResponse(
-                    {"error": "Format de réponse inconnu de l'API ModelsLab."},
-                    status_code=500
-                )
+        
+        if not image_bytes:
+            logger.error(f"Could not extract image from ModelsLab API response: {result}")
+            return JSONResponse(
+                {"error": f"Impossible d'extraire l'image de la réponse de l'API. Format: {list(result.keys())}"},
+                status_code=500
+            )
             
             # Sla de afbeelding op in een tijdelijk bestand
             with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp:
