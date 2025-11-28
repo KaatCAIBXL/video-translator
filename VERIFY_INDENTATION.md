@@ -88,3 +88,5 @@ file /app/app/main.py
 
 Stuur de output van deze commando's, dan kan ik precies zien wat er mis is!
 
+
+

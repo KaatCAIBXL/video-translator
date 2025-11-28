@@ -208,3 +208,5 @@ De applicatie structuur ziet er goed uit. Alle recente indentatie problemen zijn
 
 Voor verdere debugging, gebruik de browser console en server logs om specifieke errors te identificeren.
 
+
+

@@ -1774,6 +1774,18 @@ const languagesFieldset = document.getElementById("languages-fieldset");
 const sourceLanguageFieldset = document.getElementById("source-language-fieldset");
 const ttsSpeedFieldset = document.getElementById("tts-speed-fieldset");
 
+// Function to update source language fieldset visibility for video
+function updateSourceLanguageVisibility() {
+    if (!sourceLanguageFieldset) return;
+    
+    const fileType = document.querySelector('input[name="file_type"]:checked')?.value;
+    if (fileType === "video") {
+        const transcribeCheckbox = document.querySelector('input[name="process_options"][value="transcribe"]');
+        const isTranscribeChecked = transcribeCheckbox?.checked || false;
+        sourceLanguageFieldset.style.display = isTranscribeChecked ? "block" : "none";
+    }
+}
+
 if (fileTypeRadios.length > 0) {
     fileTypeRadios.forEach(radio => {
         radio.addEventListener("change", (e) => {
@@ -1788,7 +1800,7 @@ if (fileTypeRadios.length > 0) {
                     audioOptions.style.display = "none";
                     textOptions.style.display = "none";
                     languagesFieldset.style.display = "block";
-                    sourceLanguageFieldset.style.display = "none";
+                    updateSourceLanguageVisibility(); // Check if transcribe is selected
                     ttsSpeedFieldset.style.display = "block";
                 } else if (fileType === "audio") {
                     fileInputForType.accept = "audio/*";
@@ -1813,6 +1825,17 @@ if (fileTypeRadios.length > 0) {
         });
     });
 }
+
+// Listen for changes to process_options checkboxes to show/hide source language for video
+const processOptionsCheckboxes = document.querySelectorAll('input[name="process_options"]');
+processOptionsCheckboxes.forEach(checkbox => {
+    checkbox.addEventListener("change", () => {
+        const fileType = document.querySelector('input[name="file_type"]:checked')?.value;
+        if (fileType === "video") {
+            updateSourceLanguageVisibility();
+        }
+    });
+});
 
 const uploadForm = document.getElementById("upload-form");
 if (uploadForm && isEditor) {
@@ -1887,6 +1910,16 @@ if (uploadForm && isEditor) {
         const needsLanguages = checkedOptions.some(opt => 
             opt.value === "subs" || opt.value === "dub_audio" || opt.value === "dub_video"
         );
+        const needsTranscribe = checkedOptions.some(opt => opt.value === "transcribe");
+        
+        // Add source language if transcribe is selected
+        if (needsTranscribe) {
+            const sourceLang = form.querySelector('select[name="source_language"]')?.value;
+            if (sourceLang) {
+                formData.append("source_language", sourceLang);
+                console.log("Added source language for transcription:", sourceLang);
+            }
+        }
         
         if (needsLanguages) {
             if (checkedLangs.length === 0 || checkedLangs.length > 2) {

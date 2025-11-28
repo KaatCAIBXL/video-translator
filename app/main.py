@@ -639,6 +639,9 @@ async def upload_video(
 
     job_store.create_job(video_id, file.filename)
 
+    # Get source language for transcription (default to "fr" if not provided)
+    source_lang = form_data.get("source_language", "fr") if "transcribe" in normalized_options else None
+
     asyncio.create_task(
         process_video_job(
             video_id=video_id,
@@ -652,6 +655,7 @@ async def upload_video(
             tts_speed_multiplier=tts_speed_multiplier,
             folder_path=folder_path,
             is_private=is_private,
+            source_language=source_lang,
         )
     )
 
@@ -679,6 +683,7 @@ async def process_video_job(
     tts_speed_multiplier: float,
     folder_path: Optional[str] = None,
     is_private: bool = False,
+    source_language: Optional[str] = None,
 ):
     warnings: List[str] = []
     options_set = set(process_options or DEFAULT_PROCESS_OPTIONS)
@@ -704,7 +709,8 @@ async def process_video_job(
         await run_in_threadpool(extract_audio, video_path, audio_path)
 
         try:
-            whisper_result = await run_in_threadpool(transcribe_audio_whisper, audio_path)
+            # Use source_language if provided, otherwise let Whisper detect it
+            whisper_result = await run_in_threadpool(transcribe_audio_whisper, audio_path, language=source_language)
         except Exception as transcribe_exc:
             logger.exception(f"Transcription failed for video {video_id}: {transcribe_exc}")
             raise RuntimeError(f"Transcription failed: {str(transcribe_exc)}") from transcribe_exc

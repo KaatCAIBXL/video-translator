@@ -78,3 +78,5 @@ Wil je dat ik:
 - B) Een script maak dat de indentatie automatisch corrigeert?
 - C) Wachten op de server info die je gaat sturen?
 
+
+

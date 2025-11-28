@@ -41,3 +41,9 @@ except Exception as e:
     print(f"❌ Fout: {e}")
     sys.exit(1)
 
+
+
+
+
+
+

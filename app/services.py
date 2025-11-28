@@ -175,7 +175,7 @@ def _build_initial_prompt(previous_texts: List[str], max_length: int = 200) -> O
     return prompt if prompt else None
 
 
-def _transcribe_whisper_file(client: OpenAI, path: Path, initial_prompt: Optional[str] = None) -> Dict:
+def _transcribe_whisper_file(client: OpenAI, path: Path, initial_prompt: Optional[str] = None, language: Optional[str] = None) -> Dict:
     """Transcribe audio file with Whisper, optionally using context from previous transcriptions."""
     attempts = max(1, _TRANSCRIBE_MAX_ATTEMPTS)
     backoff = max(0.0, _TRANSCRIBE_INITIAL_BACKOFF)
@@ -193,6 +193,9 @@ def _transcribe_whisper_file(client: OpenAI, path: Path, initial_prompt: Optiona
                 # Use context from previous transcriptions to help Whisper
                 if initial_prompt:
                     request_kwargs["prompt"] = initial_prompt[:200]  # Limit length
+                # Specify language if provided
+                if language:
+                    request_kwargs["language"] = language
                 
                 transcription = client.audio.transcriptions.create(**request_kwargs)
             return transcription.to_dict()
@@ -288,7 +291,7 @@ def _max_upload_bytes() -> int:
     return configured * 1024 * 1024
 
 
-def transcribe_audio_whisper(audio_path: Path) -> Dict:
+def transcribe_audio_whisper(audio_path: Path, language: Optional[str] = None) -> Dict:
     """Transcribe audio with Whisper, chunking long files transparently."""
     
     client = get_openai_client()
@@ -296,7 +299,7 @@ def transcribe_audio_whisper(audio_path: Path) -> Dict:
 
 
     if audio_path.stat().st_size <= max_bytes:
-        return _transcribe_whisper_file(client, audio_path, initial_prompt=None)
+        return _transcribe_whisper_file(client, audio_path, initial_prompt=None, language=language)
     try:
         audio_duration = _get_audio_duration(audio_path)
     except RuntimeError as exc:
@@ -365,7 +368,7 @@ def transcribe_audio_whisper(audio_path: Path) -> Dict:
             # Build initial prompt from previous chunks for better transcription quality
             initial_prompt = _build_initial_prompt(combined_texts) if combined_texts else None
             
-            chunk_result = _transcribe_whisper_file(client, chunk_path, initial_prompt=initial_prompt)
+            chunk_result = _transcribe_whisper_file(client, chunk_path, initial_prompt=initial_prompt, language=language)
 
             if detected_language is None:
                 detected_language = chunk_result.get("language")
