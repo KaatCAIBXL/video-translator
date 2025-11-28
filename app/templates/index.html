@@ -363,6 +363,21 @@
      <div id="player-info"></div>
  </section>
  
+ <!-- Message to Admin Section (moved to bottom) -->
+ {% if not is_admin %}
+ <section id="message-to-admin-section" style="margin-top: 30px; padding: 20px; border: 2px solid #ffc107; background: #fff3cd; border-radius: 5px;">
+     <h3>📧 Signaler un problème à l'admin</h3>
+     <p style="color: #856404; margin-bottom: 15px;">Vous pouvez envoyer un message à l'administrateur pour signaler un problème ou poser une question.</p>
+     <form id="message-to-admin-form">
+         <textarea id="admin-message-input" rows="4" style="width: 100%; padding: 8px; margin-bottom: 10px; border: 1px solid #ccc; border-radius: 3px;" placeholder="Décrivez votre problème ou question..."></textarea>
+         <button type="submit" style="padding: 10px 20px; background: #ffc107; color: #000; border: none; border-radius: 5px; cursor: pointer; font-weight: bold;">
+             Envoyer le message
+         </button>
+     </form>
+     <div id="message-status" style="margin-top: 10px; display: none;"></div>
+ </section>
+ {% endif %}
+ 
  <script src="/static/app.js"></script>
  </body>
  </html>
