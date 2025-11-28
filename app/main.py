@@ -691,6 +691,18 @@ async def process_video_job(
         whisper_result = await run_in_threadpool(transcribe_audio_whisper, audio_path)
         original_lang = whisper_result.get("language", "unknown")
 
+        # Save transcription text file if transcribe option is enabled
+        if "transcribe" in options_set:
+            transcribed_text = whisper_result.get("text", "").strip()
+            if transcribed_text:
+                try:
+                    text_path = video_dir / "transcribed.txt"
+                    text_path.write_text(transcribed_text, encoding="utf-8")
+                    logger.info(f"Transcription saved to {text_path}")
+                except Exception as e:
+                    logger.exception(f"Error saving transcription file: {e}")
+                    warnings.append(f"Kon transcriptiebestand niet opslaan: {str(e)}")
+
         sentence_segments = build_sentence_segments(
             whisper_result, base_offset=audio_offset
         )
@@ -1296,10 +1308,17 @@ async def handle_audio_text_upload(
             # Transcribe audio
             if "transcribe" in normalized_options:
                 logger.info(f"Transcribing audio: {original_path}")
-                transcribed_text = transcribe_long_audio(original_path, language=source_language)
-                text_path = file_dir / "transcribed.txt"
-                text_path.write_text(transcribed_text, encoding="utf-8")
-                results["transcribed"] = str(text_path)
+                try:
+                    transcribed_text = transcribe_long_audio(original_path, language=source_language)
+                    if transcribed_text and transcribed_text.strip():
+                        text_path = file_dir / "transcribed.txt"
+                        text_path.write_text(transcribed_text, encoding="utf-8")
+                        results["transcribed"] = str(text_path)
+                    else:
+                        logger.warning("Transcription returned empty text, skipping file creation")
+                except Exception as e:
+                    logger.exception(f"Error during transcription: {e}")
+                    # Don't write error to file, just log it
                 
                 # Improve text if requested
                 if "improve_text" in normalized_options:
