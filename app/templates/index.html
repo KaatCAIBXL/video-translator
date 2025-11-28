@@ -21,7 +21,7 @@
  </div>
  {% endif %}
  
- {% if is_admin %}
+ {% if can_generate_video %}
  <!-- Text-to-Video Generation (Admin Only) -->
  <section id="text-to-video-section" style="display: block; margin-bottom: 30px; padding: 20px; border: 2px solid #dc3545; background: #f8d7da;">
      <h2>🎬 Générer une vidéo à partir de texte (Stable Diffusion) - Admin</h2>
@@ -83,50 +83,21 @@
  </section>
  {% endif %}
 
- {% if is_admin %}
+ {% if can_manage_characters %}
  <!-- Character Management (Dreambooth) - Admin Only -->
  <section id="characters-section" style="display: block; margin-bottom: 30px; padding: 20px; border: 2px solid #007bff; background: #f0f8ff;">
-     <h2>👤 Gestion des Personnages</h2>
+     <h2>👤 Gestion des Personnages (Admin uniquement)</h2>
      <button type="button" id="create-character-btn" style="margin-bottom: 20px; padding: 10px 20px; background: #28a745; color: white; border: none; border-radius: 5px; cursor: pointer;">
          + Personnage
      </button>
+ {% elif is_editor %}
+ <!-- Character View (I-tech can view but not manage) -->
+ <section id="characters-section" style="display: block; margin-bottom: 30px; padding: 20px; border: 2px solid #007bff; background: #f0f8ff;">
+     <h2>👤 Personnages (lecture seule)</h2>
+     <p style="color: #666; font-size: 0.9em; margin-bottom: 15px;">Vous pouvez voir les personnages mais pas les créer ou modifier.</p>
      <div id="characters-list"></div>
      
-     <!-- Character Creation Modal -->
-     <div id="character-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000;">
-         <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 30px; border-radius: 10px; max-width: 600px; width: 90%; max-height: 90vh; overflow-y: auto;">
-             <h3>Créer un nouveau personnage</h3>
-             <form id="character-form">
-                 <label style="display: block; margin-top: 15px;">
-                     Nom du personnage :
-                     <input type="text" name="name" id="character-name" required style="width: 100%; padding: 8px; margin-top: 5px;">
-                 </label>
-                 <label style="display: block; margin-top: 15px;">
-                     Token unique (minuscules, lettres/chiffres/underscores) :
-                     <input type="text" name="token" id="character-token" required pattern="[a-z0-9_]+" style="width: 100%; padding: 8px; margin-top: 5px;">
-                     <small style="color: #666;">Exemple: joepenna, bingo, personnage1</small>
-                 </label>
-                 <label style="display: block; margin-top: 15px;">
-                     Description (caractéristiques) :
-                     <textarea name="description" id="character-description" rows="3" style="width: 100%; padding: 8px; margin-top: 5px;" placeholder="Exemple: lief, lachend, dynamisch, oud, pastor"></textarea>
-                 </label>
-                 <label style="display: block; margin-top: 15px;">
-                     Classe (person, dog, etc.) :
-                     <input type="text" name="class_word" id="character-class" value="person" required style="width: 100%; padding: 8px; margin-top: 5px;">
-                 </label>
-                 <div style="margin-top: 20px;">
-                     <button type="submit" style="padding: 10px 20px; background: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer; margin-right: 10px;">
-                         Créer
-                     </button>
-                     <button type="button" id="cancel-character-btn" style="padding: 10px 20px; background: #6c757d; color: white; border: none; border-radius: 5px; cursor: pointer;">
-                         Annuler
-                     </button>
-                 </div>
-             </form>
-         </div>
-     </div>
-     
-     <!-- Character Detail Modal -->
+     <!-- Character Detail Modal (read-only for I-tech) -->
      <div id="character-detail-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000;">
          <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 30px; border-radius: 10px; max-width: 800px; width: 90%; max-height: 90vh; overflow-y: auto;">
              <h3 id="character-detail-name"></h3>
@@ -339,9 +310,9 @@
      
      <!-- Message to Admin Section (for viewers and editors) -->
      <!-- Admin Messages Section -->
-     {% if is_admin %}
+     {% if can_read_admin_messages %}
      <div id="admin-messages-section" style="margin-top: 30px; padding: 20px; border: 2px solid #dc3545; background: #f8d7da; border-radius: 5px;">
-         <h3>📬 Messages reçus</h3>
+         <h3>📬 Messages reçus (de I-tech et les saints du MAI)</h3>
          <div id="admin-messages-list" style="margin-top: 15px;">
              <p>Chargement des messages...</p>
          </div>
@@ -364,7 +335,7 @@
  </section>
  
  <!-- Message to Admin Section (moved to bottom) -->
- {% if not is_admin %}
+ {% if not can_read_admin_messages %}
  <section id="message-to-admin-section" style="margin-top: 30px; padding: 20px; border: 2px solid #ffc107; background: #fff3cd; border-radius: 5px;">
      <h3>📧 Signaler un problème à l'admin</h3>
      <p style="color: #856404; margin-bottom: 15px;">Vous pouvez envoyer un message à l'administrateur pour signaler un problème ou poser une question.</p>

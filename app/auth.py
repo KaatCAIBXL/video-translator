@@ -24,7 +24,7 @@ def get_role_from_request(request: Request) -> Optional[str]:
     return get_role_from_session(session_id)
 
 def is_editor(request: Request) -> bool:
-    """Check if the user is an editor."""
+    """Check if the user is an editor (I-tech)."""
     role = get_role_from_request(request)
     return role == "editor" or role == "admin"  # Admins can also edit
 
@@ -34,7 +34,22 @@ def is_admin(request: Request) -> bool:
     return role == "admin"
 
 def is_viewer(request: Request) -> bool:
-    """Check if the user is a viewer."""
+    """Check if the user is a viewer (les saints du MAI)."""
     role = get_role_from_request(request)
     return role == "viewer" or role == "editor" or role == "admin"  # All roles can view
+
+def can_generate_video(request: Request) -> bool:
+    """Check if the user can generate videos (admin only)."""
+    role = get_role_from_request(request)
+    return role == "admin"
+
+def can_manage_characters(request: Request) -> bool:
+    """Check if the user can manage characters (admin only)."""
+    role = get_role_from_request(request)
+    return role == "admin"
+
+def can_read_admin_messages(request: Request) -> bool:
+    """Check if the user can read admin messages (admin only)."""
+    role = get_role_from_request(request)
+    return role == "admin"
 

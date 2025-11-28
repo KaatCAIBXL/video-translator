@@ -1,5 +1,7 @@
 // Check if user is editor
 const isEditor = document.getElementById("role-indicator")?.textContent.includes("I-tech privé") || false;
+// Check if user is admin
+const isAdmin = document.getElementById("role-indicator")?.textContent.includes("admin") || false;
 
 function filenameWithoutExtension(filename) {
     if (typeof filename !== "string") {
@@ -3077,7 +3079,12 @@ const characterForm = document.getElementById("character-form");
 const cancelCharacterBtn = document.getElementById("cancel-character-btn");
 const closeCharacterDetailBtn = document.getElementById("close-character-detail-btn");
 
-if (createCharacterBtn) {
+// Only show create button for admin
+if (createCharacterBtn && !isAdmin) {
+    createCharacterBtn.style.display = "none";
+}
+
+if (createCharacterBtn && isAdmin) {
     createCharacterBtn.addEventListener("click", () => {
         if (characterModal) {
             characterModal.style.display = "block";

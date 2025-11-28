@@ -10,7 +10,7 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from .auth import get_role_from_request, is_editor, is_admin, create_session
+from .auth import get_role_from_request, is_editor, is_admin, create_session, can_generate_video, can_manage_characters, can_read_admin_messages
 
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
@@ -222,6 +222,9 @@ async def index(request: Request):
             "available_languages": LANGUAGE_OPTIONS,
             "is_editor": is_editor(request),
             "is_admin": is_admin(request),
+            "can_generate_video": can_generate_video(request),
+            "can_manage_characters": can_manage_characters(request),
+            "can_read_admin_messages": can_read_admin_messages(request),
         },
     )
 
@@ -1766,8 +1769,8 @@ async def generate_video_from_text(request: Request):
             status_code=503
         )
     
-    # Only admins can use this feature
-    if not is_admin(request):
+    # Only admins can generate videos
+    if not can_generate_video(request):
         return JSONResponse(
             {"error": "Seuls les administrateurs peuvent générer des vidéos."},
             status_code=403
@@ -1941,9 +1944,10 @@ async def process_text_to_video_job(
 @app.get("/api/characters")
 async def list_characters(request: Request):
     """List all characters."""
+    # Both admin and editor can view characters, but only admin can manage them
     if not is_editor(request):
         return JSONResponse(
-            {"error": "Seuls les éditeurs peuvent voir les personnages."},
+            {"error": "Seuls les éditeurs et administrateurs peuvent voir les personnages."},
             status_code=403
         )
     
@@ -1954,9 +1958,9 @@ async def list_characters(request: Request):
 @app.post("/api/characters")
 async def create_character(request: Request):
     """Create a new character."""
-    if not is_editor(request):
+    if not can_manage_characters(request):
         return JSONResponse(
-            {"error": "Seuls les éditeurs peuvent créer des personnages."},
+            {"error": "Seuls les administrateurs peuvent créer des personnages."},
             status_code=403
         )
     
@@ -2012,9 +2016,9 @@ async def upload_character_images(
     files: List[UploadFile] = File(...)
 ):
     """Upload training images for a character."""
-    if not is_editor(request):
+    if not can_manage_characters(request):
         return JSONResponse(
-            {"error": "Seuls les éditeurs peuvent télécharger des images."},
+            {"error": "Seuls les administrateurs peuvent télécharger des images pour les personnages."},
             status_code=403
         )
     
@@ -2075,9 +2079,9 @@ async def upload_character_images(
 @app.post("/api/characters/{character_id}/train")
 async def train_character_endpoint(request: Request, character_id: str):
     """Start training a character."""
-    if not is_editor(request):
+    if not can_manage_characters(request):
         return JSONResponse(
-            {"error": "Seuls les éditeurs peuvent entraîner des personnages."},
+            {"error": "Seuls les administrateurs peuvent entraîner des personnages."},
             status_code=403
         )
     
@@ -2138,9 +2142,9 @@ async def get_character(request: Request, character_id: str):
 @app.delete("/api/characters/{character_id}")
 async def delete_character_endpoint(request: Request, character_id: str):
     """Delete a character."""
-    if not is_editor(request):
+    if not can_manage_characters(request):
         return JSONResponse(
-            {"error": "Seuls les éditeurs peuvent supprimer des personnages."},
+            {"error": "Seuls les administrateurs peuvent supprimer des personnages."},
             status_code=403
         )
     
