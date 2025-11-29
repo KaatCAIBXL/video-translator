@@ -2517,7 +2517,9 @@ async def generate_video(request: Request):
         disable_voices = form_data.get("disable_voices", "false").lower() == "true"
         
         # Build payload for ModelsLab Video Fusion API
+        # Note: ModelsLab Video Fusion API requires the key in the payload, not just in headers
         payload = {
+            "key": settings.MODELLAB_API_KEY,  # API key as request parameter
             "prompt": prompt,
             "duration": duration,
             "reference_images": reference_images if reference_images else {},
@@ -2530,7 +2532,6 @@ async def generate_video(request: Request):
         }
         
         headers = {
-            "Authorization": f"Bearer {settings.MODELLAB_API_KEY}",
             "Content-Type": "application/json"
         }
         
