@@ -3528,6 +3528,10 @@ async function fetchAdminMessages() {
         });
         
         if (!response.ok) {
+            // If 404, the endpoint doesn't exist (not implemented yet) - silently ignore
+            if (response.status === 404) {
+                return;
+            }
             messagesList.innerHTML = "<p style='color: #dc3545;'>Erreur lors du chargement des messages.</p>";
             return;
         }
@@ -3861,8 +3865,17 @@ if (videoGenerationForm) {
                 } else {
                     throw new Error("Aucune vidéo retournée");
                 }
+            } else if (result.status === "processing" && result.job_id) {
+                // Video generation is processing asynchronously
+                statusDiv.textContent = `⏳ ${result.message || "La génération de la vidéo est en cours. Veuillez patienter..."}`;
+                statusDiv.style.color = "#ffc107";
+                videoContainer.style.display = "none";
+                // TODO: Implement polling for job status using result.job_id
+                console.log("Video generation is processing. Job ID:", result.job_id);
             } else {
-                throw new Error("La génération a échoué");
+                // Check if there's an error message in the response
+                const errorMsg = result.error || result.message || "La génération a échoué";
+                throw new Error(errorMsg);
             }
         } catch (err) {
             console.error("Error generating video", err);
