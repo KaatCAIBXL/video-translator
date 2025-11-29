@@ -257,6 +257,7 @@ function createVideoItem(video) {
         if (isVideo) {
             const thumbnailContainer = document.createElement("div");
             thumbnailContainer.style.flexShrink = "0";
+            thumbnailContainer.style.display = "block"; // Make sure it's visible by default
             
             const thumbnailImg = document.createElement("img");
             thumbnailImg.src = `/videos/${video.id}/thumbnail`;
@@ -267,12 +268,16 @@ function createVideoItem(video) {
             thumbnailImg.style.border = "1px solid #ddd";
             thumbnailImg.style.borderRadius = "5px";
             thumbnailImg.style.cursor = "pointer";
+            thumbnailImg.style.display = "block"; // Make sure it's visible by default
+            
+            // Use a more robust error handler
             thumbnailImg.onerror = function() {
-                // Hide thumbnail if it doesn't exist
-                console.log("Thumbnail not found for video:", video.id);
+                // Hide thumbnail if it doesn't exist (404 or other error)
+                console.log("Thumbnail not found or failed to load for video:", video.id);
                 this.style.display = "none";
                 thumbnailContainer.style.display = "none";
             };
+            
             thumbnailImg.onload = function() {
                 // Check if image is actually a valid thumbnail (not the transparent placeholder)
                 // The transparent placeholder is 1x1 pixel, so if the natural width/height is 1, hide it
@@ -282,12 +287,17 @@ function createVideoItem(video) {
                     thumbnailContainer.style.display = "none";
                 } else {
                     console.log("Thumbnail loaded successfully for video:", video.id, "size:", this.naturalWidth, "x", this.naturalHeight);
+                    // Make sure it's visible when loaded successfully
+                    this.style.display = "block";
+                    thumbnailContainer.style.display = "block";
                 }
             };
+            
             thumbnailImg.onclick = () => {
                 // Click to play video
                 playVideo(video, {});
             };
+            
             thumbnailContainer.appendChild(thumbnailImg);
             headerContainer.appendChild(thumbnailContainer);
         }

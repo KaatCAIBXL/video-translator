@@ -1033,8 +1033,16 @@ async def get_video_thumbnail(request: Request, video_id: str):
             # Return 404 instead of transparent pixel so frontend can handle it properly
             return JSONResponse({"error": "Thumbnail not found"}, status_code=404)
     
-    logger.debug(f"Serving thumbnail for video {video_id} from {thumbnail_path}")
-    return FileResponse(thumbnail_path, media_type="image/jpeg")
+    logger.info(f"Serving thumbnail for video {video_id} from {thumbnail_path}")
+    # Determine correct media type based on file extension
+    if thumbnail_path.suffix.lower() == ".png":
+        media_type = "image/png"
+    elif thumbnail_path.suffix.lower() in [".jpg", ".jpeg"]:
+        media_type = "image/jpeg"
+    else:
+        media_type = "image/jpeg"  # Default
+    
+    return FileResponse(thumbnail_path, media_type=media_type)
 
 
 @app.get("/videos/{video_id}/original")
