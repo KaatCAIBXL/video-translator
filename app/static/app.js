@@ -1964,27 +1964,38 @@ function initializeThumbnailToggles() {
     const videoFrameSelectorEl = document.getElementById("video-frame-selector");
     const thumbnailUploadContainerEl = document.getElementById("thumbnail-upload-container");
     
-    if (thumbnailVideoFrameEl && thumbnailUploadEl) {
-        thumbnailVideoFrameEl.addEventListener("change", () => {
-            if (thumbnailVideoFrameEl.checked) {
-                if (videoFrameSelectorEl) videoFrameSelectorEl.style.display = "block";
-                if (thumbnailUploadContainerEl) thumbnailUploadContainerEl.style.display = "none";
-            }
-        });
-        
-        thumbnailUploadEl.addEventListener("change", () => {
-            if (thumbnailUploadEl.checked) {
-                if (videoFrameSelectorEl) videoFrameSelectorEl.style.display = "none";
-                if (thumbnailUploadContainerEl) thumbnailUploadContainerEl.style.display = "block";
-            }
-        });
+    if (!thumbnailVideoFrameEl || !thumbnailUploadEl) {
+        return; // Elements not found yet
     }
+    
+    // Function to update visibility based on selected option
+    function updateThumbnailSourceVisibility() {
+        if (thumbnailVideoFrameEl.checked) {
+            if (videoFrameSelectorEl) videoFrameSelectorEl.style.display = "block";
+            if (thumbnailUploadContainerEl) thumbnailUploadContainerEl.style.display = "none";
+        } else if (thumbnailUploadEl.checked) {
+            if (videoFrameSelectorEl) videoFrameSelectorEl.style.display = "none";
+            if (thumbnailUploadContainerEl) thumbnailUploadContainerEl.style.display = "block";
+        }
+    }
+    
+    // Add event listeners
+    thumbnailVideoFrameEl.addEventListener("change", updateThumbnailSourceVisibility);
+    thumbnailUploadEl.addEventListener("change", updateThumbnailSourceVisibility);
+    
+    // Check initial state
+    updateThumbnailSourceVisibility();
 }
 
+// Initialize when DOM is ready
 if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', initializeThumbnailToggles);
+    document.addEventListener('DOMContentLoaded', () => {
+        initializeThumbnailToggles();
+        setTimeout(initializeThumbnailToggles, 100);
+    });
 } else {
     initializeThumbnailToggles();
+    setTimeout(initializeThumbnailToggles, 100);
 }
 
 // Preview frame from video - initialize when elements are available
