@@ -246,32 +246,43 @@ function createVideoItem(video) {
         const fileType = video.file_type || "video";
         const isVideo = fileType === "video";
 
-        // Thumbnail image (if available)
+        // Create a flex container for thumbnail and title
+        const headerContainer = document.createElement("div");
+        headerContainer.style.display = "flex";
+        headerContainer.style.alignItems = "flex-start";
+        headerContainer.style.gap = "15px";
+        headerContainer.style.marginBottom = "10px";
+        
+        // Thumbnail image (if available) - left side
         if (isVideo) {
             const thumbnailContainer = document.createElement("div");
-            thumbnailContainer.style.marginBottom = "10px";
-            thumbnailContainer.style.textAlign = "center";
+            thumbnailContainer.style.flexShrink = "0";
             
             const thumbnailImg = document.createElement("img");
             thumbnailImg.src = `/videos/${video.id}/thumbnail`;
             thumbnailImg.alt = "Thumbnail";
-            thumbnailImg.style.maxWidth = "300px";
-            thumbnailImg.style.maxHeight = "200px";
+            thumbnailImg.style.width = "150px";
+            thumbnailImg.style.height = "100px";
+            thumbnailImg.style.objectFit = "cover";
             thumbnailImg.style.border = "1px solid #ddd";
             thumbnailImg.style.borderRadius = "5px";
             thumbnailImg.style.cursor = "pointer";
             thumbnailImg.onerror = function() {
                 // Hide thumbnail if it doesn't exist
                 this.style.display = "none";
+                thumbnailContainer.style.display = "none";
             };
             thumbnailImg.onclick = () => {
                 // Click to play video
                 playVideo(video, {});
             };
             thumbnailContainer.appendChild(thumbnailImg);
-            div.appendChild(thumbnailContainer);
+            headerContainer.appendChild(thumbnailContainer);
         }
         
+        // Title - right side of thumbnail
+        const titleContainer = document.createElement("div");
+        titleContainer.style.flex = "1";
         const title = document.createElement("h3");
         title.textContent = video.filename;
         if (video.is_private) {
@@ -280,7 +291,9 @@ function createVideoItem(video) {
             privateBadge.style.color = "#ffc107";
             title.appendChild(privateBadge);
         }
-        div.appendChild(title);
+        titleContainer.appendChild(title);
+        headerContainer.appendChild(titleContainer);
+        div.appendChild(headerContainer);
         
         // Editor controls
         if (isEditor) {
