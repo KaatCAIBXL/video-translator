@@ -3694,3 +3694,162 @@ if (imageGenerationForm) {
     });
 }
 
+// Video Generation with ModelsLab Video Fusion
+const videoGenerationForm = document.getElementById("video-generation-form");
+if (videoGenerationForm) {
+    // Preview for reference images
+    const styleImageInput = document.getElementById("style-image");
+    const styleImagePreview = document.getElementById("style-image-preview");
+    const styleImagePreviewImg = document.getElementById("style-image-preview-img");
+    
+    if (styleImageInput) {
+        styleImageInput.addEventListener("change", (e) => {
+            const file = e.target.files?.[0];
+            if (file && file.type.startsWith("image/")) {
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    styleImagePreviewImg.src = event.target.result;
+                    styleImagePreview.style.display = "block";
+                };
+                reader.readAsDataURL(file);
+            } else {
+                styleImagePreview.style.display = "none";
+            }
+        });
+    }
+    
+    const environmentImageInput = document.getElementById("environment-image");
+    const environmentImagePreview = document.getElementById("environment-image-preview");
+    const environmentImagePreviewImg = document.getElementById("environment-image-preview-img");
+    
+    if (environmentImageInput) {
+        environmentImageInput.addEventListener("change", (e) => {
+            const file = e.target.files?.[0];
+            if (file && file.type.startsWith("image/")) {
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    environmentImagePreviewImg.src = event.target.result;
+                    environmentImagePreview.style.display = "block";
+                };
+                reader.readAsDataURL(file);
+            } else {
+                environmentImagePreview.style.display = "none";
+            }
+        });
+    }
+    
+    // Add/remove character functionality
+    const addCharacterBtn = document.getElementById("add-character-btn");
+    const charactersContainer = document.getElementById("characters-container");
+    
+    if (addCharacterBtn && charactersContainer) {
+        addCharacterBtn.addEventListener("click", () => {
+            const characterDiv = document.createElement("div");
+            characterDiv.className = "character-upload";
+            characterDiv.style.marginBottom = "10px";
+            characterDiv.innerHTML = `
+                <input type="text" name="character_name[]" placeholder="Nom du personnage" style="width: 200px; padding: 5px; margin-right: 10px;">
+                <input type="file" name="character_image[]" accept="image/*" style="padding: 5px; width: 300px;">
+                <button type="button" class="remove-character" style="padding: 5px 10px; background: #dc3545; color: white; border: none; border-radius: 3px; cursor: pointer; margin-left: 10px;">Supprimer</button>
+            `;
+            charactersContainer.appendChild(characterDiv);
+            
+            // Add remove functionality
+            const removeBtn = characterDiv.querySelector(".remove-character");
+            removeBtn.addEventListener("click", () => {
+                characterDiv.remove();
+            });
+        });
+        
+        // Add remove functionality to existing character uploads
+        document.querySelectorAll(".remove-character").forEach(btn => {
+            btn.addEventListener("click", (e) => {
+                e.target.closest(".character-upload").remove();
+            });
+        });
+    }
+    
+    // Form submit handler
+    videoGenerationForm.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        
+        const promptInput = document.getElementById("video-prompt-input");
+        const durationSelect = document.getElementById("video-duration");
+        const generateBtn = document.getElementById("generate-video-btn");
+        const statusDiv = document.getElementById("video-generation-status");
+        const videoContainer = document.getElementById("generated-video-container");
+        const generatedVideo = document.getElementById("generated-video");
+        const downloadLink = document.getElementById("download-video-link");
+        
+        const prompt = promptInput.value.trim();
+        const duration = parseInt(durationSelect.value) || 8;
+        
+        if (!prompt) {
+            statusDiv.textContent = "❌ Veuillez entrer une description de scène.";
+            statusDiv.style.display = "block";
+            statusDiv.style.color = "#dc3545";
+            return;
+        }
+        
+        // Disable button and show loading
+        generateBtn.disabled = true;
+        generateBtn.textContent = "⏳ Génération en cours...";
+        statusDiv.textContent = "⏳ Génération de la vidéo en cours, cela peut prendre plusieurs minutes, veuillez patienter...";
+        statusDiv.style.display = "block";
+        statusDiv.style.color = "#9c27b0";
+        videoContainer.style.display = "none";
+        
+        try {
+            const formData = new FormData(videoGenerationForm);
+            
+            const response = await fetch("/api/generate-video", {
+                method: "POST",
+                body: formData,
+                credentials: "include"
+            });
+            
+            const result = await response.json();
+            
+            if (!response.ok) {
+                throw new Error(result.error || "Erreur lors de la génération");
+            }
+            
+            if (result.success) {
+                if (result.video_url) {
+                    // Video URL returned
+                    generatedVideo.src = result.video_url;
+                    downloadLink.href = result.video_url;
+                    downloadLink.download = `generated-video-${Date.now()}.mp4`;
+                    videoContainer.style.display = "block";
+                    statusDiv.textContent = "✅ Vidéo générée avec succès!";
+                    statusDiv.style.color = "#28a745";
+                } else if (result.video) {
+                    // Base64 video returned
+                    generatedVideo.src = result.video;
+                    // Create blob for download
+                    const videoResponse = await fetch(result.video);
+                    const blob = await videoResponse.blob();
+                    const url = URL.createObjectURL(blob);
+                    downloadLink.href = url;
+                    downloadLink.download = `generated-video-${Date.now()}.mp4`;
+                    videoContainer.style.display = "block";
+                    statusDiv.textContent = "✅ Vidéo générée avec succès!";
+                    statusDiv.style.color = "#28a745";
+                } else {
+                    throw new Error("Aucune vidéo retournée");
+                }
+            } else {
+                throw new Error("La génération a échoué");
+            }
+        } catch (err) {
+            console.error("Error generating video", err);
+            statusDiv.textContent = `❌ Erreur: ${err.message}`;
+            statusDiv.style.color = "#dc3545";
+            videoContainer.style.display = "none";
+        } finally {
+            generateBtn.disabled = false;
+            generateBtn.textContent = "🎬 Générer la vidéo";
+        }
+    });
+}
+

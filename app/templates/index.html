@@ -113,8 +113,104 @@
              🎨 Générer l'image
          </button>
      </form>
-     <div id="image-generation-status" style="margin-top: 15px; padding: 10px; display: none;"></div>
-     <div id="generated-image-container" style="margin-top: 20px; display: none;">
+    <div id="image-generation-status" style="margin-top: 15px; padding: 10px; display: none;"></div>
+    <div id="generated-image-container" style="margin-top: 20px; display: none;">
+        <img id="generated-image" src="" alt="Generated image" style="max-width: 100%; border: 1px solid #ddd; border-radius: 5px; margin-bottom: 10px;">
+        <a id="download-image-link" href="" download style="display: inline-block; padding: 8px 15px; background: #007bff; color: white; text-decoration: none; border-radius: 3px;">Télécharger l'image</a>
+    </div>
+</section>
+
+{% if is_admin %}
+<section id="video-generation-section" style="display: block; margin-bottom: 30px; padding: 20px; border: 2px solid #9c27b0; background: #f3e5f5;">
+    <h2>🎬 Générer une vidéo avec Video Fusion (Admin)</h2>
+    <p style="color: #666; font-size: 0.9em; margin-bottom: 15px;">
+        Créez une vidéo animée à partir d'une description de scène en utilisant ModelsLab Video Fusion API.
+    </p>
+    <form id="video-generation-form" enctype="multipart/form-data">
+        <fieldset>
+            <legend>Description de la scène</legend>
+            <label>
+                Description de la scène :
+                <textarea name="prompt" id="video-prompt-input" rows="6" style="width: 100%; padding: 8px; font-family: inherit;" placeholder="Décrivez la scène de la vidéo que vous souhaitez générer..." required></textarea>
+            </label>
+        </fieldset>
+        <fieldset>
+            <legend>Durée</legend>
+            <label>
+                Durée de la vidéo :
+                <select name="duration" id="video-duration" style="width: 100%; padding: 8px;" required>
+                    <option value="4">4 secondes</option>
+                    <option value="8" selected>8 secondes</option>
+                    <option value="12">12 secondes</option>
+                </select>
+            </label>
+        </fieldset>
+        <fieldset>
+            <legend>Images de référence</legend>
+            <div style="margin-bottom: 15px;">
+                <label style="display: block; margin-bottom: 10px; font-weight: bold;">
+                    Style artistique :
+                </label>
+                <input type="file" name="style_image" id="style-image" accept="image/*" style="padding: 8px; width: 100%;">
+                <div id="style-image-preview" style="margin-top: 10px; display: none;">
+                    <img id="style-image-preview-img" src="" alt="Style preview" style="max-width: 200px; border: 1px solid #ddd; border-radius: 3px;">
+                </div>
+            </div>
+            <div style="margin-bottom: 15px;">
+                <label style="display: block; margin-bottom: 10px; font-weight: bold;">
+                    Personnages (optionnel) :
+                </label>
+                <div id="characters-container">
+                    <div class="character-upload" style="margin-bottom: 10px;">
+                        <input type="text" name="character_name[]" placeholder="Nom du personnage" style="width: 200px; padding: 5px; margin-right: 10px;">
+                        <input type="file" name="character_image[]" accept="image/*" style="padding: 5px; width: 300px;">
+                        <button type="button" class="remove-character" style="padding: 5px 10px; background: #dc3545; color: white; border: none; border-radius: 3px; cursor: pointer; margin-left: 10px;">Supprimer</button>
+                    </div>
+                </div>
+                <button type="button" id="add-character-btn" style="margin-top: 10px; padding: 5px 15px; background: #28a745; color: white; border: none; border-radius: 3px; cursor: pointer;">+ Ajouter un personnage</button>
+            </div>
+            <div>
+                <label style="display: block; margin-bottom: 10px; font-weight: bold;">
+                    Environnement :
+                </label>
+                <input type="file" name="environment_image" id="environment-image" accept="image/*" style="padding: 8px; width: 100%;">
+                <div id="environment-image-preview" style="margin-top: 10px; display: none;">
+                    <img id="environment-image-preview-img" src="" alt="Environment preview" style="max-width: 200px; border: 1px solid #ddd; border-radius: 3px;">
+                </div>
+            </div>
+        </fieldset>
+        <fieldset>
+            <legend>Audio</legend>
+            <label style="display: block; margin-bottom: 10px;">
+                <input type="checkbox" name="enable_audio" id="enable-audio" checked>
+                Activer l'audio
+            </label>
+            <label style="display: block; margin-bottom: 10px;">
+                <input type="checkbox" name="allow_ambient_sound" id="allow-ambient-sound" checked>
+                Autoriser les sons ambiants (vent, pas, eau, nature, etc.)
+            </label>
+            <label style="display: block; margin-bottom: 10px;">
+                <input type="checkbox" name="disable_music" id="disable-music" checked>
+                Désactiver la musique de fond
+            </label>
+            <label style="display: block; margin-bottom: 10px;">
+                <input type="checkbox" name="disable_voices" id="disable-voices" checked>
+                Désactiver les voix et dialogues
+            </label>
+        </fieldset>
+        <button type="submit" id="generate-video-btn" style="margin-top: 15px; padding: 10px 20px; background: #9c27b0; color: white; border: none; border-radius: 5px; cursor: pointer;">
+            🎬 Générer la vidéo
+        </button>
+    </form>
+    <div id="video-generation-status" style="margin-top: 15px; padding: 10px; display: none;"></div>
+    <div id="generated-video-container" style="margin-top: 20px; display: none;">
+        <video id="generated-video" controls style="max-width: 100%; border: 1px solid #ddd; border-radius: 5px; margin-bottom: 10px;"></video>
+        <a id="download-video-link" href="" download style="display: inline-block; padding: 8px 15px; background: #9c27b0; color: white; text-decoration: none; border-radius: 3px;">Télécharger la vidéo</a>
+    </div>
+</section>
+{% endif %}
+
+<section id="text-to-video-section" style="display: none;">
          <h3>Image générée :</h3>
          <div id="generated-image-wrapper" style="margin-top: 10px;">
              <img id="generated-image" src="" alt="Generated image" style="max-width: 100%; border: 1px solid #ddd; border-radius: 5px;">

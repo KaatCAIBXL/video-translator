@@ -2448,6 +2448,202 @@ async def get_generated_image(request: Request, image_id: str):
         )
 
 
+@app.post("/api/generate-video")
+async def generate_video(request: Request):
+    """Generate a video using ModelsLab Video Fusion API."""
+    if not is_admin(request):
+        return JSONResponse(
+            {"error": "Seuls les administrateurs peuvent générer des vidéos."},
+            status_code=403
+        )
+    
+    if not settings.MODELLAB_API_KEY:
+        return JSONResponse(
+            {"error": "ModelsLab API key niet geconfigureerd."},
+            status_code=503
+        )
+    
+    try:
+        form_data = await request.form()
+        prompt = form_data.get("prompt", "").strip()
+        duration = int(form_data.get("duration", 8))
+        
+        if not prompt:
+            return JSONResponse(
+                {"error": "La description de la scène est requise."},
+                status_code=400
+            )
+        
+        if duration not in [4, 8, 12]:
+            return JSONResponse(
+                {"error": "La durée doit être 4, 8 ou 12 secondes."},
+                status_code=400
+            )
+        
+        # Process reference images
+        reference_images = {}
+        
+        # Style image
+        style_file = form_data.get("style_image")
+        if style_file and hasattr(style_file, 'filename') and style_file.filename:
+            style_data = await _save_uploaded_image(style_file, "style")
+            if style_data:
+                reference_images["style"] = [style_data["data"]]
+        
+        # Character images
+        character_names = form_data.getlist("character_name[]")
+        character_files = form_data.getlist("character_image[]")
+        if character_names and character_files:
+            characters_dict = {}
+            for name, char_file in zip(character_names, character_files):
+                if name and name.strip() and hasattr(char_file, 'filename') and char_file.filename:
+                    char_data = await _save_uploaded_image(char_file, f"character_{name.strip()}")
+                    if char_data:
+                        characters_dict[name.strip()] = char_data["data"]
+            if characters_dict:
+                reference_images["characters"] = characters_dict
+        
+        # Environment image
+        environment_file = form_data.get("environment_image")
+        if environment_file and hasattr(environment_file, 'filename') and environment_file.filename:
+            env_data = await _save_uploaded_image(environment_file, "environment")
+            if env_data:
+                reference_images["environment"] = [env_data["data"]]
+        
+        # Audio settings
+        enable_audio = form_data.get("enable_audio", "false").lower() == "true"
+        allow_ambient_sound = form_data.get("allow_ambient_sound", "false").lower() == "true"
+        disable_music = form_data.get("disable_music", "false").lower() == "true"
+        disable_voices = form_data.get("disable_voices", "false").lower() == "true"
+        
+        # Build payload for ModelsLab Video Fusion API
+        payload = {
+            "prompt": prompt,
+            "duration": duration,
+            "reference_images": reference_images if reference_images else {},
+            "audio": {
+                "enable": enable_audio,
+                "allow_ambient_sound": allow_ambient_sound,
+                "disable_music": disable_music,
+                "disable_voices": disable_voices
+            }
+        }
+        
+        headers = {
+            "Authorization": f"Bearer {settings.MODELLAB_API_KEY}",
+            "Content-Type": "application/json"
+        }
+        
+        logger.info(f"Generating video with ModelsLab Video Fusion API: prompt={prompt[:50]}..., duration={duration}")
+        
+        try:
+            response = requests.post(
+                settings.MODELLAB_VIDEO_API_URL,
+                json=payload,
+                headers=headers,
+                timeout=300  # 5 minutes timeout for video generation
+            )
+            response.raise_for_status()
+            result = response.json()
+        except requests.exceptions.RequestException as e:
+            logger.error(f"ModelsLab Video Fusion API request failed: {e}")
+            if hasattr(e, 'response') and e.response is not None:
+                try:
+                    error_detail = e.response.json()
+                    logger.error(f"API error response: {error_detail}")
+                except:
+                    logger.error(f"API error response text: {e.response.text}")
+            return JSONResponse(
+                {"error": f"Erreur lors de l'appel à l'API ModelsLab: {str(e)}"},
+                status_code=500
+            )
+        
+        logger.info(f"ModelsLab Video Fusion API response: {result}")
+        
+        # Check for error status
+        if "status" in result and result.get("status") == "error":
+            error_msg = result.get("message", "Unknown error from ModelsLab API")
+            return JSONResponse(
+                {"error": f"Erreur de l'API ModelsLab: {error_msg}"},
+                status_code=400
+            )
+        
+        # Handle response - ModelsLab Video Fusion might return video URL or base64
+        video_url = None
+        if "video_url" in result:
+            video_url = result["video_url"]
+        elif "url" in result:
+            video_url = result["url"]
+        elif "output" in result and isinstance(result["output"], str) and result["output"].startswith("http"):
+            video_url = result["output"]
+        elif "data" in result and isinstance(result["data"], dict):
+            if "video_url" in result["data"]:
+                video_url = result["data"]["video_url"]
+            elif "url" in result["data"]:
+                video_url = result["data"]["url"]
+        
+        if not video_url:
+            # If no direct URL, check for base64 or other formats
+            if "video" in result:
+                video_data = result["video"]
+                if isinstance(video_data, str):
+                    if video_data.startswith("http"):
+                        video_url = video_data
+                    elif video_data.startswith("data:"):
+                        # Base64 encoded video
+                        return JSONResponse({
+                            "success": True,
+                            "video": video_data
+                        })
+        
+        if video_url:
+            return JSONResponse({
+                "success": True,
+                "video_url": video_url
+            })
+        else:
+            logger.warning(f"Could not extract video URL from response: {result}")
+            return JSONResponse(
+                {"error": "Impossible d'extraire l'URL de la vidéo de la réponse de l'API."},
+                status_code=500
+            )
+            
+    except Exception as e:
+        logger.exception(f"Error generating video: {e}")
+        return JSONResponse(
+            {"error": f"Erreur lors de la génération de la vidéo: {str(e)}"},
+            status_code=500
+        )
+
+
+async def _save_uploaded_image(file: UploadFile, prefix: str) -> Optional[dict]:
+    """Save an uploaded image and return base64 encoded data URL."""
+    try:
+        # Read file content
+        content = await file.read()
+        
+        # Determine MIME type
+        mime_type = "image/jpeg"
+        if file.filename:
+            ext = Path(file.filename).suffix.lower()
+            if ext == ".png":
+                mime_type = "image/png"
+            elif ext == ".gif":
+                mime_type = "image/gif"
+            elif ext == ".webp":
+                mime_type = "image/webp"
+        
+        # Encode as base64
+        base64_data = base64.b64encode(content).decode('utf-8')
+        data_url = f"data:{mime_type};base64,{base64_data}"
+        
+        logger.info(f"Encoded reference image: {prefix}, size: {len(content)} bytes")
+        return {"data": data_url, "mime_type": mime_type}
+    except Exception as e:
+        logger.error(f"Error processing uploaded image: {e}")
+        return None
+
+
 @app.delete("/api/characters/{character_id}")
 async def delete_character_endpoint(request: Request, character_id: str):
     """Delete a character."""
