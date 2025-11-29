@@ -514,9 +514,13 @@ async def upload_video(
     
     # Only editors can upload
     if not is_editor(request):
-        logger.warning(f"Upload denied - session_id: {session_id}, role: {role}")
+        logger.warning(f"Upload denied - session_id: {session_id}, role: {role}, is_editor: {is_editor(request)}")
+        if not role:
+            error_msg = "Vous devez sélectionner un rôle pour télécharger des fichiers. Veuillez visiter /select-role et choisir 'I-tech' ou 'Admin'."
+        else:
+            error_msg = f"Seuls les éditeurs (I-tech) et les administrateurs peuvent télécharger des fichiers. Votre rôle actuel: '{role}'. Veuillez sélectionner 'I-tech' ou 'Admin' en visitant /select-role"
         return JSONResponse(
-            {"error": "Seuls les éditeurs peuvent télécharger des fichiers."},
+            {"error": error_msg},
             status_code=403,
         )
     
