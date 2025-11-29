@@ -3868,7 +3868,7 @@ if (videoGenerationForm) {
         
         // Show initial progress indicator
         let startTime = Date.now();
-        const progressInterval = setInterval(() => {
+        let progressInterval = setInterval(() => {
             const elapsedSeconds = Math.floor((Date.now() - startTime) / 1000);
             const elapsedMinutes = Math.floor(elapsedSeconds / 60);
             if (elapsedSeconds < 10) {
@@ -3880,7 +3880,6 @@ if (videoGenerationForm) {
             }
         }, 1000);
         
-        let progressInterval;
         let result;
         
         try {
