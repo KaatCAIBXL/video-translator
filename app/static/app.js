@@ -246,6 +246,32 @@ function createVideoItem(video) {
         const fileType = video.file_type || "video";
         const isVideo = fileType === "video";
 
+        // Thumbnail image (if available)
+        if (isVideo) {
+            const thumbnailContainer = document.createElement("div");
+            thumbnailContainer.style.marginBottom = "10px";
+            thumbnailContainer.style.textAlign = "center";
+            
+            const thumbnailImg = document.createElement("img");
+            thumbnailImg.src = `/videos/${video.id}/thumbnail`;
+            thumbnailImg.alt = "Thumbnail";
+            thumbnailImg.style.maxWidth = "300px";
+            thumbnailImg.style.maxHeight = "200px";
+            thumbnailImg.style.border = "1px solid #ddd";
+            thumbnailImg.style.borderRadius = "5px";
+            thumbnailImg.style.cursor = "pointer";
+            thumbnailImg.onerror = function() {
+                // Hide thumbnail if it doesn't exist
+                this.style.display = "none";
+            };
+            thumbnailImg.onclick = () => {
+                // Click to play video
+                playVideo(video, {});
+            };
+            thumbnailContainer.appendChild(thumbnailImg);
+            div.appendChild(thumbnailContainer);
+        }
+        
         const title = document.createElement("h3");
         title.textContent = video.filename;
         if (video.is_private) {
