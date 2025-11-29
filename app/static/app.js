@@ -3097,8 +3097,17 @@ if (textToVideoForm) {
                 }
             }
             
+            // Only start polling if user is admin
             populateTextToVideoCharacterDropdown();
-            setInterval(populateTextToVideoCharacterDropdown, 10000);
+            const characterInterval = setInterval(() => {
+                // Re-check if still admin before polling
+                const stillAdmin = document.getElementById("video-generation-section") !== null;
+                if (stillAdmin) {
+                    populateTextToVideoCharacterDropdown();
+                } else {
+                    clearInterval(characterInterval);
+                }
+            }, 10000);
         }
     }
 }
@@ -3545,6 +3554,10 @@ async function fetchAdminMessages() {
         if (!response.ok) {
             // If 404, the endpoint doesn't exist (not implemented yet) - silently ignore
             if (response.status === 404) {
+                return;
+            }
+            // If 403, user is not admin - silently ignore
+            if (response.status === 403) {
                 return;
             }
             messagesList.innerHTML = "<p style='color: #dc3545;'>Erreur lors du chargement des messages.</p>";
