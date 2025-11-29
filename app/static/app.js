@@ -258,9 +258,11 @@ function createVideoItem(video) {
             const thumbnailContainer = document.createElement("div");
             thumbnailContainer.style.flexShrink = "0";
             thumbnailContainer.style.display = "block"; // Make sure it's visible by default
+            thumbnailContainer.style.minWidth = "150px"; // Ensure container has minimum width
+            thumbnailContainer.style.minHeight = "100px"; // Ensure container has minimum height
             
             const thumbnailImg = document.createElement("img");
-            thumbnailImg.src = `/videos/${video.id}/thumbnail`;
+            thumbnailImg.src = `/videos/${video.id}/thumbnail?t=${Date.now()}`; // Add cache busting
             thumbnailImg.alt = "Thumbnail";
             thumbnailImg.style.width = "150px";
             thumbnailImg.style.height = "100px";
@@ -269,11 +271,13 @@ function createVideoItem(video) {
             thumbnailImg.style.borderRadius = "5px";
             thumbnailImg.style.cursor = "pointer";
             thumbnailImg.style.display = "block"; // Make sure it's visible by default
+            thumbnailImg.style.backgroundColor = "#f0f0f0"; // Background color while loading
             
             // Use a more robust error handler
-            thumbnailImg.onerror = function() {
+            thumbnailImg.onerror = function(e) {
                 // Hide thumbnail if it doesn't exist (404 or other error)
-                console.log("Thumbnail not found or failed to load for video:", video.id);
+                console.error("Thumbnail not found or failed to load for video:", video.id, "Error:", e);
+                console.error("Thumbnail URL was:", this.src);
                 this.style.display = "none";
                 thumbnailContainer.style.display = "none";
             };
@@ -290,6 +294,7 @@ function createVideoItem(video) {
                     // Make sure it's visible when loaded successfully
                     this.style.display = "block";
                     thumbnailContainer.style.display = "block";
+                    this.style.backgroundColor = "transparent"; // Remove background when loaded
                 }
             };
             

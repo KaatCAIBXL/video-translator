@@ -1029,7 +1029,7 @@ async def get_video_thumbnail(request: Request, video_id: str):
                 thumbnail_path = alt_path
                 break
         else:
-            logger.debug(f"Thumbnail not found for video {video_id} in {video_dir}")
+            logger.info(f"Thumbnail not found for video {video_id} in {video_dir}. Available files: {list(video_dir.iterdir()) if video_dir.exists() else 'directory does not exist'}")
             # Return 404 instead of transparent pixel so frontend can handle it properly
             return JSONResponse({"error": "Thumbnail not found"}, status_code=404)
     
