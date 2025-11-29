@@ -3974,9 +3974,21 @@ if (videoGenerationForm) {
             statusDiv.textContent = `❌ Erreur: ${err.message}`;
             statusDiv.style.color = "#dc3545";
             videoContainer.style.display = "none";
-        } finally {
+            if (progressInterval) clearInterval(progressInterval);
             generateBtn.disabled = false;
             generateBtn.textContent = "🎬 Générer la vidéo";
+        } finally {
+            // Only re-enable button if not in polling mode
+            if (result && result.status === "processing") {
+                // Keep button disabled during polling - it will be re-enabled when done
+            } else if (!result || result.success) {
+                // Re-enable button if we got a result (success or error, but not processing)
+                if (progressInterval) clearInterval(progressInterval);
+                if (!result || result.status !== "processing") {
+                    generateBtn.disabled = false;
+                    generateBtn.textContent = "🎬 Générer la vidéo";
+                }
+            }
         }
     });
 }
