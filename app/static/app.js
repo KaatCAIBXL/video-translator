@@ -3049,42 +3049,58 @@ if (textToVideoForm) {
         setInterval(populateTextToVideoFolderDropdown, 5000);
     }
     
-    // Populate character dropdown for text-to-video
+    // Populate character dropdown for text-to-video (only for admins)
     const textToVideoCharacterSelect = document.getElementById("text-to-video-character");
     if (textToVideoCharacterSelect) {
-        async function populateTextToVideoCharacterDropdown() {
-            try {
-                const response = await fetch("/api/characters", {
-                    credentials: "include"
-                });
-                if (!response.ok) return;
-                
-                const chars = await response.json();
-                const currentValue = textToVideoCharacterSelect.value;
-                
-                // Clear existing options (keep first "Aucun personnage" option)
-                while (textToVideoCharacterSelect.children.length > 1) {
-                    textToVideoCharacterSelect.remove(1);
-                }
-                
-                // Add only completed characters
-                chars.filter(char => char.status === "completed").forEach(char => {
-                    const option = document.createElement("option");
-                    option.value = char.id;
-                    option.textContent = `${char.name} (${char.token})`;
-                    textToVideoCharacterSelect.appendChild(option);
-                });
-                
-                if (currentValue && Array.from(textToVideoCharacterSelect.options).some(opt => opt.value === currentValue)) {
-                    textToVideoCharacterSelect.value = currentValue;
-                }
-            } catch (err) {
-                console.error("Failed to load characters for text-to-video dropdown", err);
-            }
-        }
+        // Check if user is admin by checking if the character dropdown section is visible
+        // Only populate if the video generation section is visible (admin only)
+        const videoGenSection = document.querySelector('[id*="video-generation"], [id*="generate-video"]');
+        const isAdmin = videoGenSection && videoGenSection.style.display !== "none";
         
-        populateTextToVideoCharacterDropdown();
-        setInterval(populateTextToVideoCharacterDropdown, 10000);
+        if (isAdmin) {
+            async function populateTextToVideoCharacterDropdown() {
+                try {
+                    const response = await fetch("/api/characters", {
+                        credentials: "include"
+                    });
+                    // Silently ignore 403 (forbidden) - user is not admin
+                    if (!response.ok) {
+                        if (response.status === 403) {
+                            return; // User is not admin, silently ignore
+                        }
+                        return;
+                    }
+                    
+                    const chars = await response.json();
+                    const currentValue = textToVideoCharacterSelect.value;
+                    
+                    // Clear existing options (keep first "Aucun personnage" option)
+                    while (textToVideoCharacterSelect.children.length > 1) {
+                        textToVideoCharacterSelect.remove(1);
+                    }
+                    
+                    // Add only completed characters
+                    chars.filter(char => char.status === "completed").forEach(char => {
+                        const option = document.createElement("option");
+                        option.value = char.id;
+                        option.textContent = `${char.name} (${char.token})`;
+                        textToVideoCharacterSelect.appendChild(option);
+                    });
+                    
+                    if (currentValue && Array.from(textToVideoCharacterSelect.options).some(opt => opt.value === currentValue)) {
+                        textToVideoCharacterSelect.value = currentValue;
+                    }
+                } catch (err) {
+                    // Silently ignore errors - user might not have access
+                    if (err.message && !err.message.includes("403")) {
+                        console.error("Failed to load characters for text-to-video dropdown", err);
+                    }
+                }
+            }
+            
+            populateTextToVideoCharacterDropdown();
+            setInterval(populateTextToVideoCharacterDropdown, 10000);
+        }
     }
 }
 
