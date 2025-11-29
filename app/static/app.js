@@ -1938,13 +1938,23 @@ function initializeThumbnailFieldset() {
     
     // Check initial state on page load
     updateThumbnailVisibility();
+    
+    // Also check after a short delay to ensure everything is loaded
+    setTimeout(updateThumbnailVisibility, 200);
+    setTimeout(updateThumbnailVisibility, 500);
 }
 
 // Initialize thumbnail fieldset when DOM is ready
 if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', initializeThumbnailFieldset);
+    document.addEventListener('DOMContentLoaded', () => {
+        initializeThumbnailFieldset();
+        // Also check after DOM is fully loaded
+        setTimeout(initializeThumbnailFieldset, 100);
+    });
 } else {
     initializeThumbnailFieldset();
+    // Also check after a short delay
+    setTimeout(initializeThumbnailFieldset, 100);
 }
 
 // Toggle thumbnail source options - initialize when elements are available
