@@ -2557,8 +2557,10 @@ async def generate_video(request: Request):
         
         # Build payload for ModelsLab Video Fusion API
         # Note: ModelsLab Video Fusion API requires the key in the payload AND in Authorization header (consistent with image API)
+        # For video generation, we use Sora-2 model
         payload = {
             "key": settings.MODELLAB_API_KEY,  # API key as request parameter
+            "model_id": "sora-2",  # Use Sora-2 model for video generation
             "prompt": prompt,
             "duration": duration,
             "reference_images": reference_images if reference_images else {},
