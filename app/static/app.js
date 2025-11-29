@@ -1858,7 +1858,8 @@ if (fileTypeRadios.length > 0) {
                     updateSourceLanguageVisibility(); // Check if transcribe is selected
                     ttsSpeedFieldset.style.display = "block";
                     // Show thumbnail fieldset for videos
-                    if (thumbnailFieldset) thumbnailFieldset.style.display = "block";
+                    const thumbnailFieldsetEl = document.getElementById("thumbnail-fieldset");
+                    if (thumbnailFieldsetEl) thumbnailFieldsetEl.style.display = "block";
                 } else if (fileType === "audio") {
                     fileInputForType.accept = "audio/*";
                     if (fileTypeLabel) fileTypeLabel.textContent = "Fichier audio :";
@@ -1869,7 +1870,8 @@ if (fileTypeRadios.length > 0) {
                     sourceLanguageFieldset.style.display = "block";
                     ttsSpeedFieldset.style.display = "none";
                     // Hide thumbnail fieldset for non-videos
-                    if (thumbnailFieldset) thumbnailFieldset.style.display = "none";
+                    const thumbnailFieldsetEl = document.getElementById("thumbnail-fieldset");
+                    if (thumbnailFieldsetEl) thumbnailFieldsetEl.style.display = "none";
                 } else if (fileType === "text") {
                     fileInputForType.accept = ".txt";
                     if (fileTypeLabel) fileTypeLabel.textContent = "Fichier texte :";
@@ -1880,7 +1882,8 @@ if (fileTypeRadios.length > 0) {
                     sourceLanguageFieldset.style.display = "block";
                     ttsSpeedFieldset.style.display = "none";
                     // Hide thumbnail fieldset for non-videos
-                    if (thumbnailFieldset) thumbnailFieldset.style.display = "none";
+                    const thumbnailFieldsetEl = document.getElementById("thumbnail-fieldset");
+                    if (thumbnailFieldsetEl) thumbnailFieldsetEl.style.display = "none";
                 }
             }
         });
@@ -1913,102 +1916,154 @@ const thumbnailPreviewImg = document.getElementById("thumbnail-preview-img");
 const videoFileInput = document.getElementById("video-file");
 
 // Show/hide thumbnail fieldset based on file type
-if (thumbnailFieldset) {
+// Initialize when DOM is ready
+function initializeThumbnailFieldset() {
+    const thumbnailFieldsetEl = document.getElementById("thumbnail-fieldset");
+    if (!thumbnailFieldsetEl) return;
+    
+    // Function to update thumbnail visibility
+    function updateThumbnailVisibility() {
+        const selectedFileType = document.querySelector('input[name="file_type"]:checked')?.value;
+        if (selectedFileType === "video") {
+            thumbnailFieldsetEl.style.display = "block";
+        } else {
+            thumbnailFieldsetEl.style.display = "none";
+        }
+    }
+    
     const fileTypeRadios = document.querySelectorAll('input[name="file_type"]');
     fileTypeRadios.forEach(radio => {
-        radio.addEventListener("change", () => {
-            if (radio.value === "video") {
-                thumbnailFieldset.style.display = "block";
-            } else {
-                thumbnailFieldset.style.display = "none";
-            }
-        });
+        radio.addEventListener("change", updateThumbnailVisibility);
     });
     
-    // Check initial state
-    const selectedFileType = document.querySelector('input[name="file_type"]:checked')?.value;
-    if (selectedFileType === "video") {
-        thumbnailFieldset.style.display = "block";
+    // Check initial state on page load
+    updateThumbnailVisibility();
+}
+
+// Initialize thumbnail fieldset when DOM is ready
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initializeThumbnailFieldset);
+} else {
+    initializeThumbnailFieldset();
+}
+
+// Toggle thumbnail source options - initialize when elements are available
+function initializeThumbnailToggles() {
+    const thumbnailVideoFrameEl = document.getElementById("thumbnail-video-frame");
+    const thumbnailUploadEl = document.getElementById("thumbnail-upload");
+    const videoFrameSelectorEl = document.getElementById("video-frame-selector");
+    const thumbnailUploadContainerEl = document.getElementById("thumbnail-upload-container");
+    
+    if (thumbnailVideoFrameEl && thumbnailUploadEl) {
+        thumbnailVideoFrameEl.addEventListener("change", () => {
+            if (thumbnailVideoFrameEl.checked) {
+                if (videoFrameSelectorEl) videoFrameSelectorEl.style.display = "block";
+                if (thumbnailUploadContainerEl) thumbnailUploadContainerEl.style.display = "none";
+            }
+        });
+        
+        thumbnailUploadEl.addEventListener("change", () => {
+            if (thumbnailUploadEl.checked) {
+                if (videoFrameSelectorEl) videoFrameSelectorEl.style.display = "none";
+                if (thumbnailUploadContainerEl) thumbnailUploadContainerEl.style.display = "block";
+            }
+        });
     }
 }
 
-// Toggle thumbnail source options
-if (thumbnailVideoFrame && thumbnailUpload) {
-    thumbnailVideoFrame.addEventListener("change", () => {
-        if (thumbnailVideoFrame.checked) {
-            videoFrameSelector.style.display = "block";
-            thumbnailUploadContainer.style.display = "none";
-        }
-    });
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initializeThumbnailToggles);
+} else {
+    initializeThumbnailToggles();
+}
+
+// Preview frame from video - initialize when elements are available
+function initializeFramePreview() {
+    const previewFrameBtnEl = document.getElementById("preview-frame-btn");
+    const videoFileInputEl = document.getElementById("video-file");
+    const framePreviewEl = document.getElementById("frame-preview");
+    const framePreviewImgEl = document.getElementById("frame-preview-img");
     
-    thumbnailUpload.addEventListener("change", () => {
-        if (thumbnailUpload.checked) {
-            videoFrameSelector.style.display = "none";
-            thumbnailUploadContainer.style.display = "block";
-        }
-    });
+    if (previewFrameBtnEl && videoFileInputEl) {
+        previewFrameBtnEl.addEventListener("click", async () => {
+            const file = videoFileInputEl.files?.[0];
+            if (!file) {
+                alert("Veuillez d'abord sélectionner une vidéo.");
+                return;
+            }
+            
+            const time = parseFloat(document.getElementById("thumbnail-time")?.value || 0);
+            
+            try {
+                // Create a video element to extract frame
+                const video = document.createElement("video");
+                video.preload = "metadata";
+                video.src = URL.createObjectURL(file);
+                
+                video.onloadedmetadata = () => {
+                    video.currentTime = Math.min(time, video.duration || 0);
+                };
+                
+                video.onseeked = () => {
+                    const canvas = document.createElement("canvas");
+                    canvas.width = video.videoWidth;
+                    canvas.height = video.videoHeight;
+                    const ctx = canvas.getContext("2d");
+                    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                    
+                    if (framePreviewImgEl) {
+                        framePreviewImgEl.src = canvas.toDataURL("image/png");
+                        if (framePreviewEl) framePreviewEl.style.display = "block";
+                    }
+                    
+                    URL.revokeObjectURL(video.src);
+                };
+                
+                video.onerror = () => {
+                    alert("Erreur lors de la lecture de la vidéo.");
+                    URL.revokeObjectURL(video.src);
+                };
+            } catch (err) {
+                console.error("Error previewing frame:", err);
+                alert("Erreur lors de l'extraction du frame.");
+            }
+        });
+    }
 }
 
-// Preview frame from video
-if (previewFrameBtn && videoFileInput) {
-    previewFrameBtn.addEventListener("click", async () => {
-        const file = videoFileInput.files?.[0];
-        if (!file) {
-            alert("Veuillez d'abord sélectionner une vidéo.");
-            return;
-        }
-        
-        const time = parseFloat(document.getElementById("thumbnail-time")?.value || 0);
-        
-        try {
-            // Create a video element to extract frame
-            const video = document.createElement("video");
-            video.preload = "metadata";
-            video.src = URL.createObjectURL(file);
-            
-            video.onloadedmetadata = () => {
-                video.currentTime = Math.min(time, video.duration || 0);
-            };
-            
-            video.onseeked = () => {
-                const canvas = document.createElement("canvas");
-                canvas.width = video.videoWidth;
-                canvas.height = video.videoHeight;
-                const ctx = canvas.getContext("2d");
-                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-                
-                framePreviewImg.src = canvas.toDataURL("image/png");
-                framePreview.style.display = "block";
-                
-                URL.revokeObjectURL(video.src);
-            };
-            
-            video.onerror = () => {
-                alert("Erreur lors de la lecture de la vidéo.");
-                URL.revokeObjectURL(video.src);
-            };
-        } catch (err) {
-            console.error("Error previewing frame:", err);
-            alert("Erreur lors de l'extraction du frame.");
-        }
-    });
+// Preview uploaded thumbnail - initialize when elements are available
+function initializeThumbnailPreview() {
+    const thumbnailFileInputEl = document.getElementById("thumbnail-file");
+    const thumbnailPreviewEl = document.getElementById("thumbnail-preview");
+    const thumbnailPreviewImgEl = document.getElementById("thumbnail-preview-img");
+    
+    if (thumbnailFileInputEl) {
+        thumbnailFileInputEl.addEventListener("change", (e) => {
+            const file = e.target.files?.[0];
+            if (file && file.type.startsWith("image/")) {
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    if (thumbnailPreviewImgEl) {
+                        thumbnailPreviewImgEl.src = event.target.result;
+                        if (thumbnailPreviewEl) thumbnailPreviewEl.style.display = "block";
+                    }
+                };
+                reader.readAsDataURL(file);
+            } else {
+                if (thumbnailPreviewEl) thumbnailPreviewEl.style.display = "none";
+            }
+        });
+    }
 }
 
-// Preview uploaded thumbnail
-if (thumbnailFileInput) {
-    thumbnailFileInput.addEventListener("change", (e) => {
-        const file = e.target.files?.[0];
-        if (file && file.type.startsWith("image/")) {
-            const reader = new FileReader();
-            reader.onload = (event) => {
-                thumbnailPreviewImg.src = event.target.result;
-                thumbnailPreview.style.display = "block";
-            };
-            reader.readAsDataURL(file);
-        } else {
-            thumbnailPreview.style.display = "none";
-        }
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => {
+        initializeFramePreview();
+        initializeThumbnailPreview();
     });
+} else {
+    initializeFramePreview();
+    initializeThumbnailPreview();
 }
 
 const uploadForm = document.getElementById("upload-form");
