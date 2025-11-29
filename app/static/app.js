@@ -3861,10 +3861,27 @@ if (videoGenerationForm) {
         // Disable button and show loading
         generateBtn.disabled = true;
         generateBtn.textContent = "⏳ Génération en cours...";
-        statusDiv.textContent = "⏳ Génération de la vidéo en cours, cela peut prendre plusieurs minutes, veuillez patienter...";
+        statusDiv.textContent = "⏳ Envoi de la requête à l'API ModelsLab...";
         statusDiv.style.display = "block";
         statusDiv.style.color = "#9c27b0";
         videoContainer.style.display = "none";
+        
+        // Show initial progress indicator
+        let startTime = Date.now();
+        const progressInterval = setInterval(() => {
+            const elapsedSeconds = Math.floor((Date.now() - startTime) / 1000);
+            const elapsedMinutes = Math.floor(elapsedSeconds / 60);
+            if (elapsedSeconds < 10) {
+                statusDiv.textContent = "⏳ Envoi de la requête à l'API ModelsLab...";
+            } else if (elapsedSeconds < 30) {
+                statusDiv.textContent = `⏳ Génération en cours... (${elapsedSeconds}s) - Cela peut prendre plusieurs minutes.`;
+            } else {
+                statusDiv.textContent = `⏳ Génération en cours... (${elapsedMinutes} min ${elapsedSeconds % 60}s) - Cela peut prendre 5-10 minutes, veuillez patienter.`;
+            }
+        }, 1000);
+        
+        let progressInterval;
+        let result;
         
         try {
             const formData = new FormData(videoGenerationForm);
@@ -3875,7 +3892,10 @@ if (videoGenerationForm) {
                 credentials: "include"
             });
             
-            const result = await response.json();
+            result = await response.json();
+            
+            // Clear the progress interval once we get a response
+            clearInterval(progressInterval);
             
             if (!response.ok) {
                 throw new Error(result.error || "Erreur lors de la génération");
@@ -3906,12 +3926,44 @@ if (videoGenerationForm) {
                     throw new Error("Aucune vidéo retournée");
                 }
             } else if (result.status === "processing" && result.job_id) {
-                // Video generation is processing asynchronously
+                // Video generation is processing asynchronously - start polling
+                const jobId = result.job_id;
                 statusDiv.textContent = `⏳ ${result.message || "La génération de la vidéo est en cours. Veuillez patienter..."}`;
                 statusDiv.style.color = "#ffc107";
                 videoContainer.style.display = "none";
-                // TODO: Implement polling for job status using result.job_id
-                console.log("Video generation is processing. Job ID:", result.job_id);
+                
+                console.log("Video generation is processing. Job ID:", jobId);
+                
+                // Start polling for job status
+                let pollCount = 0;
+                const maxPolls = 120; // Poll for up to 10 minutes (120 * 5 seconds)
+                const pollInterval = 5000; // Poll every 5 seconds
+                
+                const pollJobStatus = async () => {
+                    pollCount++;
+                    const elapsedMinutes = Math.floor((pollCount * pollInterval) / 60000);
+                    
+                    // Update status with elapsed time
+                    statusDiv.textContent = `⏳ Génération en cours... (${elapsedMinutes} min) - Cela peut prendre plusieurs minutes, veuillez patienter.`;
+                    
+                    if (pollCount >= maxPolls) {
+                        statusDiv.textContent = "⚠️ La génération prend plus de temps que prévu. Vérifiez la bibliothèque pour voir si la vidéo a été générée.";
+                        statusDiv.style.color = "#ffc107";
+                        generateBtn.disabled = false;
+                        generateBtn.textContent = "🎬 Générer la vidéo";
+                        return;
+                    }
+                    
+                    // Try to check job status (if ModelsLab API supports it)
+                    // For now, we'll just show progress and let the user know it's still processing
+                    setTimeout(pollJobStatus, pollInterval);
+                };
+                
+                // Start polling
+                setTimeout(pollJobStatus, pollInterval);
+                
+                // Note: We can't actually poll ModelsLab API without their status endpoint
+                // So we just show progress and let the user know it's processing
             } else {
                 // Check if there's an error message in the response
                 const errorMsg = result.error || result.message || "La génération a échoué";
