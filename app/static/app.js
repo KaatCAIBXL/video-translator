@@ -1970,21 +1970,42 @@ function initializeThumbnailToggles() {
     
     // Function to update visibility based on selected option
     function updateThumbnailSourceVisibility() {
+        console.log("Updating thumbnail source visibility", {
+            videoFrameChecked: thumbnailVideoFrameEl.checked,
+            uploadChecked: thumbnailUploadEl.checked
+        });
         if (thumbnailVideoFrameEl.checked) {
             if (videoFrameSelectorEl) videoFrameSelectorEl.style.display = "block";
-            if (thumbnailUploadContainerEl) thumbnailUploadContainerEl.style.display = "none";
+            if (thumbnailUploadContainerEl) {
+                thumbnailUploadContainerEl.style.display = "none";
+                console.log("Hiding upload container");
+            }
         } else if (thumbnailUploadEl.checked) {
             if (videoFrameSelectorEl) videoFrameSelectorEl.style.display = "none";
-            if (thumbnailUploadContainerEl) thumbnailUploadContainerEl.style.display = "block";
+            if (thumbnailUploadContainerEl) {
+                thumbnailUploadContainerEl.style.display = "block";
+                console.log("Showing upload container");
+            }
         }
     }
     
-    // Add event listeners
-    thumbnailVideoFrameEl.addEventListener("change", updateThumbnailSourceVisibility);
-    thumbnailUploadEl.addEventListener("change", updateThumbnailSourceVisibility);
+    // Add event listeners (use capture to ensure they fire)
+    thumbnailVideoFrameEl.addEventListener("change", updateThumbnailSourceVisibility, true);
+    thumbnailUploadEl.addEventListener("change", updateThumbnailSourceVisibility, true);
+    
+    // Also add click listeners as backup
+    thumbnailVideoFrameEl.addEventListener("click", () => {
+        setTimeout(updateThumbnailSourceVisibility, 10);
+    });
+    thumbnailUploadEl.addEventListener("click", () => {
+        setTimeout(updateThumbnailSourceVisibility, 10);
+    });
     
     // Check initial state
     updateThumbnailSourceVisibility();
+    
+    // Also check after a delay to ensure it works
+    setTimeout(updateThumbnailSourceVisibility, 200);
 }
 
 // Initialize when DOM is ready
