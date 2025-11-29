@@ -3663,10 +3663,22 @@ window.addEventListener("load", () => {
     fetchVideos();
     populateFolderDropdown();
     checkTextToVideoEnabled();
-    fetchAdminMessages(); // Load admin messages if admin
+    // Only fetch messages if admin section exists
+    const adminMessagesSection = document.getElementById("admin-messages-section");
+    if (adminMessagesSection) {
+        fetchAdminMessages(); // Load admin messages if admin
+        const messagesInterval = setInterval(() => {
+            // Re-check if still admin before polling
+            const stillAdmin = document.getElementById("admin-messages-section") !== null;
+            if (stillAdmin) {
+                fetchAdminMessages();
+            } else {
+                clearInterval(messagesInterval);
+            }
+        }, 30000); // Refresh admin messages every 30 seconds
+    }
     // Refresh folder dropdown when videos are fetched (in case folders changed)
     setInterval(populateFolderDropdown, 5000);
-    setInterval(fetchAdminMessages, 30000); // Refresh admin messages every 30 seconds
 });
 
 // Image Generation with ModelsLab Flux 2 Pro
