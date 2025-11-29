@@ -3052,10 +3052,9 @@ if (textToVideoForm) {
     // Populate character dropdown for text-to-video (only for admins)
     const textToVideoCharacterSelect = document.getElementById("text-to-video-character");
     if (textToVideoCharacterSelect) {
-        // Check if user is admin by checking if the character dropdown section is visible
-        // Only populate if the video generation section is visible (admin only)
-        const videoGenSection = document.querySelector('[id*="video-generation"], [id*="generate-video"]');
-        const isAdmin = videoGenSection && videoGenSection.style.display !== "none";
+        // Check if user is admin by checking if the video generation section exists (only shown to admins)
+        const videoGenSection = document.getElementById("video-generation-section");
+        const isAdmin = videoGenSection !== null;
         
         if (isAdmin) {
             async function populateTextToVideoCharacterDropdown() {
