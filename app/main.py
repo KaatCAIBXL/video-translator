@@ -2548,7 +2548,7 @@ async def generate_video(request: Request):
         disable_voices = form_data.get("disable_voices", "false").lower() == "true"
         
         # Build payload for ModelsLab Video Fusion API
-        # Note: ModelsLab Video Fusion API requires the key in the payload, not just in headers
+        # Note: ModelsLab Video Fusion API requires the key in the payload AND in Authorization header (consistent with image API)
         payload = {
             "key": settings.MODELLAB_API_KEY,  # API key as request parameter
             "prompt": prompt,
@@ -2563,6 +2563,7 @@ async def generate_video(request: Request):
         }
         
         headers = {
+            "Authorization": f"Bearer {settings.MODELLAB_API_KEY}",  # Also include in header for consistency
             "Content-Type": "application/json"
         }
         
@@ -2592,13 +2593,25 @@ async def generate_video(request: Request):
         
         logger.info(f"ModelsLab Video Fusion API response: {result}")
         
-        # Check for error status
-        if "status" in result and result.get("status") == "error":
-            error_msg = result.get("message", "Unknown error from ModelsLab API")
-            return JSONResponse(
-                {"error": f"Erreur de l'API ModelsLab: {error_msg}"},
-                status_code=400
-            )
+        # Check for error status - ModelsLab returns status and message for errors (consistent with image API)
+        if "status" in result:
+            status_value = result.get("status")
+            # If status is not success/processing/completed, it's likely an error
+            if status_value not in ["success", "processing", "completed", "succeeded"]:
+                error_msg = result.get("message", f"Unknown error from ModelsLab API. Status: {status_value}")
+                logger.error(f"ModelsLab Video Fusion API error: {error_msg}, Status: {status_value}")
+                return JSONResponse(
+                    {"error": f"Erreur de l'API ModelsLab: {error_msg}"},
+                    status_code=500
+                )
+            
+            # If status is processing, the API might return an ID to check later
+            if status_value == "processing" and "id" in result:
+                logger.warning(f"ModelsLab Video Fusion API returned processing status with ID: {result.get('id')}")
+                return JSONResponse(
+                    {"error": "L'API retourne un statut 'processing'. La génération de vidéos peut être asynchrone. Vérifiez la documentation de l'API."},
+                    status_code=500
+                )
         
         # Handle response - ModelsLab Video Fusion might return video URL or base64
         video_url = None
@@ -2634,9 +2647,9 @@ async def generate_video(request: Request):
                 "video_url": video_url
             })
         else:
-            logger.warning(f"Could not extract video URL from response: {result}")
+            logger.error(f"Could not extract video from ModelsLab Video Fusion API response. Full response: {json.dumps(result, indent=2)}")
             return JSONResponse(
-                {"error": "Impossible d'extraire l'URL de la vidéo de la réponse de l'API."},
+                {"error": "Impossible d'extraire la vidéo de la réponse de l'API. Format de réponse non reconnu."},
                 status_code=500
             )
             
