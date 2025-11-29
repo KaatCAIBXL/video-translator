@@ -53,3 +53,13 @@ def can_read_admin_messages(request: Request) -> bool:
     role = get_role_from_request(request)
     return role == "admin"
 
+def get_session_count() -> int:
+    """Get the number of active sessions (for debugging)."""
+    return len(_sessions)
+
+def session_exists(session_id: Optional[str]) -> bool:
+    """Check if a session ID exists in the store."""
+    if not session_id:
+        return False
+    return session_id in _sessions
+

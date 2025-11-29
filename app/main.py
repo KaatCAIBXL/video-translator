@@ -12,7 +12,7 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from .auth import get_role_from_request, is_editor, is_admin, create_session, can_generate_video, can_manage_characters, can_read_admin_messages
+from .auth import get_role_from_request, is_editor, is_admin, create_session, can_generate_video, can_manage_characters, can_read_admin_messages, get_session_count, session_exists
 
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
@@ -255,9 +255,33 @@ async def set_role(request: Request, role: str = Form(...)):
         return JSONResponse({"error": "Rôle invalide"}, status_code=400)
     
     session_id = create_session(role)
+    logger.info(f"Created session for role '{role}': session_id={session_id[:10]}...")
     response = RedirectResponse(url="/", status_code=302)
-    response.set_cookie(key="session_id", value=session_id, httponly=True, max_age=86400*30)  # 30 days
+    # Set cookie with proper settings for cross-origin and security
+    response.set_cookie(
+        key="session_id", 
+        value=session_id, 
+        httponly=True, 
+        max_age=86400*30,  # 30 days
+        samesite="lax",  # Allow cookie to be sent with cross-site requests
+        secure=False  # Set to True in production with HTTPS
+    )
+    logger.info(f"Set cookie in response. Response headers: {dict(response.headers)}")
     return response
+
+@app.get("/api/current-role")
+async def get_current_role(request: Request):
+    """Get the current user's role (for debugging)."""
+    session_id = request.cookies.get("session_id")
+    role = get_role_from_request(request)
+    return JSONResponse({
+        "role": role,
+        "session_id": session_id[:20] + "..." if session_id else None,
+        "session_exists": session_exists(session_id) if session_id else False,
+        "is_editor": is_editor(request),
+        "is_admin": is_admin(request),
+        "active_sessions": get_session_count()
+    })
 
 
 # ---------- API: lijst video's ----------
@@ -509,8 +533,11 @@ async def upload_video(
     # Debug: check session and role
     session_id = request.cookies.get("session_id")
     role = get_role_from_request(request)
-    logger.info(f"Upload request - session_id: {session_id}, role: {role}, is_editor: {is_editor(request)}")
-    logger.info(f"All cookies: {request.cookies}")
+    logger.info(f"Upload request - session_id: {session_id[:20] if session_id else None}..., role: {role}, is_editor: {is_editor(request)}")
+    logger.info(f"All cookies: {list(request.cookies.keys())}")
+    logger.info(f"Session store has {get_session_count()} active sessions")
+    if session_id:
+        logger.info(f"Session lookup: session_id exists in store: {session_exists(session_id)}")
     
     # Only editors can upload
     if not is_editor(request):
