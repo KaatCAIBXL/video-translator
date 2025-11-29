@@ -21,6 +21,7 @@ from .config import settings
 from .services import (
     ensure_dirs,
     extract_audio,
+    extract_video_frame,
     transcribe_audio_whisper,
     build_sentence_pairs,
     build_sentence_segments,
@@ -522,6 +523,11 @@ async def upload_video(
     # Parse form data manually to handle multiple values with same name
     form_data = await request.form()
     
+    # Get thumbnail file if uploaded (FastAPI can handle files in form_data)
+    thumbnail_file_upload = None
+    if "thumbnail_file" in form_data:
+        thumbnail_file_upload = form_data["thumbnail_file"]
+    
     # Extract all form fields manually
     file_type = form_data.get("file_type", "video").lower()
     tts_speed_multiplier = float(form_data.get("tts_speed_multiplier", "1.0"))
@@ -542,6 +548,11 @@ async def upload_video(
     
     # Extract process_options (can be multiple with same name)
     process_options = form_data.getlist("process_options")
+    
+    # Extract thumbnail data (only for videos)
+    thumbnail_source = form_data.get("thumbnail_source") if file_type == "video" else None
+    thumbnail_time = form_data.get("thumbnail_time") if thumbnail_source == "video_frame" else None
+    thumbnail_file = thumbnail_file_upload if thumbnail_source == "upload" else None
     
     file_type = file_type.lower()
     if file_type not in ["video", "audio", "text"]:
@@ -656,6 +667,7 @@ async def upload_video(
     video_path = video_dir / f"original{ext}"
     audio_path = video_dir / "audio.wav"
     meta_path = video_dir / "metadata.json"
+    thumbnail_path = video_dir / "thumbnail.jpg"
 
     try:
         with open(video_path, "wb") as f:
@@ -665,6 +677,33 @@ async def upload_video(
         return JSONResponse(
             {"error": "Storing the uploaded video failed."}, status_code=500
         )
+    
+    # Process thumbnail if provided
+    if thumbnail_source and file_type == "video":
+        try:
+            if thumbnail_source == "video_frame" and thumbnail_time:
+                # Extract frame from video using ffmpeg
+                time_seconds = float(thumbnail_time)
+                await run_in_threadpool(extract_video_frame, video_path, thumbnail_path, time_seconds)
+                logger.info(f"Extracted thumbnail frame at {time_seconds}s from video {video_id}")
+            elif thumbnail_source == "upload" and thumbnail_file:
+                # Save uploaded thumbnail
+                if hasattr(thumbnail_file, 'read'):
+                    # It's an UploadFile object
+                    content = await thumbnail_file.read()
+                    with open(thumbnail_path, "wb") as f:
+                        f.write(content)
+                else:
+                    # It's already bytes or a file-like object
+                    with open(thumbnail_path, "wb") as f:
+                        if hasattr(thumbnail_file, 'file'):
+                            shutil.copyfileobj(thumbnail_file.file, f)
+                        else:
+                            f.write(thumbnail_file)
+                logger.info(f"Saved uploaded thumbnail for video {video_id}")
+        except Exception as e:
+            logger.warning(f"Failed to process thumbnail for video {video_id}: {e}")
+            # Don't fail the upload if thumbnail processing fails
 
     job_store.create_job(video_id, file.filename)
 
@@ -939,6 +978,27 @@ def _video_base_stem(meta: Optional[VideoMetadata], fallback: Path) -> str:
     if meta:
         return Path(meta.filename).stem
     return fallback.stem
+
+@app.get("/videos/{video_id}/thumbnail")
+async def get_video_thumbnail(request: Request, video_id: str):
+    """Get the thumbnail for a video."""
+    video_dir = _find_video_directory(video_id)
+    if not video_dir:
+        return JSONResponse({"error": "Video not found"}, status_code=404)
+    
+    thumbnail_path = video_dir / "thumbnail.jpg"
+    if not thumbnail_path.exists():
+        # Try other common thumbnail formats
+        for ext in [".png", ".jpeg", ".jpg"]:
+            alt_path = video_dir / f"thumbnail{ext}"
+            if alt_path.exists():
+                thumbnail_path = alt_path
+                break
+        else:
+            return JSONResponse({"error": "Thumbnail not found"}, status_code=404)
+    
+    return FileResponse(thumbnail_path, media_type="image/jpeg")
+
 
 @app.get("/videos/{video_id}/original")
 async def get_original_video(request: Request, video_id: str):

@@ -309,6 +309,42 @@
                 1,00 = vitesse normale. Augmentez légèrement (ex. 1,05) pour que la voix doublée démarre plus tôt.
             </p>
         </fieldset>
+        <fieldset id="thumbnail-fieldset" style="display: none;">
+            <legend>Miniature/Omslagfoto (optionnel)</legend>
+            <p class="language-hint" style="margin-bottom: 15px;">
+                Choisissez une miniature pour la vidéo : extraire un moment de la vidéo ou télécharger une image.
+            </p>
+            <div style="margin-bottom: 15px;">
+                <label style="display: block; margin-bottom: 10px;">
+                    <input type="radio" name="thumbnail_source" value="video_frame" id="thumbnail-video-frame" checked>
+                    Extraire un moment de la vidéo
+                </label>
+                <div id="video-frame-selector" style="margin-left: 25px; margin-top: 10px; display: block;">
+                    <label>
+                        Temps (secondes) :
+                        <input type="number" id="thumbnail-time" name="thumbnail_time" value="0" min="0" step="0.1" style="width: 100px; padding: 5px;">
+                    </label>
+                    <button type="button" id="preview-frame-btn" style="margin-left: 10px; padding: 5px 15px; background: #007bff; color: white; border: none; border-radius: 3px; cursor: pointer;">
+                        Aperçu
+                    </button>
+                    <div id="frame-preview" style="margin-top: 10px; display: none;">
+                        <img id="frame-preview-img" src="" alt="Frame preview" style="max-width: 300px; border: 1px solid #ddd; border-radius: 3px;">
+                    </div>
+                </div>
+            </div>
+            <div>
+                <label style="display: block; margin-bottom: 10px;">
+                    <input type="radio" name="thumbnail_source" value="upload" id="thumbnail-upload">
+                    Télécharger une image
+                </label>
+                <div id="thumbnail-upload-container" style="margin-left: 25px; margin-top: 10px; display: none;">
+                    <input type="file" id="thumbnail-file" name="thumbnail_file" accept="image/*" style="padding: 5px;">
+                    <div id="thumbnail-preview" style="margin-top: 10px; display: none;">
+                        <img id="thumbnail-preview-img" src="" alt="Thumbnail preview" style="max-width: 300px; border: 1px solid #ddd; border-radius: 3px;">
+                    </div>
+                </div>
+            </div>
+        </fieldset>
         <button type="submit">Téléverser et traiter</button>
     </form>
      <div id="upload-status"></div>

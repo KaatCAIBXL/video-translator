@@ -1,6 +1,7 @@
 import json
 import logging
 import math
+import shutil
 import subprocess
 import tempfile
 import time
@@ -94,6 +95,45 @@ def _build_ffmpeg_cmd(*args: str) -> List[str]:
         cmd.extend(settings.FFMPEG_HWACCEL_ARGS)
     cmd.extend(args)
     return cmd
+
+def extract_video_frame(video_path: Path, thumbnail_path: Path, time_seconds: float):
+    """Extract a frame from video at specified time using ffmpeg."""
+    ffmpeg_path = shutil.which("ffmpeg")
+    if not ffmpeg_path:
+        raise RuntimeError("ffmpeg not found in PATH")
+    
+    # Use ffmpeg to extract frame at specified time
+    # -ss: seek to time
+    # -i: input video
+    # -vframes 1: extract 1 frame
+    # -q:v 2: high quality JPEG (2 is high quality, lower is better)
+    cmd = [
+        ffmpeg_path,
+        "-ss", str(time_seconds),
+        "-i", str(video_path),
+        "-vframes", "1",
+        "-q:v", "2",
+        "-y",  # Overwrite output file
+        str(thumbnail_path)
+    ]
+    
+    try:
+        result = subprocess.run(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=True,
+            timeout=30
+        )
+        logger.info(f"Extracted frame from {video_path} at {time_seconds}s to {thumbnail_path}")
+    except subprocess.CalledProcessError as e:
+        error_msg = e.stderr.decode("utf-8", errors="ignore") if e.stderr else str(e)
+        logger.error(f"Failed to extract frame: {error_msg}")
+        raise RuntimeError(f"Frame extraction failed: {error_msg}") from e
+    except subprocess.TimeoutExpired:
+        logger.error("Frame extraction timed out")
+        raise RuntimeError("Frame extraction timed out")
+
 
 def extract_audio(video_path: Path, audio_path: Path):
     """Extract audio from video using ffmpeg."""

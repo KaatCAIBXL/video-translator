@@ -1831,6 +1831,8 @@ if (fileTypeRadios.length > 0) {
                     languagesFieldset.style.display = "block";
                     updateSourceLanguageVisibility(); // Check if transcribe is selected
                     ttsSpeedFieldset.style.display = "block";
+                    // Show thumbnail fieldset for videos
+                    if (thumbnailFieldset) thumbnailFieldset.style.display = "block";
                 } else if (fileType === "audio") {
                     fileInputForType.accept = "audio/*";
                     if (fileTypeLabel) fileTypeLabel.textContent = "Fichier audio :";
@@ -1840,6 +1842,8 @@ if (fileTypeRadios.length > 0) {
                     languagesFieldset.style.display = "block";
                     sourceLanguageFieldset.style.display = "block";
                     ttsSpeedFieldset.style.display = "none";
+                    // Hide thumbnail fieldset for non-videos
+                    if (thumbnailFieldset) thumbnailFieldset.style.display = "none";
                 } else if (fileType === "text") {
                     fileInputForType.accept = ".txt";
                     if (fileTypeLabel) fileTypeLabel.textContent = "Fichier texte :";
@@ -1849,6 +1853,8 @@ if (fileTypeRadios.length > 0) {
                     languagesFieldset.style.display = "block";
                     sourceLanguageFieldset.style.display = "block";
                     ttsSpeedFieldset.style.display = "none";
+                    // Hide thumbnail fieldset for non-videos
+                    if (thumbnailFieldset) thumbnailFieldset.style.display = "none";
                 }
             }
         });
@@ -1865,6 +1871,119 @@ processOptionsCheckboxes.forEach(checkbox => {
         }
     });
 });
+
+// Thumbnail selection functionality
+const thumbnailFieldset = document.getElementById("thumbnail-fieldset");
+const thumbnailVideoFrame = document.getElementById("thumbnail-video-frame");
+const thumbnailUpload = document.getElementById("thumbnail-upload");
+const videoFrameSelector = document.getElementById("video-frame-selector");
+const thumbnailUploadContainer = document.getElementById("thumbnail-upload-container");
+const thumbnailFileInput = document.getElementById("thumbnail-file");
+const previewFrameBtn = document.getElementById("preview-frame-btn");
+const framePreview = document.getElementById("frame-preview");
+const framePreviewImg = document.getElementById("frame-preview-img");
+const thumbnailPreview = document.getElementById("thumbnail-preview");
+const thumbnailPreviewImg = document.getElementById("thumbnail-preview-img");
+const videoFileInput = document.getElementById("video-file");
+
+// Show/hide thumbnail fieldset based on file type
+if (thumbnailFieldset) {
+    const fileTypeRadios = document.querySelectorAll('input[name="file_type"]');
+    fileTypeRadios.forEach(radio => {
+        radio.addEventListener("change", () => {
+            if (radio.value === "video") {
+                thumbnailFieldset.style.display = "block";
+            } else {
+                thumbnailFieldset.style.display = "none";
+            }
+        });
+    });
+    
+    // Check initial state
+    const selectedFileType = document.querySelector('input[name="file_type"]:checked')?.value;
+    if (selectedFileType === "video") {
+        thumbnailFieldset.style.display = "block";
+    }
+}
+
+// Toggle thumbnail source options
+if (thumbnailVideoFrame && thumbnailUpload) {
+    thumbnailVideoFrame.addEventListener("change", () => {
+        if (thumbnailVideoFrame.checked) {
+            videoFrameSelector.style.display = "block";
+            thumbnailUploadContainer.style.display = "none";
+        }
+    });
+    
+    thumbnailUpload.addEventListener("change", () => {
+        if (thumbnailUpload.checked) {
+            videoFrameSelector.style.display = "none";
+            thumbnailUploadContainer.style.display = "block";
+        }
+    });
+}
+
+// Preview frame from video
+if (previewFrameBtn && videoFileInput) {
+    previewFrameBtn.addEventListener("click", async () => {
+        const file = videoFileInput.files?.[0];
+        if (!file) {
+            alert("Veuillez d'abord sélectionner une vidéo.");
+            return;
+        }
+        
+        const time = parseFloat(document.getElementById("thumbnail-time")?.value || 0);
+        
+        try {
+            // Create a video element to extract frame
+            const video = document.createElement("video");
+            video.preload = "metadata";
+            video.src = URL.createObjectURL(file);
+            
+            video.onloadedmetadata = () => {
+                video.currentTime = Math.min(time, video.duration || 0);
+            };
+            
+            video.onseeked = () => {
+                const canvas = document.createElement("canvas");
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+                const ctx = canvas.getContext("2d");
+                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                
+                framePreviewImg.src = canvas.toDataURL("image/png");
+                framePreview.style.display = "block";
+                
+                URL.revokeObjectURL(video.src);
+            };
+            
+            video.onerror = () => {
+                alert("Erreur lors de la lecture de la vidéo.");
+                URL.revokeObjectURL(video.src);
+            };
+        } catch (err) {
+            console.error("Error previewing frame:", err);
+            alert("Erreur lors de l'extraction du frame.");
+        }
+    });
+}
+
+// Preview uploaded thumbnail
+if (thumbnailFileInput) {
+    thumbnailFileInput.addEventListener("change", (e) => {
+        const file = e.target.files?.[0];
+        if (file && file.type.startsWith("image/")) {
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                thumbnailPreviewImg.src = event.target.result;
+                thumbnailPreview.style.display = "block";
+            };
+            reader.readAsDataURL(file);
+        } else {
+            thumbnailPreview.style.display = "none";
+        }
+    });
+}
 
 const uploadForm = document.getElementById("upload-form");
 if (uploadForm && isEditor) {
@@ -2014,6 +2133,24 @@ if (uploadForm && isEditor) {
     // Add TTS speed multiplier
     const ttsSpeed = form.querySelector('input[name="tts_speed_multiplier"]')?.value || "1.0";
     formData.append("tts_speed_multiplier", ttsSpeed);
+    
+    // Add thumbnail data if video and thumbnail is selected
+    if (fileType === "video") {
+        const thumbnailSource = form.querySelector('input[name="thumbnail_source"]:checked')?.value;
+        if (thumbnailSource) {
+            formData.append("thumbnail_source", thumbnailSource);
+            
+            if (thumbnailSource === "video_frame") {
+                const thumbnailTime = document.getElementById("thumbnail-time")?.value || "0";
+                formData.append("thumbnail_time", thumbnailTime);
+            } else if (thumbnailSource === "upload") {
+                const thumbnailFile = document.getElementById("thumbnail-file")?.files?.[0];
+                if (thumbnailFile) {
+                    formData.append("thumbnail_file", thumbnailFile);
+                }
+            }
+        }
+    }
 
     // Add folder path - use folder privacy if folder is selected
     const folderPath = document.getElementById("folder-path-select")?.value || "";
