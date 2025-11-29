@@ -688,21 +688,23 @@ async def upload_video(
                 logger.info(f"Extracted thumbnail frame at {time_seconds}s from video {video_id}")
             elif thumbnail_source == "upload" and thumbnail_file:
                 # Save uploaded thumbnail
+                logger.info(f"Processing uploaded thumbnail for video {video_id}, type: {type(thumbnail_file)}")
                 if hasattr(thumbnail_file, 'read'):
                     # It's an UploadFile object
                     content = await thumbnail_file.read()
                     with open(thumbnail_path, "wb") as f:
                         f.write(content)
-                else:
-                    # It's already bytes or a file-like object
+                    logger.info(f"Saved uploaded thumbnail for video {video_id} to {thumbnail_path}, size: {len(content)} bytes")
+                elif hasattr(thumbnail_file, 'filename') and thumbnail_file.filename:
+                    # It's a file from form_data
+                    content = await thumbnail_file.read()
                     with open(thumbnail_path, "wb") as f:
-                        if hasattr(thumbnail_file, 'file'):
-                            shutil.copyfileobj(thumbnail_file.file, f)
-                        else:
-                            f.write(thumbnail_file)
-                logger.info(f"Saved uploaded thumbnail for video {video_id}")
+                        f.write(content)
+                    logger.info(f"Saved uploaded thumbnail for video {video_id} to {thumbnail_path}, size: {len(content)} bytes")
+                else:
+                    logger.warning(f"Thumbnail file is not a valid UploadFile object: {type(thumbnail_file)}")
         except Exception as e:
-            logger.warning(f"Failed to process thumbnail for video {video_id}: {e}")
+            logger.exception(f"Failed to process thumbnail for video {video_id}: {e}")
             # Don't fail the upload if thumbnail processing fails
 
     job_store.create_job(video_id, file.filename)
@@ -997,10 +999,8 @@ async def get_video_thumbnail(request: Request, video_id: str):
                 break
         else:
             logger.debug(f"Thumbnail not found for video {video_id} in {video_dir}")
-            # Return a transparent 1x1 pixel instead of 404 to prevent broken image icon
-            from fastapi.responses import Response
-            transparent_png = b'\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\nIDATx\x9cc\x00\x01\x00\x00\x05\x00\x01\r\n-\xdb\x00\x00\x00\x00IEND\xaeB`\x82'
-            return Response(content=transparent_png, media_type="image/png")
+            # Return 404 instead of transparent pixel so frontend can handle it properly
+            return JSONResponse({"error": "Thumbnail not found"}, status_code=404)
     
     logger.debug(f"Serving thumbnail for video {video_id} from {thumbnail_path}")
     return FileResponse(thumbnail_path, media_type="image/jpeg")

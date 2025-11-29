@@ -274,7 +274,15 @@ function createVideoItem(video) {
                 thumbnailContainer.style.display = "none";
             };
             thumbnailImg.onload = function() {
-                console.log("Thumbnail loaded successfully for video:", video.id);
+                // Check if image is actually a valid thumbnail (not the transparent placeholder)
+                // The transparent placeholder is 1x1 pixel, so if the natural width/height is 1, hide it
+                if (this.naturalWidth === 1 && this.naturalHeight === 1) {
+                    console.log("Thumbnail is transparent placeholder, hiding for video:", video.id);
+                    this.style.display = "none";
+                    thumbnailContainer.style.display = "none";
+                } else {
+                    console.log("Thumbnail loaded successfully for video:", video.id, "size:", this.naturalWidth, "x", this.naturalHeight);
+                }
             };
             thumbnailImg.onclick = () => {
                 // Click to play video
