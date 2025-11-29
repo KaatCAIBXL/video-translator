@@ -984,6 +984,7 @@ async def get_video_thumbnail(request: Request, video_id: str):
     """Get the thumbnail for a video."""
     video_dir = _find_video_directory(video_id)
     if not video_dir:
+        logger.warning(f"Thumbnail requested for video {video_id} but directory not found")
         return JSONResponse({"error": "Video not found"}, status_code=404)
     
     thumbnail_path = video_dir / "thumbnail.jpg"
@@ -995,8 +996,13 @@ async def get_video_thumbnail(request: Request, video_id: str):
                 thumbnail_path = alt_path
                 break
         else:
-            return JSONResponse({"error": "Thumbnail not found"}, status_code=404)
+            logger.debug(f"Thumbnail not found for video {video_id} in {video_dir}")
+            # Return a transparent 1x1 pixel instead of 404 to prevent broken image icon
+            from fastapi.responses import Response
+            transparent_png = b'\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\nIDATx\x9cc\x00\x01\x00\x00\x05\x00\x01\r\n-\xdb\x00\x00\x00\x00IEND\xaeB`\x82'
+            return Response(content=transparent_png, media_type="image/png")
     
+    logger.debug(f"Serving thumbnail for video {video_id} from {thumbnail_path}")
     return FileResponse(thumbnail_path, media_type="image/jpeg")
 
 

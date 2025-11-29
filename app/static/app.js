@@ -269,8 +269,12 @@ function createVideoItem(video) {
             thumbnailImg.style.cursor = "pointer";
             thumbnailImg.onerror = function() {
                 // Hide thumbnail if it doesn't exist
+                console.log("Thumbnail not found for video:", video.id);
                 this.style.display = "none";
                 thumbnailContainer.style.display = "none";
+            };
+            thumbnailImg.onload = function() {
+                console.log("Thumbnail loaded successfully for video:", video.id);
             };
             thumbnailImg.onclick = () => {
                 // Click to play video
