@@ -130,6 +130,7 @@ def _load_subscription_replacements() -> List[Tuple[str, str]]:
         ("Aposodic", "Apostolique"),
         ("cette tombe de Dieu", "cet homme de Dieu"),
         ("la piscine de silhouette", "la piscine de Siloé"),
+        ("piscine de soirée", "piscine de Siloé"),
         ("Sarah", "Chara"),
         ("Sara", "Chara"),
         ("Beta", "BETACH"),
