@@ -76,6 +76,9 @@ DEEPL_LANG_MAP = {
 _openai_client: Optional[OpenAI] = None
 _deepl_translator: Optional[deepl.Translator] = None
 
+# Cache voor subscription-correcties uit bestand
+_subscription_replacements: Optional[List[Tuple[str, str]]] = None
+
 
 def get_openai_client() -> OpenAI:
     """Get or create OpenAI client."""
@@ -100,6 +103,106 @@ def get_deepl_translator() -> Optional[deepl.Translator]:
                 logger.warning(f"Failed to initialize DeepL translator: {e}")
                 return None
     return _deepl_translator
+
+
+# ============================================================
+# VASTE HANDMATIGE CORRECTIES (SUBSCRIPTION-CORRECTIES)
+# ============================================================
+def _load_subscription_replacements() -> List[Tuple[str, str]]:
+    """
+    Laad de vaste correcties uit een optioneel tekstbestand
+    `subscription_corrections.txt` in dezelfde map als dit bestand.
+
+    Formaat per regel:
+        fout -> correct
+
+    Regels die leeg zijn of met '#' beginnen worden genegeerd.
+    Als het bestand ontbreekt, vallen we terug op de ingebouwde lijst.
+    """
+    # Ingebouwde defaults (zoals in je voorbeeldbestand)
+    defaults: List[Tuple[str, str]] = [
+        ("pape", "Pasteur Anaclet"),
+        ("Pape", "Pasteur Anaclet"),
+        ("passeur", "pasteur"),
+        ("à la clé", "Anaclat"),
+        ("anacaap", "Anaclat"),
+        ("Anacaap", "Anaclat"),
+        ("Aposodic", "Apostolique"),
+        ("cette tombe de Dieu", "cet homme de Dieu"),
+        ("la piscine de silhouette", "la piscine de Siloé"),
+        ("Sarah", "Chara"),
+        ("Sara", "Chara"),
+        ("Beta", "BETACH"),
+        ("bèta", "BETACH"),
+        ("bêta", "BETACH"),
+        ("Bêta", "BETACH"),
+        ("Betah", "BETACH"),
+        ("Béthane", "BETACH"),
+        ("Béthame", "BETACH"),
+        ("d'Ecky", "de Bétach"),
+        ("D'Ecky", "de Bétach"),
+        ("enchantement", "changement"),
+    ]
+
+    cfg_path = Path(__file__).resolve().parent / "subscription_corrections.txt"
+    if not cfg_path.exists():
+        return defaults
+
+    replacements: List[Tuple[str, str]] = []
+    try:
+        for raw_line in cfg_path.read_text(encoding="utf-8").splitlines():
+            line = raw_line.strip()
+            if not line or line.startswith("#"):
+                continue
+            if "->" not in line:
+                continue
+            wrong, correct = line.split("->", 1)
+            wrong = wrong.strip()
+            correct = correct.strip()
+            if wrong and correct:
+                replacements.append((wrong, correct))
+    except Exception:
+        # Bij een probleem met het bestand gewoon de defaults gebruiken
+        logger.exception("Kon subscription_corrections.txt niet inlezen, gebruik defaults")
+        return defaults or []
+
+    return replacements or defaults
+
+
+def _apply_subscription_corrections(text: str) -> str:
+    """
+    Pas vaste woord-/zinsniveaucorrecties toe vóór de AI-correctie.
+
+    Deze functie is bedoeld voor veelvoorkomende fouten in ondertitels /
+    transcripties (bijv. namen of bijbelse termen) die we altijd op een
+    vaste manier willen herschrijven nog vóór GPT-contextcorrectie.
+
+    Let op:
+    - De vervangingen zijn *case‑gevoelig* en worden alleen toegepast
+      op exacte woord-/zinsdelen.
+    - Sommige varianten (bijv. 'pape' en 'Pape') staan daarom elk apart
+      in de lijst.
+    """
+
+    if not text:
+        return text
+
+    global _subscription_replacements
+    if _subscription_replacements is None:
+        _subscription_replacements = _load_subscription_replacements()
+
+    # Langste patronen eerst, zodat langere zinsdelen voorrang krijgen.
+    replacements = sorted(
+        _subscription_replacements, key=lambda item: len(item[0]), reverse=True
+    )
+
+    result = text
+    for wrong, correct in replacements:
+        # Gebruik woordgrenzen zodat we geen delen van langere woorden vervangen.
+        pattern = re.compile(rf"\b{re.escape(wrong)}\b")
+        result = pattern.sub(correct, result)
+
+    return result
 
 
 # ============================================================
@@ -201,14 +304,23 @@ def transcribe_long_audio(audio_path: Path, language: str = "fr", max_workers: i
         if idx in results and results[idx]:
             full_text_parts.append(results[idx])
     
-    return "\n".join(full_text_parts).strip()
+    full_text = "\n".join(full_text_parts).strip()
+    if full_text:
+        full_text = _apply_subscription_corrections(full_text)
+    return full_text
 
 
 # ============================================================
 # TEXT IMPROVEMENT (GPT)
 # ============================================================
 def improve_text_with_ai(text: str, language: str = "fr") -> str:
-    """Improve text using GPT-4."""
+    """Improve text using GPT-4.
+
+    We always passen eerst de vaste handmatige 'subscription'-correcties toe,
+    zodat namen en vaste uitdrukkingen al juist staan vóór de AI-correctie.
+    """
+    # Eerst vaste handmatige vervangingen toepassen
+    text = _apply_subscription_corrections(text)
     prompt = (
         f"Améliore le texte suivant en {language} sans changer le sens. "
         "Corrige grammaire, style, cohérence. "
