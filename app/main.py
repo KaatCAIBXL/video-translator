@@ -58,6 +58,12 @@ except Exception as e:
     logging.warning(f"Could not import character_service: {e}")
     character_service = None
 
+try:
+    from .message_service import message_service
+except Exception as e:
+    logging.warning(f"Could not import message_service: {e}")
+    message_service = None
+
 app = FastAPI()
 ensure_dirs()
 
@@ -2754,6 +2760,152 @@ async def delete_character_endpoint(request: Request, character_id: str):
         return JSONResponse(
             {"error": "Personnage non trouvé."},
             status_code=404
+        )
+
+
+# ==================== ADMIN MESSAGES ROUTES ====================
+
+@app.post("/api/messages")
+async def create_message_to_admin(request: Request):
+    """Send a message to admin."""
+    try:
+        form = await request.form()
+        message = form.get("message", "").strip()
+        
+        if not message:
+            return JSONResponse(
+                {"error": "Le message ne peut pas être vide."},
+                status_code=400
+            )
+        
+        if not message_service:
+            return JSONResponse(
+                {"error": "Service de messages non disponible."},
+                status_code=503
+            )
+        
+        role = get_role_from_request(request) or "viewer"
+        
+        # Create message
+        message_data = await run_in_threadpool(
+            message_service.create_message,
+            sender_role=role,
+            message=message,
+            sender_name=None
+        )
+        
+        return JSONResponse({
+            "message": "Message envoyé avec succès.",
+            "id": message_data["id"]
+        })
+        
+    except Exception as e:
+        logger.error(f"Error creating message: {e}")
+        return JSONResponse(
+            {"error": f"Erreur lors de l'envoi: {str(e)}"},
+            status_code=500
+        )
+
+
+@app.get("/api/messages")
+async def get_admin_messages(request: Request):
+    """Get all admin messages (admin only)."""
+    if not can_read_admin_messages(request):
+        return JSONResponse(
+            {"error": "Seuls les administrateurs peuvent voir les messages."},
+            status_code=403
+        )
+    
+    if not message_service:
+        return JSONResponse(
+            {"error": "Service de messages non disponible."},
+            status_code=503
+        )
+    
+    try:
+        unread_only = request.query_params.get("unread_only", "false").lower() == "true"
+        messages = await run_in_threadpool(
+            message_service.get_messages,
+            unread_only=unread_only
+        )
+        return JSONResponse(messages)
+    except Exception as e:
+        logger.error(f"Error getting messages: {e}")
+        return JSONResponse(
+            {"error": f"Erreur lors de la récupération des messages: {str(e)}"},
+            status_code=500
+        )
+
+
+@app.put("/api/messages/{message_id}/read")
+async def mark_message_as_read(request: Request, message_id: str):
+    """Mark a message as read (admin only)."""
+    if not can_read_admin_messages(request):
+        return JSONResponse(
+            {"error": "Seuls les administrateurs peuvent marquer les messages comme lus."},
+            status_code=403
+        )
+    
+    if not message_service:
+        return JSONResponse(
+            {"error": "Service de messages non disponible."},
+            status_code=503
+        )
+    
+    try:
+        success = await run_in_threadpool(
+            message_service.mark_as_read,
+            message_id=message_id
+        )
+        
+        if success:
+            return JSONResponse({"message": "Message marqué comme lu."})
+        else:
+            return JSONResponse(
+                {"error": "Message non trouvé."},
+                status_code=404
+            )
+    except Exception as e:
+        logger.error(f"Error marking message as read: {e}")
+        return JSONResponse(
+            {"error": f"Erreur: {str(e)}"},
+            status_code=500
+        )
+
+
+@app.delete("/api/messages/{message_id}")
+async def delete_admin_message(request: Request, message_id: str):
+    """Delete a message (admin only)."""
+    if not can_read_admin_messages(request):
+        return JSONResponse(
+            {"error": "Seuls les administrateurs peuvent supprimer les messages."},
+            status_code=403
+        )
+    
+    if not message_service:
+        return JSONResponse(
+            {"error": "Service de messages non disponible."},
+            status_code=503
+        )
+    
+    try:
+        success = await run_in_threadpool(
+            message_service.delete_message,
+            message_id=message_id
+        )
+        
+        if success:
+            return JSONResponse({"message": "Message supprimé."})
+        else:
+            return JSONResponse(
+                {"error": "Message non trouvé."},
+                status_code=404
+            )
+    except Exception as e:
+        logger.error(f"Error deleting message: {e}")
+        return JSONResponse(
+            {"error": f"Erreur: {str(e)}"},
+            status_code=500
         )
 
 
