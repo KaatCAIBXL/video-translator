@@ -254,8 +254,11 @@ async def select_role(request: Request):
     if module == "live-translator":
         return RedirectResponse(url="/live-translator", status_code=302)
     elif module == "saints":
-        # TODO: Implement saints module
-        return templates.TemplateResponse("select_role.html", {"request": request})
+        # Set viewer role and redirect to main app (for now, later can have dedicated saints page)
+        session_id = create_session("viewer")
+        response = RedirectResponse(url="/", status_code=302)
+        response.set_cookie(key="session_id", value=session_id, httponly=True, max_age=86400)
+        return response
     elif module == "itech":
         # Set editor role and redirect to main app
         session_id = create_session("editor")
