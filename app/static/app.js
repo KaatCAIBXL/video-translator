@@ -877,54 +877,53 @@ function renderFolder(folderData, container, level = 0) {
     container.appendChild(folderDiv);
 }
 
+// New library functions with tabs
+let allLibraryItems = [];
+
 async function fetchVideos() {
-    const container = document.getElementById("video-list");
-    container.innerHTML = "";
-    
-    let videos = [];
-    let folders = [];
+    let items = [];
     
     try {
         const videosRes = await fetch("/api/videos");
         if (!videosRes.ok) {
             throw new Error(`Request failed with status ${videosRes.status}`);
         }
-        videos = await videosRes.json();
+        items = await videosRes.json();
+        allLibraryItems = items;
         
         // Always fetch folders (for both editors and viewers, but viewers only see public ones)
         const foldersRes = await fetch("/api/folders");
         if (foldersRes.ok) {
-            folders = await foldersRes.json();
+            const folders = await foldersRes.json();
+            // Store folders for later use if needed
+            window.libraryFolders = folders;
         }
     } catch (error) {
-        console.error("Failed to load processed videos", error);
-        container.textContent = "Impossible de charger la liste des vidéos pour le moment.";
+        console.error("Failed to load library items", error);
+        showLibraryError();
         return;
     }
-
-    // Build folder tree (even if no videos exist, show folders)
-    const { tree, rootVideos } = buildFolderTree(videos, folders);
     
-    // Render root folders (always show, even if empty)
-    Object.values(tree).forEach(folderData => {
-        if (folderData.type === 'folder') {
-            renderFolder(folderData, container, 0);
-        }
-    });
+    // Filter items by type and render
+    const videos = items.filter(item => (item.file_type || "video") === "video");
+    const audios = items.filter(item => item.file_type === "audio");
+    const texts = items.filter(item => item.file_type === "text");
     
-    // Render root videos (videos without folder)
-    rootVideos.forEach(video => {
-        const videoDiv = createVideoItem(video);
-        container.appendChild(videoDiv);
-    });
+    renderVideosGrid(videos);
+    renderAudiosList(audios);
+    renderTextsList(texts);
     
-    // Show message if no videos and no folders
-    if (rootVideos.length === 0 && Object.keys(tree).length === 0) {
-        container.textContent = "Aucune vidéo n'a encore été traitée.";
+    // Refresh folder dropdown after fetching items
+    if (typeof populateFolderDropdown === 'function') {
+        populateFolderDropdown();
     }
-    
-    // Refresh folder dropdown after fetching videos
-    populateFolderDropdown();
+}
+
+function showLibraryError() {
+    document.getElementById("videos-empty").textContent = "Impossible de charger la bibliothèque pour le moment.";
+    document.getElementById("videos-empty").style.display = "block";
+    document.getElementById("audios-empty").textContent = "Impossible de charger la bibliothèque pour le moment.";
+    document.getElementById("texts-empty").textContent = "Impossible de charger la bibliothèque pour le moment.";
 }
 
 function clearTracks(videoEl) {
@@ -4290,9 +4289,9 @@ if (uploadVideoForm) {
                     document.getElementById('upload-video-modal').style.display = 'none';
                     statusEl.innerHTML = '';
                     uploadVideoForm.reset();
-                    // Reload video list
-                    if (typeof loadVideos === 'function') {
-                        loadVideos();
+                    // Reload library items
+                    if (typeof fetchVideos === 'function') {
+                        fetchVideos();
                     }
                 }, 2000);
             } else {
@@ -4342,8 +4341,8 @@ if (uploadAudioForm) {
                     document.getElementById('upload-audio-modal').style.display = 'none';
                     statusEl.innerHTML = '';
                     uploadAudioForm.reset();
-                    if (typeof loadVideos === 'function') {
-                        loadVideos();
+                    if (typeof fetchVideos === 'function') {
+                        fetchVideos();
                     }
                 }, 2000);
             } else {
@@ -4393,8 +4392,8 @@ if (uploadTextForm) {
                     document.getElementById('upload-text-modal').style.display = 'none';
                     statusEl.innerHTML = '';
                     uploadTextForm.reset();
-                    if (typeof loadVideos === 'function') {
-                        loadVideos();
+                    if (typeof fetchVideos === 'function') {
+                        fetchVideos();
                     }
                 }, 2000);
             } else {
@@ -4404,5 +4403,401 @@ if (uploadTextForm) {
             statusEl.innerHTML = `<div style="color: red;">❌ Erreur: ${err.message}</div>`;
         }
     });
+}
+
+// ============================================================
+// NEW LIBRARY STRUCTURE (NETFLIX/SPOTIFY/WATTPAD STYLE)
+// ============================================================
+
+// Render videos in Netflix-style grid
+function renderVideosGrid(videos) {
+    const grid = document.getElementById("videos-grid");
+    const empty = document.getElementById("videos-empty");
+    
+    if (!grid || !empty) return;
+    
+    grid.innerHTML = "";
+    
+    if (videos.length === 0) {
+        empty.style.display = "block";
+        grid.style.display = "none";
+        return;
+    }
+    
+    empty.style.display = "none";
+    grid.style.display = "grid";
+    
+    videos.forEach(video => {
+        const card = document.createElement("div");
+        card.className = "video-card";
+        card.style.cursor = "pointer";
+        card.style.position = "relative";
+        card.style.borderRadius = "8px";
+        card.style.overflow = "hidden";
+        card.style.transition = "transform 0.2s";
+        card.style.boxShadow = "0 2px 8px rgba(0,0,0,0.1)";
+        
+        card.onmouseenter = () => {
+            card.style.transform = "scale(1.05)";
+            card.style.zIndex = "10";
+        };
+        card.onmouseleave = () => {
+            card.style.transform = "scale(1)";
+            card.style.zIndex = "1";
+        };
+        
+        // Thumbnail
+        const thumbnailContainer = document.createElement("div");
+        thumbnailContainer.style.width = "100%";
+        thumbnailContainer.style.height = "280px";
+        thumbnailContainer.style.backgroundColor = "#000";
+        thumbnailContainer.style.position = "relative";
+        thumbnailContainer.style.overflow = "hidden";
+        
+        const thumbnailImg = document.createElement("img");
+        thumbnailImg.src = `/videos/${video.id}/thumbnail?t=${Date.now()}`;
+        thumbnailImg.alt = video.filename;
+        thumbnailImg.style.width = "100%";
+        thumbnailImg.style.height = "100%";
+        thumbnailImg.style.objectFit = "cover";
+        thumbnailImg.onerror = () => {
+            thumbnailContainer.style.backgroundColor = "#333";
+            thumbnailContainer.innerHTML = '<div style="display: flex; align-items: center; justify-content: center; height: 100%; color: white; font-size: 48px;">🎬</div>';
+        };
+        
+        thumbnailContainer.appendChild(thumbnailImg);
+        
+        // Private badge
+        if (video.is_private) {
+            const privateBadge = document.createElement("div");
+            privateBadge.textContent = "PRIVÉ";
+            privateBadge.style.position = "absolute";
+            privateBadge.style.top = "10px";
+            privateBadge.style.right = "10px";
+            privateBadge.style.backgroundColor = "#ffc107";
+            privateBadge.style.color = "#000";
+            privateBadge.style.padding = "4px 8px";
+            privateBadge.style.borderRadius = "4px";
+            privateBadge.style.fontSize = "12px";
+            privateBadge.style.fontWeight = "bold";
+            thumbnailContainer.appendChild(privateBadge);
+        }
+        
+        card.appendChild(thumbnailContainer);
+        
+        // Title
+        const titleDiv = document.createElement("div");
+        titleDiv.style.padding = "12px";
+        titleDiv.style.backgroundColor = "#fff";
+        
+        const title = document.createElement("div");
+        title.textContent = video.filename;
+        title.style.fontWeight = "bold";
+        title.style.fontSize = "14px";
+        title.style.overflow = "hidden";
+        title.style.textOverflow = "ellipsis";
+        title.style.whiteSpace = "nowrap";
+        
+        titleDiv.appendChild(title);
+        card.appendChild(titleDiv);
+        
+        // Click to open detail modal
+        card.onclick = () => openItemDetailModal(video);
+        
+        grid.appendChild(card);
+    });
+}
+
+// Render audios in Spotify-style list
+function renderAudiosList(audios) {
+    const list = document.getElementById("audios-list");
+    const empty = document.getElementById("audios-empty");
+    
+    if (!list || !empty) return;
+    
+    list.innerHTML = "";
+    
+    if (audios.length === 0) {
+        empty.style.display = "block";
+        list.style.display = "none";
+        return;
+    }
+    
+    empty.style.display = "none";
+    list.style.display = "flex";
+    
+    audios.forEach(audio => {
+        const item = document.createElement("div");
+        item.className = "audio-item";
+        item.style.display = "flex";
+        item.style.alignItems = "center";
+        item.style.padding = "12px 16px";
+        item.style.border = "1px solid #ddd";
+        item.style.borderRadius = "8px";
+        item.style.cursor = "pointer";
+        item.style.backgroundColor = "#fff";
+        item.style.transition = "background-color 0.2s";
+        
+        item.onmouseenter = () => {
+            item.style.backgroundColor = "#f5f5f5";
+        };
+        item.onmouseleave = () => {
+            item.style.backgroundColor = "#fff";
+        };
+        
+        // Icon
+        const icon = document.createElement("div");
+        icon.textContent = "🎵";
+        icon.style.fontSize = "24px";
+        icon.style.marginRight = "16px";
+        icon.style.width = "40px";
+        icon.style.textAlign = "center";
+        item.appendChild(icon);
+        
+        // Title
+        const title = document.createElement("div");
+        title.style.flex = "1";
+        title.style.fontWeight = "500";
+        title.style.fontSize = "16px";
+        
+        const titleText = document.createElement("div");
+        titleText.textContent = audio.filename;
+        title.appendChild(titleText);
+        
+        if (audio.is_private) {
+            const privateBadge = document.createElement("span");
+            privateBadge.textContent = " [PRIVÉ]";
+            privateBadge.style.color = "#ffc107";
+            privateBadge.style.fontSize = "12px";
+            titleText.appendChild(privateBadge);
+        }
+        
+        item.appendChild(title);
+        
+        // Click to open detail modal
+        item.onclick = () => openItemDetailModal(audio);
+        
+        list.appendChild(item);
+    });
+}
+
+// Render texts in Wattpad-style list
+function renderTextsList(texts) {
+    const list = document.getElementById("texts-list");
+    const empty = document.getElementById("texts-empty");
+    
+    if (!list || !empty) return;
+    
+    list.innerHTML = "";
+    
+    if (texts.length === 0) {
+        empty.style.display = "block";
+        list.style.display = "none";
+        return;
+    }
+    
+    empty.style.display = "none";
+    list.style.display = "flex";
+    
+    texts.forEach(text => {
+        const item = document.createElement("div");
+        item.className = "text-item";
+        item.style.display = "flex";
+        item.style.alignItems = "center";
+        item.style.padding = "16px";
+        item.style.border = "1px solid #e0e0e0";
+        item.style.borderRadius = "8px";
+        item.style.cursor = "pointer";
+        item.style.backgroundColor = "#fff";
+        item.style.boxShadow = "0 1px 3px rgba(0,0,0,0.1)";
+        item.style.transition = "box-shadow 0.2s";
+        
+        item.onmouseenter = () => {
+            item.style.boxShadow = "0 2px 8px rgba(0,0,0,0.15)";
+        };
+        item.onmouseleave = () => {
+            item.style.boxShadow = "0 1px 3px rgba(0,0,0,0.1)";
+        };
+        
+        // Icon
+        const icon = document.createElement("div");
+        icon.textContent = "📄";
+        icon.style.fontSize = "28px";
+        icon.style.marginRight = "16px";
+        icon.style.width = "48px";
+        icon.style.textAlign = "center";
+        item.appendChild(icon);
+        
+        // Title
+        const title = document.createElement("div");
+        title.style.flex = "1";
+        
+        const titleText = document.createElement("div");
+        titleText.textContent = text.filename;
+        titleText.style.fontWeight = "600";
+        titleText.style.fontSize = "18px";
+        titleText.style.marginBottom = "4px";
+        title.appendChild(titleText);
+        
+        if (text.is_private) {
+            const privateBadge = document.createElement("span");
+            privateBadge.textContent = " [PRIVÉ]";
+            privateBadge.style.color = "#ffc107";
+            privateBadge.style.fontSize = "14px";
+            titleText.appendChild(privateBadge);
+        }
+        
+        // Additional info
+        const info = document.createElement("div");
+        info.style.fontSize = "14px";
+        info.style.color = "#666";
+        info.textContent = "Document texte";
+        title.appendChild(info);
+        
+        item.appendChild(title);
+        
+        // Click to open detail modal
+        item.onclick = () => openItemDetailModal(text);
+        
+        list.appendChild(item);
+    });
+}
+
+// Tab switching functionality
+function initLibraryTabs() {
+    const tabs = document.querySelectorAll('.library-tab');
+    const tabContents = document.querySelectorAll('.library-tab-content');
+    
+    tabs.forEach(tab => {
+        tab.addEventListener('click', () => {
+            const targetTab = tab.getAttribute('data-tab');
+            
+            // Update tab styles
+            tabs.forEach(t => {
+                t.classList.remove('active');
+                t.style.borderBottomColor = 'transparent';
+                t.style.color = '#666';
+            });
+            tab.classList.add('active');
+            tab.style.borderBottomColor = '#007bff';
+            tab.style.color = '#007bff';
+            
+            // Show/hide tab contents
+            tabContents.forEach(content => {
+                content.style.display = 'none';
+            });
+            const targetContent = document.getElementById(`${targetTab}-tab`);
+            if (targetContent) {
+                targetContent.style.display = 'block';
+            }
+        });
+    });
+}
+
+// Open detail modal for an item
+function openItemDetailModal(item) {
+    const modal = document.getElementById("item-detail-modal");
+    const content = document.getElementById("item-detail-content");
+    
+    if (!modal || !content) return;
+    
+    const fileType = item.file_type || "video";
+    
+    // Build content based on item type
+    let html = `<h2 style="margin-top: 0;">${item.filename}</h2>`;
+    
+    if (fileType === "video") {
+        html += renderVideoDetail(item);
+    } else if (fileType === "audio") {
+        html += renderAudioDetail(item);
+    } else if (fileType === "text") {
+        html += renderTextDetail(item);
+    }
+    
+    content.innerHTML = html;
+    modal.style.display = "block";
+    
+    // Close modal handlers
+    const closeBtn = document.getElementById("close-detail-modal");
+    if (closeBtn) {
+        closeBtn.onclick = () => {
+            modal.style.display = "none";
+        };
+    }
+    
+    modal.onclick = (e) => {
+        if (e.target === modal) {
+            modal.style.display = "none";
+        }
+    };
+}
+
+// Render video detail content
+function renderVideoDetail(video) {
+    let html = `<div style="margin-bottom: 20px;">`;
+    
+    // Thumbnail
+    html += `<img src="/videos/${video.id}/thumbnail?t=${Date.now()}" alt="${video.filename}" style="max-width: 100%; border-radius: 8px; margin-bottom: 20px;" onerror="this.style.display='none'">`;
+    
+    // Play button - use existing playVideo function
+    const videoJson = JSON.stringify(video).replace(/'/g, "\\'");
+    html += `<button onclick="playVideo(${videoJson}, {}); document.getElementById('item-detail-modal').style.display='none';" style="padding: 12px 24px; background: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; margin-right: 10px;">▶️ Lire</button>`;
+    
+    // Editor controls if applicable
+    if (isEditor) {
+        html += `<button onclick="renameVideo('${video.id}'); document.getElementById('item-detail-modal').style.display='none';" style="padding: 12px 24px; background: #6c757d; color: white; border: none; border-radius: 5px; cursor: pointer; margin-right: 10px;">✏️ Renommer</button>`;
+        html += `<button onclick="if(confirm('Êtes-vous sûr de vouloir supprimer ce fichier?')) { deleteVideo('${video.id}'); document.getElementById('item-detail-modal').style.display='none'; }" style="padding: 12px 24px; background: #dc3545; color: white; border: none; border-radius: 5px; cursor: pointer;">🗑️ Supprimer</button>`;
+    }
+    
+    html += `</div>`;
+    
+    return html;
+}
+
+// Render audio detail content
+function renderAudioDetail(audio) {
+    let html = `<div>`;
+    html += `<p>Fichier audio</p>`;
+    html += `<button onclick="alert('Audio playback coming soon')" style="padding: 12px 24px; background: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: bold;">▶️ Écouter</button>`;
+    
+    if (isEditor) {
+        html += `<button onclick="renameVideo('${audio.id}'); document.getElementById('item-detail-modal').style.display='none';" style="padding: 12px 24px; background: #6c757d; color: white; border: none; border-radius: 5px; cursor: pointer; margin-left: 10px;">✏️ Renommer</button>`;
+        html += `<button onclick="if(confirm('Êtes-vous sûr de vouloir supprimer ce fichier?')) { deleteVideo('${audio.id}'); document.getElementById('item-detail-modal').style.display='none'; }" style="padding: 12px 24px; background: #dc3545; color: white; border: none; border-radius: 5px; cursor: pointer; margin-left: 10px;">🗑️ Supprimer</button>`;
+    }
+    
+    html += `</div>`;
+    return html;
+}
+
+// Render text detail content
+function renderTextDetail(text) {
+    let html = `<div>`;
+    html += `<p>Document texte</p>`;
+    html += `<button onclick="alert('Text reading coming soon')" style="padding: 12px 24px; background: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: bold;">📖 Lire</button>`;
+    
+    if (isEditor) {
+        html += `<button onclick="renameVideo('${text.id}'); document.getElementById('item-detail-modal').style.display='none';" style="padding: 12px 24px; background: #6c757d; color: white; border: none; border-radius: 5px; cursor: pointer; margin-left: 10px;">✏️ Renommer</button>`;
+        html += `<button onclick="if(confirm('Êtes-vous sûr de vouloir supprimer ce fichier?')) { deleteVideo('${text.id}'); document.getElementById('item-detail-modal').style.display='none'; }" style="padding: 12px 24px; background: #dc3545; color: white; border: none; border-radius: 5px; cursor: pointer; margin-left: 10px;">🗑️ Supprimer</button>`;
+    }
+    
+    html += `</div>`;
+    return html;
+}
+
+// Initialize tabs and load library when DOM is ready
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => {
+        initLibraryTabs();
+        // Load library items when page loads
+        if (typeof fetchVideos === 'function') {
+            fetchVideos();
+        }
+    });
+} else {
+    initLibraryTabs();
+    // Load library items when page loads
+    if (typeof fetchVideos === 'function') {
+        fetchVideos();
+    }
 }
 
