@@ -284,173 +284,301 @@
      <div id="text-to-video-status" style="margin-top: 15px; padding: 10px; display: none;"></div>
  </section>
 
- {% if is_editor %}
- <section id="upload" style="display: block;">
-     <h2>Télécharger et traiter un fichier</h2>
-     <form id="upload-form">
-        <fieldset>
-            <legend>Type de fichier</legend>
-            <label>
-                <input type="radio" name="file_type" value="video" checked id="file-type-video">
-                Vidéo
-            </label>
-            <label>
-                <input type="radio" name="file_type" value="audio">
-                Audio
-            </label>
-            <label>
-                <input type="radio" name="file_type" value="text">
-                Texte
-            </label>
-        </fieldset>
-        <fieldset>
-            <legend>Dossier (optionnel)</legend>
-            <label>
-                Dossier :
-                <select name="folder_path" id="folder-path-select">
-                    <option value="">Aucun dossier (racine)</option>
-                </select>
-            </label>
-        </fieldset>
-         <div class="file-upload">
-             <label class="file-upload-label" id="file-type-label">Fichier vidéo :</label>
-             <input type="file" name="file" id="video-file" accept="video/*" class="file-upload-input" multiple required>
-             <button type="button" class="file-upload-trigger" id="file-upload-button">Choisir un fichier</button>
-             <span class="file-upload-name" id="selected-file-name">Aucun fichier sélectionné</span>
-         </div>
-         <fieldset id="processing-options-fieldset">
-             <legend>Options de traitement</legend>
-             <div id="video-options">
-                 <label>
-                     <input type="checkbox" name="process_options" value="transcribe">
-                     Transcrire (vidéo → texte)
-                 </label>
-                 <label>
-                     <input type="checkbox" name="process_options" value="subs" checked>
-                     Télécharger les sous-titres
-                 </label>
-                 <label>
-                     <input type="checkbox" name="process_options" value="dub_audio" checked>
-                     Audio de doublage (MP3)
-                 </label>
-                 <label>
-                     <input type="checkbox" name="process_options" value="dub_video" checked>
-                     Vidéo avec doublage audio
-                 </label>
-             </div>
-             <div id="audio-options" style="display: none;">
-                 <label>
-                     <input type="checkbox" name="process_options" value="transcribe" checked>
-                     Transcrire (audio → texte)
-                 </label>
-                 <label>
-                     <input type="checkbox" name="process_options" value="improve_text">
-                     Améliorer le texte (avec IA)
-                 </label>
-             </div>
-             <div id="text-options" style="display: none;">
-                 <label>
-                     <input type="checkbox" name="process_options" value="improve_text" checked>
-                     Améliorer le texte (avec IA)
-                 </label>
-                 <label>
-                     <input type="checkbox" name="process_options" value="translate" checked>
-                     Traduire
-                 </label>
-                 <label>
-                     <input type="checkbox" name="process_options" value="generate_audio">
-                     Générer audio (texte → audio)
-                 </label>
-             </div>
-            <p class="language-hint">Décochez les options inutiles pour éviter un traitement superflu.</p>
-         </fieldset>
-         <fieldset id="languages-fieldset">
-             <legend>Langues cibles (max. 2)</legend>
-             {% for lang in available_languages %}
-             <label>
-                 <input type="checkbox" name="languages" value="{{ lang.code }}">
-                 {{ lang.label }}{% if lang.provider == "ai" %}*{% endif %}
-             </label>
-             {% endfor %}
-             <p class="language-hint">Les langues marquées d'un * utilisent le traducteur IA, les autres passent par DeepL.</p>
-             <p class="language-hint">Lingala, Tshiluba, Kikongo et Malagasy ne proposent pour l'instant que des sous-titres.</p>
-         </fieldset>
-         <fieldset id="source-language-fieldset" style="display: none;">
-             <legend>Langue source</legend>
-             <label>
-                 Langue du fichier :
-                 <select name="source_language" id="source-language-select">
-                     <option value="fr">Français</option>
-                     <option value="nl">Néerlandais</option>
-                     <option value="en">Anglais</option>
-                     <option value="es">Espagnol</option>
-                     <option value="pt">Portugais</option>
-                 </select>
-             </label>
-         </fieldset>
-        <fieldset id="tts-speed-fieldset">
-            <legend>Synchronisation du doublage</legend>
-            <label>
-                Vitesse relative de la voix TTS
-                <input
-                    type="number"
-                    name="tts_speed_multiplier"
-                    value="1.05"
-                    min="0.8"
-                    max="1.2"
-                    step="0.01"
-                >
-            </label>
-            <p class="language-hint">
-                1,00 = vitesse normale. Augmentez légèrement (ex. 1,05) pour que la voix doublée démarre plus tôt.
-            </p>
-        </fieldset>
-        <fieldset id="thumbnail-fieldset">
-            <legend>Miniature/Omslagfoto (optionnel)</legend>
-            <p class="language-hint" style="margin-bottom: 15px;">
-                Choisissez une miniature pour la vidéo : extraire un moment de la vidéo ou télécharger une image.
-            </p>
-            <div style="margin-bottom: 15px;">
-                <label style="display: block; margin-bottom: 10px;">
-                    <input type="radio" name="thumbnail_source" value="video_frame" id="thumbnail-video-frame" checked>
-                    Extraire un moment de la vidéo
-                </label>
-                <div id="video-frame-selector" style="margin-left: 25px; margin-top: 10px; display: block;">
-                    <label>
-                        Temps (secondes) :
-                        <input type="number" id="thumbnail-time" name="thumbnail_time" value="0" min="0" step="0.1" style="width: 100px; padding: 5px;">
-                    </label>
-                    <button type="button" id="preview-frame-btn" style="margin-left: 10px; padding: 5px 15px; background: #007bff; color: white; border: none; border-radius: 3px; cursor: pointer;">
-                        Aperçu
-                    </button>
-                    <div id="frame-preview" style="margin-top: 10px; display: none;">
-                        <img id="frame-preview-img" src="" alt="Frame preview" style="max-width: 300px; border: 1px solid #ddd; border-radius: 3px;">
-                    </div>
+{% if is_editor %}
+<section id="upload" style="display: block;">
+    <h2>Actions</h2>
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; margin-top: 20px;">
+        
+        <!-- 1. Transcrire -->
+        <div class="action-card" style="border: 2px solid #007bff; border-radius: 8px; padding: 20px; background: #f0f8ff;">
+            <h3>🎤 Transcrire</h3>
+            <p style="margin: 10px 0; color: #666; font-size: 0.9em;">Téléchargez un fichier audio ou vidéo pour le transcrire et l'améliorer. La transcription corrigée peut être téléchargée.</p>
+            <button type="button" class="action-button" id="transcribe-button" style="width: 100%; padding: 12px; background: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 16px; font-weight: bold;">
+                Transcrire
+            </button>
+            <div id="transcribe-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; overflow-y: auto;">
+                <div style="background: white; margin: 50px auto; max-width: 600px; padding: 30px; border-radius: 8px;">
+                    <h3 style="margin-top: 0;">Transcrire un fichier audio/vidéo</h3>
+                    <form id="transcribe-form">
+                        <div style="margin-bottom: 15px;">
+                            <label style="display: block; margin-bottom: 5px; font-weight: bold;">Fichier audio ou vidéo :</label>
+                            <input type="file" id="transcribe-file" accept="audio/*,video/*" required style="width: 100%; padding: 8px;">
+                        </div>
+                        <div style="margin-bottom: 15px;">
+                            <label style="display: block; margin-bottom: 5px; font-weight: bold;">Langue source :</label>
+                            <select id="transcribe-source-lang" required style="width: 100%; padding: 8px;">
+                                <option value="fr">Français</option>
+                                <option value="nl">Néerlandais</option>
+                                <option value="en">Anglais</option>
+                                <option value="es">Espagnol</option>
+                                <option value="pt">Portugais</option>
+                            </select>
+                        </div>
+                        <div style="margin-bottom: 15px;">
+                            <label style="display: flex; align-items: center; cursor: pointer;">
+                                <input type="checkbox" id="transcribe-improve-ai" style="margin-right: 8px;">
+                                <span>Améliorer le texte avec l'IA (optionnel)</span>
+                            </label>
+                        </div>
+                        <div style="display: flex; gap: 10px; margin-top: 20px;">
+                            <button type="submit" style="flex: 1; padding: 12px; background: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: bold;">
+                                Transcrire
+                            </button>
+                            <button type="button" class="close-modal" data-modal="transcribe-modal" style="flex: 1; padding: 12px; background: #6c757d; color: white; border: none; border-radius: 5px; cursor: pointer;">
+                                Annuler
+                            </button>
+                        </div>
+                    </form>
+                    <div id="transcribe-status" style="margin-top: 15px;"></div>
                 </div>
             </div>
-            <div>
-                <label style="display: block; margin-bottom: 10px;">
-                    <input type="radio" name="thumbnail_source" value="upload" id="thumbnail-upload">
-                    Télécharger une image
-                </label>
-                <div id="thumbnail-upload-container" style="margin-left: 25px; margin-top: 10px; display: none;">
-                    <label style="display: block; margin-bottom: 10px; font-weight: bold;">
-                        Sélectionner une image :
-                    </label>
-                    <input type="file" id="thumbnail-file" name="thumbnail_file" accept="image/*" style="padding: 8px; border: 2px solid #007bff; border-radius: 5px; background-color: #f8f9fa; cursor: pointer; display: block; width: 100%; max-width: 400px;">
-                    <div id="thumbnail-preview" style="margin-top: 10px; display: none;">
-                        <img id="thumbnail-preview-img" src="" alt="Thumbnail preview" style="max-width: 300px; border: 1px solid #ddd; border-radius: 3px;">
-                    </div>
+        </div>
+
+        <!-- 2. Traduire -->
+        <div class="action-card" style="border: 2px solid #28a745; border-radius: 8px; padding: 20px; background: #f0fff4;">
+            <h3>🌍 Traduire</h3>
+            <p style="margin: 10px 0; color: #666; font-size: 0.9em;">Téléchargez un fichier texte pour le traduire dans la langue choisie. Le résultat peut être téléchargé.</p>
+            <button type="button" class="action-button" id="translate-button" style="width: 100%; padding: 12px; background: #28a745; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 16px; font-weight: bold;">
+                Traduire
+            </button>
+            <div id="translate-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; overflow-y: auto;">
+                <div style="background: white; margin: 50px auto; max-width: 600px; padding: 30px; border-radius: 8px;">
+                    <h3 style="margin-top: 0;">Traduire un fichier texte</h3>
+                    <form id="translate-form">
+                        <div style="margin-bottom: 15px;">
+                            <label style="display: block; margin-bottom: 5px; font-weight: bold;">Fichier texte :</label>
+                            <input type="file" id="translate-file" accept=".txt,.text" required style="width: 100%; padding: 8px;">
+                        </div>
+                        <div style="margin-bottom: 15px;">
+                            <label style="display: block; margin-bottom: 5px; font-weight: bold;">Langue source :</label>
+                            <select id="translate-source-lang" required style="width: 100%; padding: 8px;">
+                                <option value="fr">Français</option>
+                                <option value="nl">Néerlandais</option>
+                                <option value="en">Anglais</option>
+                                <option value="es">Espagnol</option>
+                                <option value="pt">Portugais</option>
+                            </select>
+                        </div>
+                        <div style="margin-bottom: 15px;">
+                            <label style="display: block; margin-bottom: 5px; font-weight: bold;">Langue cible :</label>
+                            <select id="translate-target-lang" required style="width: 100%; padding: 8px;">
+                                {% for lang in available_languages %}
+                                <option value="{{ lang.code }}">{{ lang.label }}{% if lang.provider == "ai" %}*{% endif %}</option>
+                                {% endfor %}
+                            </select>
+                            <p style="font-size: 0.85em; color: #666; margin-top: 5px;">Les langues marquées d'un * utilisent le traducteur IA.</p>
+                        </div>
+                        <div style="display: flex; gap: 10px; margin-top: 20px;">
+                            <button type="submit" style="flex: 1; padding: 12px; background: #28a745; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: bold;">
+                                Traduire
+                            </button>
+                            <button type="button" class="close-modal" data-modal="translate-modal" style="flex: 1; padding: 12px; background: #6c757d; color: white; border: none; border-radius: 5px; cursor: pointer;">
+                                Annuler
+                            </button>
+                        </div>
+                    </form>
+                    <div id="translate-status" style="margin-top: 15px;"></div>
                 </div>
             </div>
-        </fieldset>
-        <button type="submit">Téléverser et traiter</button>
-    </form>
-     <div id="upload-status"></div>
- </section>
- {% else %}
- <section id="upload" style="display: none;"></section>
- {% endif %}
+        </div>
+
+        <!-- 3. Audio genereren -->
+        <div class="action-card" style="border: 2px solid #9c27b0; border-radius: 8px; padding: 20px; background: #f3e5f5;">
+            <h3>🔊 Audio genereren</h3>
+            <p style="margin: 10px 0; color: #666; font-size: 0.9em;">Téléchargez un fichier texte pour le faire lire par une voix artificielle dans la langue choisie.</p>
+            <button type="button" class="action-button" id="generate-audio-button" style="width: 100%; padding: 12px; background: #9c27b0; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 16px; font-weight: bold;">
+                Générer audio
+            </button>
+            <div id="generate-audio-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; overflow-y: auto;">
+                <div style="background: white; margin: 50px auto; max-width: 600px; padding: 30px; border-radius: 8px;">
+                    <h3 style="margin-top: 0;">Générer un fichier audio à partir d'un texte</h3>
+                    <form id="generate-audio-form">
+                        <div style="margin-bottom: 15px;">
+                            <label style="display: block; margin-bottom: 5px; font-weight: bold;">Fichier texte :</label>
+                            <input type="file" id="generate-audio-file" accept=".txt,.text" required style="width: 100%; padding: 8px;">
+                        </div>
+                        <div style="margin-bottom: 15px;">
+                            <label style="display: block; margin-bottom: 5px; font-weight: bold;">Langue (pour la voix) :</label>
+                            <select id="generate-audio-lang" required style="width: 100%; padding: 8px;">
+                                {% for lang in available_languages %}
+                                <option value="{{ lang.code }}">{{ lang.label }}{% if lang.provider == "ai" %}*{% endif %}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div style="display: flex; gap: 10px; margin-top: 20px;">
+                            <button type="submit" style="flex: 1; padding: 12px; background: #9c27b0; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: bold;">
+                                Générer
+                            </button>
+                            <button type="button" class="close-modal" data-modal="generate-audio-modal" style="flex: 1; padding: 12px; background: #6c757d; color: white; border: none; border-radius: 5px; cursor: pointer;">
+                                Annuler
+                            </button>
+                        </div>
+                    </form>
+                    <div id="generate-audio-status" style="margin-top: 15px;"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 4. Upload video -->
+        <div class="action-card" style="border: 2px solid #ff9800; border-radius: 8px; padding: 20px; background: #fff3e0;">
+            <h3>📹 Upload video</h3>
+            <p style="margin: 10px 0; color: #666; font-size: 0.9em;">Téléchargez une vidéo de votre PC pour l'ajouter à la bibliothèque. Une omslagfoto et la langue source sont requises.</p>
+            <button type="button" class="action-button" id="upload-video-button" style="width: 100%; padding: 12px; background: #ff9800; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 16px; font-weight: bold;">
+                Upload video
+            </button>
+            <div id="upload-video-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; overflow-y: auto;">
+                <div style="background: white; margin: 50px auto; max-width: 600px; padding: 30px; border-radius: 8px;">
+                    <h3 style="margin-top: 0;">Uploader une vidéo vers la bibliothèque</h3>
+                    <form id="upload-video-form">
+                        <div style="margin-bottom: 15px;">
+                            <label style="display: block; margin-bottom: 5px; font-weight: bold;">Fichier vidéo :</label>
+                            <input type="file" id="upload-video-file" accept="video/*" required style="width: 100%; padding: 8px;">
+                        </div>
+                        <div style="margin-bottom: 15px;">
+                            <label style="display: block; margin-bottom: 5px; font-weight: bold;">Dossier (optionnel) :</label>
+                            <select id="upload-video-folder" style="width: 100%; padding: 8px;">
+                                <option value="">Aucun dossier (racine)</option>
+                            </select>
+                        </div>
+                        <div style="margin-bottom: 15px;">
+                            <label style="display: block; margin-bottom: 5px; font-weight: bold;">Langue source :</label>
+                            <select id="upload-video-source-lang" required style="width: 100%; padding: 8px;">
+                                <option value="fr">Français</option>
+                                <option value="nl">Néerlandais</option>
+                                <option value="en">Anglais</option>
+                                <option value="es">Espagnol</option>
+                                <option value="pt">Portugais</option>
+                            </select>
+                        </div>
+                        <div style="margin-bottom: 15px;">
+                            <label style="display: block; margin-bottom: 10px; font-weight: bold;">Omslagfoto :</label>
+                            <label style="display: block; margin-bottom: 10px; cursor: pointer;">
+                                <input type="radio" name="upload-video-thumbnail" value="video_frame" checked style="margin-right: 8px;">
+                                Extraire un moment de la vidéo
+                            </label>
+                            <div id="upload-video-frame-selector" style="margin-left: 25px; margin-top: 10px;">
+                                <label>
+                                    Temps (secondes) :
+                                    <input type="number" id="upload-video-thumbnail-time" value="0" min="0" step="0.1" style="width: 100px; padding: 5px;">
+                                </label>
+                            </div>
+                            <label style="display: block; margin-top: 10px; cursor: pointer;">
+                                <input type="radio" name="upload-video-thumbnail" value="upload" style="margin-right: 8px;">
+                                Télécharger une image
+                            </label>
+                            <div id="upload-video-thumbnail-upload" style="margin-left: 25px; margin-top: 10px; display: none;">
+                                <input type="file" id="upload-video-thumbnail-file" accept="image/*" style="width: 100%; padding: 8px;">
+                            </div>
+                        </div>
+                        <div style="display: flex; gap: 10px; margin-top: 20px;">
+                            <button type="submit" style="flex: 1; padding: 12px; background: #ff9800; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: bold;">
+                                Uploader
+                            </button>
+                            <button type="button" class="close-modal" data-modal="upload-video-modal" style="flex: 1; padding: 12px; background: #6c757d; color: white; border: none; border-radius: 5px; cursor: pointer;">
+                                Annuler
+                            </button>
+                        </div>
+                    </form>
+                    <div id="upload-video-status" style="margin-top: 15px;"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 5. Upload audio -->
+        <div class="action-card" style="border: 2px solid #00bcd4; border-radius: 8px; padding: 20px; background: #e0f7fa;">
+            <h3>🎵 Upload audio</h3>
+            <p style="margin: 10px 0; color: #666; font-size: 0.9em;">Téléchargez un fichier audio de votre PC pour l'ajouter à la bibliothèque. La langue source est requise.</p>
+            <button type="button" class="action-button" id="upload-audio-button" style="width: 100%; padding: 12px; background: #00bcd4; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 16px; font-weight: bold;">
+                Upload audio
+            </button>
+            <div id="upload-audio-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; overflow-y: auto;">
+                <div style="background: white; margin: 50px auto; max-width: 600px; padding: 30px; border-radius: 8px;">
+                    <h3 style="margin-top: 0;">Uploader un fichier audio vers la bibliothèque</h3>
+                    <form id="upload-audio-form">
+                        <div style="margin-bottom: 15px;">
+                            <label style="display: block; margin-bottom: 5px; font-weight: bold;">Fichier audio :</label>
+                            <input type="file" id="upload-audio-file" accept="audio/*" required style="width: 100%; padding: 8px;">
+                        </div>
+                        <div style="margin-bottom: 15px;">
+                            <label style="display: block; margin-bottom: 5px; font-weight: bold;">Dossier (optionnel) :</label>
+                            <select id="upload-audio-folder" style="width: 100%; padding: 8px;">
+                                <option value="">Aucun dossier (racine)</option>
+                            </select>
+                        </div>
+                        <div style="margin-bottom: 15px;">
+                            <label style="display: block; margin-bottom: 5px; font-weight: bold;">Langue source :</label>
+                            <select id="upload-audio-source-lang" required style="width: 100%; padding: 8px;">
+                                <option value="fr">Français</option>
+                                <option value="nl">Néerlandais</option>
+                                <option value="en">Anglais</option>
+                                <option value="es">Espagnol</option>
+                                <option value="pt">Portugais</option>
+                            </select>
+                        </div>
+                        <div style="display: flex; gap: 10px; margin-top: 20px;">
+                            <button type="submit" style="flex: 1; padding: 12px; background: #00bcd4; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: bold;">
+                                Uploader
+                            </button>
+                            <button type="button" class="close-modal" data-modal="upload-audio-modal" style="flex: 1; padding: 12px; background: #6c757d; color: white; border: none; border-radius: 5px; cursor: pointer;">
+                                Annuler
+                            </button>
+                        </div>
+                    </form>
+                    <div id="upload-audio-status" style="margin-top: 15px;"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 6. Upload tekst -->
+        <div class="action-card" style="border: 2px solid #795548; border-radius: 8px; padding: 20px; background: #efebe9;">
+            <h3>📄 Upload tekst</h3>
+            <p style="margin: 10px 0; color: #666; font-size: 0.9em;">Téléchargez un fichier texte de votre PC pour l'ajouter à la bibliothèque. La langue source est requise.</p>
+            <button type="button" class="action-button" id="upload-text-button" style="width: 100%; padding: 12px; background: #795548; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 16px; font-weight: bold;">
+                Upload tekst
+            </button>
+            <div id="upload-text-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; overflow-y: auto;">
+                <div style="background: white; margin: 50px auto; max-width: 600px; padding: 30px; border-radius: 8px;">
+                    <h3 style="margin-top: 0;">Uploader un fichier texte vers la bibliothèque</h3>
+                    <form id="upload-text-form">
+                        <div style="margin-bottom: 15px;">
+                            <label style="display: block; margin-bottom: 5px; font-weight: bold;">Fichier texte :</label>
+                            <input type="file" id="upload-text-file" accept=".txt,.text" required style="width: 100%; padding: 8px;">
+                        </div>
+                        <div style="margin-bottom: 15px;">
+                            <label style="display: block; margin-bottom: 5px; font-weight: bold;">Dossier (optionnel) :</label>
+                            <select id="upload-text-folder" style="width: 100%; padding: 8px;">
+                                <option value="">Aucun dossier (racine)</option>
+                            </select>
+                        </div>
+                        <div style="margin-bottom: 15px;">
+                            <label style="display: block; margin-bottom: 5px; font-weight: bold;">Langue source :</label>
+                            <select id="upload-text-source-lang" required style="width: 100%; padding: 8px;">
+                                <option value="fr">Français</option>
+                                <option value="nl">Néerlandais</option>
+                                <option value="en">Anglais</option>
+                                <option value="es">Espagnol</option>
+                                <option value="pt">Portugais</option>
+                            </select>
+                        </div>
+                        <div style="display: flex; gap: 10px; margin-top: 20px;">
+                            <button type="submit" style="flex: 1; padding: 12px; background: #795548; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: bold;">
+                                Uploader
+                            </button>
+                            <button type="button" class="close-modal" data-modal="upload-text-modal" style="flex: 1; padding: 12px; background: #6c757d; color: white; border: none; border-radius: 5px; cursor: pointer;">
+                                Annuler
+                            </button>
+                        </div>
+                    </form>
+                    <div id="upload-text-status" style="margin-top: 15px;"></div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+</section>
+{% else %}
+<section id="upload" style="display: none;"></section>
+{% endif %}
  
  <hr>
  

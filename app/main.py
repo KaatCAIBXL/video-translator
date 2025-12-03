@@ -1444,6 +1444,380 @@ async def upload_file_to_folder(
 
 
 # ============================================================
+# NEW SIMPLIFIED ACTIONS (DOWNLOAD-ONLY)
+# ============================================================
+
+@app.post("/api/transcribe")
+async def transcribe_file_download(
+    request: Request,
+    file: UploadFile = File(...),
+    source_language: str = Form(...),
+    improve_with_ai: bool = Form(False)
+):
+    """Transcribe audio/video file and return download (download-only, not saved to library)."""
+    if not is_editor(request):
+        return JSONResponse({"error": "Seuls les éditeurs peuvent transcrire des fichiers."}, status_code=403)
+    
+    # Create temporary file
+    with tempfile.NamedTemporaryFile(delete=False, suffix=Path(file.filename).suffix) as tmp_file:
+        tmp_path = Path(tmp_file.name)
+        shutil.copyfileobj(file.file, tmp_file)
+    
+    try:
+        # Extract audio if video
+        if tmp_path.suffix.lower() in ['.mp4', '.avi', '.mov', '.mkv', '.webm']:
+            audio_path = tmp_path.with_suffix('.wav')
+            await run_in_threadpool(extract_audio, tmp_path, audio_path)
+            audio_file_path = audio_path
+        else:
+            audio_file_path = tmp_path
+        
+        # Transcribe
+        transcribed_text = await run_in_threadpool(
+            transcribe_long_audio,
+            audio_file_path,
+            source_language
+        )
+        
+        if not transcribed_text or not transcribed_text.strip():
+            return JSONResponse({"error": "La transcription est vide."}, status_code=400)
+        
+        # Apply manual corrections (from subscription_corrections.txt)
+        # Import needed function
+        from .audio_text_services import _apply_subscription_corrections
+        transcribed_text = _apply_subscription_corrections(transcribed_text)
+        
+        # Improve with AI if requested
+        if improve_with_ai:
+            transcribed_text = await run_in_threadpool(
+                improve_text_with_ai,
+                transcribed_text,
+                source_language
+            )
+        
+        # Create temporary text file for download
+        with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.txt', encoding='utf-8') as txt_file:
+            txt_file.write(transcribed_text)
+            txt_path = Path(txt_file.name)
+        
+        # Return file for download
+        return FileResponse(
+            txt_path,
+            media_type='text/plain',
+            filename=f"transcription_{Path(file.filename).stem}.txt",
+            background=lambda: txt_path.unlink() if txt_path.exists() else None
+        )
+    except Exception as e:
+        logger.exception("Error transcribing file")
+        return JSONResponse({"error": f"Erreur lors de la transcription: {e}"}, status_code=500)
+    finally:
+        # Cleanup temp files
+        temp_files = [tmp_path]
+        if 'audio_file_path' in locals() and audio_file_path != tmp_path:
+            temp_files.append(audio_file_path)
+        for path in temp_files:
+            if path and path.exists():
+                try:
+                    path.unlink()
+                except:
+                    pass
+
+
+@app.post("/api/translate-text")
+async def translate_text_download(
+    request: Request,
+    file: UploadFile = File(...),
+    source_language: str = Form(...),
+    target_language: str = Form(...)
+):
+    """Translate text file and return download (download-only, not saved to library)."""
+    if not is_editor(request):
+        return JSONResponse({"error": "Seuls les éditeurs peuvent traduire des fichiers."}, status_code=403)
+    
+    if target_language not in ALLOWED_LANGUAGE_CODES:
+        return JSONResponse({"error": f"Langue cible non supportée: {target_language}"}, status_code=400)
+    
+    # Create temporary file
+    with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.txt', encoding='utf-8') as tmp_file:
+        content = await file.read()
+        tmp_file.write(content.decode('utf-8'))
+        tmp_path = Path(tmp_file.name)
+    
+    try:
+        # Read text
+        text_content = tmp_path.read_text(encoding='utf-8')
+        
+        # Translate
+        translated_text = await run_in_threadpool(
+            translate_text,
+            text_content,
+            source_language,
+            target_language
+        )
+        
+        if not translated_text or not translated_text.strip():
+            return JSONResponse({"error": "La traduction est vide."}, status_code=400)
+        
+        # Create temporary text file for download
+        with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.txt', encoding='utf-8') as txt_file:
+            txt_file.write(translated_text)
+            txt_path = Path(txt_file.name)
+        
+        # Return file for download
+        return FileResponse(
+            txt_path,
+            media_type='text/plain',
+            filename=f"traduction_{Path(file.filename).stem}_{target_language}.txt",
+            background=lambda: txt_path.unlink() if txt_path.exists() else None
+        )
+    except Exception as e:
+        logger.exception("Error translating text")
+        return JSONResponse({"error": f"Erreur lors de la traduction: {e}"}, status_code=500)
+    finally:
+        # Cleanup temp files
+        if tmp_path.exists():
+            try:
+                tmp_path.unlink()
+            except:
+                pass
+
+
+@app.post("/api/generate-audio")
+async def generate_audio_download(
+    request: Request,
+    file: UploadFile = File(...),
+    language: str = Form(...)
+):
+    """Generate audio from text file and return download (download-only, not saved to library)."""
+    if not is_editor(request):
+        return JSONResponse({"error": "Seuls les éditeurs peuvent générer des fichiers audio."}, status_code=403)
+    
+    if language not in ALLOWED_LANGUAGE_CODES:
+        return JSONResponse({"error": f"Langue non supportée: {language}"}, status_code=400)
+    
+    # Create temporary file
+    with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.txt', encoding='utf-8') as tmp_file:
+        content = await file.read()
+        tmp_file.write(content.decode('utf-8'))
+        tmp_path = Path(tmp_file.name)
+    
+    try:
+        # Read text
+        text_content = tmp_path.read_text(encoding='utf-8')
+        
+        if not text_content or not text_content.strip():
+            return JSONResponse({"error": "Le fichier texte est vide."}, status_code=400)
+        
+        # Create temporary audio file for download
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.mp3') as audio_file:
+            audio_path = Path(audio_file.name)
+        
+        # Generate audio
+        await generate_long_tts_audio(text_content, language, audio_path)
+        
+        if not audio_path.exists() or audio_path.stat().st_size == 0:
+            return JSONResponse({"error": "La génération audio a échoué."}, status_code=500)
+        
+        # Return file for download
+        return FileResponse(
+            audio_path,
+            media_type='audio/mpeg',
+            filename=f"audio_{Path(file.filename).stem}_{language}.mp3",
+            background=lambda: audio_path.unlink() if audio_path.exists() else None
+        )
+    except Exception as e:
+        logger.exception("Error generating audio")
+        return JSONResponse({"error": f"Erreur lors de la génération audio: {e}"}, status_code=500)
+    finally:
+        # Cleanup temp files
+        if tmp_path.exists():
+            try:
+                tmp_path.unlink()
+            except:
+                pass
+
+
+@app.post("/api/upload-video-to-library")
+async def upload_video_to_library(
+    request: Request,
+    file: UploadFile = File(...),
+    folder_path: str = Form(None),
+    source_language: str = Form(...),
+    thumbnail_source: str = Form(None),
+    thumbnail_time: str = Form(None),
+    thumbnail_file: UploadFile = File(None)
+):
+    """Upload video to library without processing (only save file + thumbnail + metadata)."""
+    if not is_editor(request):
+        return JSONResponse({"error": "Seuls les éditeurs peuvent télécharger des fichiers."}, status_code=403)
+    
+    video_id = str(uuid.uuid4())
+    ext = Path(file.filename).suffix
+    
+    # Handle folder structure
+    if folder_path:
+        folder_path = folder_path.strip().strip("/").strip("\\")
+        if folder_path:
+            folder_dir = settings.PROCESSED_DIR / folder_path
+            folder_dir.mkdir(parents=True, exist_ok=True)
+            video_dir = folder_dir / video_id
+        else:
+            video_dir = settings.PROCESSED_DIR / video_id
+    else:
+        video_dir = settings.PROCESSED_DIR / video_id
+    
+    video_dir.mkdir(parents=True, exist_ok=True)
+    
+    video_path = video_dir / f"original{ext}"
+    thumbnail_path = video_dir / "thumbnail.jpg"
+    
+    try:
+        # Save video file
+        with open(video_path, "wb") as f:
+            shutil.copyfileobj(file.file, f)
+    except Exception:
+        logger.exception("Failed to store uploaded video")
+        return JSONResponse({"error": "Impossible de sauvegarder la vidéo."}, status_code=500)
+    
+    # Process thumbnail
+    if thumbnail_source:
+        try:
+            if thumbnail_source == "video_frame" and thumbnail_time:
+                time_seconds = float(thumbnail_time)
+                await run_in_threadpool(extract_video_frame, video_path, thumbnail_path, time_seconds)
+            elif thumbnail_source == "upload" and thumbnail_file:
+                content = await thumbnail_file.read()
+                with open(thumbnail_path, "wb") as f:
+                    f.write(content)
+        except Exception as e:
+            logger.exception(f"Failed to process thumbnail: {e}")
+    
+    # Save minimal metadata
+    meta = VideoMetadata(
+        id=video_id,
+        filename=file.filename,
+        original_language=source_language,
+        sentence_pairs=[],
+        translations={}
+    )
+    meta_path = video_dir / "metadata.json"
+    await run_in_threadpool(save_metadata, meta, meta_path)
+    
+    # Save info.json with folder and privacy info
+    info_path = video_dir / "info.json"
+    info_data = {
+        "folder_path": folder_path if folder_path else None,
+        "is_private": False,
+    }
+    info_path.write_text(json.dumps(info_data, indent=2), encoding="utf-8")
+    
+    return JSONResponse({"message": "Vidéo téléchargée avec succès.", "id": video_id})
+
+
+@app.post("/api/upload-audio-to-library")
+async def upload_audio_to_library(
+    request: Request,
+    file: UploadFile = File(...),
+    folder_path: str = Form(None),
+    source_language: str = Form(...)
+):
+    """Upload audio to library without processing (only save file + metadata)."""
+    if not is_editor(request):
+        return JSONResponse({"error": "Seuls les éditeurs peuvent télécharger des fichiers."}, status_code=403)
+    
+    file_id = str(uuid.uuid4())
+    ext = Path(file.filename).suffix
+    
+    # Handle folder structure
+    if folder_path:
+        folder_path = folder_path.strip().strip("/").strip("\\")
+        if folder_path:
+            folder_dir = settings.PROCESSED_DIR / folder_path
+            folder_dir.mkdir(parents=True, exist_ok=True)
+            file_dir = folder_dir / file_id
+        else:
+            file_dir = settings.PROCESSED_DIR / file_id
+    else:
+        file_dir = settings.PROCESSED_DIR / file_id
+    
+    file_dir.mkdir(parents=True, exist_ok=True)
+    
+    original_path = file_dir / f"original{ext}"
+    
+    try:
+        # Save audio file
+        with open(original_path, "wb") as f:
+            shutil.copyfileobj(file.file, f)
+    except Exception:
+        logger.exception("Failed to store uploaded audio")
+        return JSONResponse({"error": "Impossible de sauvegarder le fichier audio."}, status_code=500)
+    
+    # Save info.json
+    info_path = file_dir / "info.json"
+    info_data = {
+        "folder_path": folder_path if folder_path else None,
+        "is_private": False,
+        "file_type": "audio",
+        "source_language": source_language
+    }
+    info_path.write_text(json.dumps(info_data, indent=2), encoding="utf-8")
+    
+    return JSONResponse({"message": "Fichier audio téléchargé avec succès.", "id": file_id})
+
+
+@app.post("/api/upload-text-to-library")
+async def upload_text_to_library(
+    request: Request,
+    file: UploadFile = File(...),
+    folder_path: str = Form(None),
+    source_language: str = Form(...)
+):
+    """Upload text to library without processing (only save file + metadata)."""
+    if not is_editor(request):
+        return JSONResponse({"error": "Seuls les éditeurs peuvent télécharger des fichiers."}, status_code=403)
+    
+    file_id = str(uuid.uuid4())
+    ext = Path(file.filename).suffix
+    
+    # Handle folder structure
+    if folder_path:
+        folder_path = folder_path.strip().strip("/").strip("\\")
+        if folder_path:
+            folder_dir = settings.PROCESSED_DIR / folder_path
+            folder_dir.mkdir(parents=True, exist_ok=True)
+            file_dir = folder_dir / file_id
+        else:
+            file_dir = settings.PROCESSED_DIR / file_id
+    else:
+        file_dir = settings.PROCESSED_DIR / file_id
+    
+    file_dir.mkdir(parents=True, exist_ok=True)
+    
+    original_path = file_dir / f"original{ext}"
+    
+    try:
+        # Save text file
+        content = await file.read()
+        with open(original_path, "wb") as f:
+            f.write(content)
+    except Exception:
+        logger.exception("Failed to store uploaded text")
+        return JSONResponse({"error": "Impossible de sauvegarder le fichier texte."}, status_code=500)
+    
+    # Save info.json
+    info_path = file_dir / "info.json"
+    info_data = {
+        "folder_path": folder_path if folder_path else None,
+        "is_private": False,
+        "file_type": "text",
+        "source_language": source_language
+    }
+    info_path.write_text(json.dumps(info_data, indent=2), encoding="utf-8")
+    
+    return JSONResponse({"message": "Fichier texte téléchargé avec succès.", "id": file_id})
+
+
+# ============================================================
 # AUDIO AND TEXT PROCESSING
 # ============================================================
 async def handle_audio_text_upload(

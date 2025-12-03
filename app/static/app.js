@@ -3992,3 +3992,417 @@ if (videoGenerationForm) {
     });
 }
 
+// ============================================================
+// NEW SIMPLIFIED ACTIONS (6 BUTTONS)
+// ============================================================
+
+// Modal open/close functionality
+document.addEventListener('DOMContentLoaded', function() {
+    // Close modal on background click
+    document.addEventListener('click', function(e) {
+        // Check if clicked element is a modal container
+        const modal = e.target.closest('[id$="-modal"]');
+        if (modal && e.target === modal && modal.id.endsWith('-modal')) {
+            modal.style.display = 'none';
+        }
+    });
+    
+    // Close modal buttons
+    document.querySelectorAll('.close-modal').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const modalId = this.getAttribute('data-modal');
+            const modal = document.getElementById(modalId);
+            if (modal) {
+                modal.style.display = 'none';
+            }
+        });
+    });
+    
+    // Open modal buttons
+    ['transcribe', 'translate', 'generate-audio', 'upload-video', 'upload-audio', 'upload-text'].forEach(action => {
+        const button = document.getElementById(`${action}-button`);
+        if (button) {
+            button.addEventListener('click', function() {
+                const modal = document.getElementById(`${action}-modal`);
+                if (modal) {
+                    modal.style.display = 'block';
+                    // Load folders for upload modals
+                    if (action.startsWith('upload-')) {
+                        loadFoldersForModal(action);
+                    }
+                }
+            });
+        }
+    });
+    
+    // Upload video thumbnail source toggle
+    const uploadVideoThumbnailRadios = document.querySelectorAll('input[name="upload-video-thumbnail"]');
+    uploadVideoThumbnailRadios.forEach(radio => {
+        radio.addEventListener('change', function() {
+            const frameSelector = document.getElementById('upload-video-frame-selector');
+            const thumbnailUpload = document.getElementById('upload-video-thumbnail-upload');
+            if (this.value === 'video_frame') {
+                frameSelector.style.display = 'block';
+                thumbnailUpload.style.display = 'none';
+            } else {
+                frameSelector.style.display = 'none';
+                thumbnailUpload.style.display = 'block';
+            }
+        });
+    });
+});
+
+// Load folders for upload modals
+async function loadFoldersForModal(action) {
+    const folderSelect = document.getElementById(`${action}-folder`);
+    if (!folderSelect) return;
+    
+    try {
+        const res = await fetch('/api/folders');
+        if (res.ok) {
+            const folders = await res.json();
+            folderSelect.innerHTML = '<option value="">Aucun dossier (racine)</option>';
+            folders.forEach(folder => {
+                const option = document.createElement('option');
+                option.value = folder.path;
+                option.textContent = folder.path + (folder.is_private ? ' [PRIVÉ]' : '');
+                folderSelect.appendChild(option);
+            });
+        }
+    } catch (err) {
+        console.error('Failed to load folders', err);
+    }
+}
+
+// Transcribe form handler
+const transcribeForm = document.getElementById('transcribe-form');
+if (transcribeForm) {
+    transcribeForm.addEventListener('submit', async function(e) {
+        e.preventDefault();
+        
+        const fileInput = document.getElementById('transcribe-file');
+        const sourceLang = document.getElementById('transcribe-source-lang');
+        const improveAI = document.getElementById('transcribe-improve-ai');
+        const statusEl = document.getElementById('transcribe-status');
+        
+        if (!fileInput.files || fileInput.files.length === 0) {
+            statusEl.innerHTML = '<div style="color: red;">Veuillez sélectionner un fichier.</div>';
+            return;
+        }
+        
+        const formData = new FormData();
+        formData.append('file', fileInput.files[0]);
+        formData.append('source_language', sourceLang.value);
+        formData.append('improve_with_ai', improveAI.checked);
+        
+        statusEl.innerHTML = '<div style="color: blue;">Transcription en cours...</div>';
+        
+        try {
+            const res = await fetch('/api/transcribe', {
+                method: 'POST',
+                body: formData,
+                credentials: 'include'
+            });
+            
+            if (res.ok) {
+                // Download the file
+                const blob = await res.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = res.headers.get('Content-Disposition')?.split('filename=')[1]?.replace(/"/g, '') || 'transcription.txt';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                window.URL.revokeObjectURL(url);
+                
+                statusEl.innerHTML = '<div style="color: green;">✅ Transcription terminée et téléchargée!</div>';
+                setTimeout(() => {
+                    document.getElementById('transcribe-modal').style.display = 'none';
+                    statusEl.innerHTML = '';
+                }, 2000);
+            } else {
+                const error = await res.json();
+                statusEl.innerHTML = `<div style="color: red;">❌ Erreur: ${error.error || 'Erreur inconnue'}</div>`;
+            }
+        } catch (err) {
+            statusEl.innerHTML = `<div style="color: red;">❌ Erreur: ${err.message}</div>`;
+        }
+    });
+}
+
+// Translate form handler
+const translateForm = document.getElementById('translate-form');
+if (translateForm) {
+    translateForm.addEventListener('submit', async function(e) {
+        e.preventDefault();
+        
+        const fileInput = document.getElementById('translate-file');
+        const sourceLang = document.getElementById('translate-source-lang');
+        const targetLang = document.getElementById('translate-target-lang');
+        const statusEl = document.getElementById('translate-status');
+        
+        if (!fileInput.files || fileInput.files.length === 0) {
+            statusEl.innerHTML = '<div style="color: red;">Veuillez sélectionner un fichier.</div>';
+            return;
+        }
+        
+        const formData = new FormData();
+        formData.append('file', fileInput.files[0]);
+        formData.append('source_language', sourceLang.value);
+        formData.append('target_language', targetLang.value);
+        
+        statusEl.innerHTML = '<div style="color: blue;">Traduction en cours...</div>';
+        
+        try {
+            const res = await fetch('/api/translate-text', {
+                method: 'POST',
+                body: formData,
+                credentials: 'include'
+            });
+            
+            if (res.ok) {
+                const blob = await res.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = res.headers.get('Content-Disposition')?.split('filename=')[1]?.replace(/"/g, '') || 'traduction.txt';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                window.URL.revokeObjectURL(url);
+                
+                statusEl.innerHTML = '<div style="color: green;">✅ Traduction terminée et téléchargée!</div>';
+                setTimeout(() => {
+                    document.getElementById('translate-modal').style.display = 'none';
+                    statusEl.innerHTML = '';
+                }, 2000);
+            } else {
+                const error = await res.json();
+                statusEl.innerHTML = `<div style="color: red;">❌ Erreur: ${error.error || 'Erreur inconnue'}</div>`;
+            }
+        } catch (err) {
+            statusEl.innerHTML = `<div style="color: red;">❌ Erreur: ${err.message}</div>`;
+        }
+    });
+}
+
+// Generate audio form handler
+const generateAudioForm = document.getElementById('generate-audio-form');
+if (generateAudioForm) {
+    generateAudioForm.addEventListener('submit', async function(e) {
+        e.preventDefault();
+        
+        const fileInput = document.getElementById('generate-audio-file');
+        const lang = document.getElementById('generate-audio-lang');
+        const statusEl = document.getElementById('generate-audio-status');
+        
+        if (!fileInput.files || fileInput.files.length === 0) {
+            statusEl.innerHTML = '<div style="color: red;">Veuillez sélectionner un fichier.</div>';
+            return;
+        }
+        
+        const formData = new FormData();
+        formData.append('file', fileInput.files[0]);
+        formData.append('language', lang.value);
+        
+        statusEl.innerHTML = '<div style="color: blue;">Génération audio en cours...</div>';
+        
+        try {
+            const res = await fetch('/api/generate-audio', {
+                method: 'POST',
+                body: formData,
+                credentials: 'include'
+            });
+            
+            if (res.ok) {
+                const blob = await res.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = res.headers.get('Content-Disposition')?.split('filename=')[1]?.replace(/"/g, '') || 'audio.mp3';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                window.URL.revokeObjectURL(url);
+                
+                statusEl.innerHTML = '<div style="color: green;">✅ Audio généré et téléchargé!</div>';
+                setTimeout(() => {
+                    document.getElementById('generate-audio-modal').style.display = 'none';
+                    statusEl.innerHTML = '';
+                }, 2000);
+            } else {
+                const error = await res.json();
+                statusEl.innerHTML = `<div style="color: red;">❌ Erreur: ${error.error || 'Erreur inconnue'}</div>`;
+            }
+        } catch (err) {
+            statusEl.innerHTML = `<div style="color: red;">❌ Erreur: ${err.message}</div>`;
+        }
+    });
+}
+
+// Upload video to library form handler
+const uploadVideoForm = document.getElementById('upload-video-form');
+if (uploadVideoForm) {
+    uploadVideoForm.addEventListener('submit', async function(e) {
+        e.preventDefault();
+        
+        const fileInput = document.getElementById('upload-video-file');
+        const folder = document.getElementById('upload-video-folder');
+        const sourceLang = document.getElementById('upload-video-source-lang');
+        const thumbnailSource = document.querySelector('input[name="upload-video-thumbnail"]:checked');
+        const thumbnailTime = document.getElementById('upload-video-thumbnail-time');
+        const thumbnailFile = document.getElementById('upload-video-thumbnail-file');
+        const statusEl = document.getElementById('upload-video-status');
+        
+        if (!fileInput.files || fileInput.files.length === 0) {
+            statusEl.innerHTML = '<div style="color: red;">Veuillez sélectionner un fichier vidéo.</div>';
+            return;
+        }
+        
+        const formData = new FormData();
+        formData.append('file', fileInput.files[0]);
+        if (folder.value) formData.append('folder_path', folder.value);
+        formData.append('source_language', sourceLang.value);
+        if (thumbnailSource) {
+            formData.append('thumbnail_source', thumbnailSource.value);
+            if (thumbnailSource.value === 'video_frame' && thumbnailTime.value) {
+                formData.append('thumbnail_time', thumbnailTime.value);
+            } else if (thumbnailSource.value === 'upload' && thumbnailFile.files[0]) {
+                formData.append('thumbnail_file', thumbnailFile.files[0]);
+            }
+        }
+        
+        statusEl.innerHTML = '<div style="color: blue;">Upload en cours...</div>';
+        
+        try {
+            const res = await fetch('/api/upload-video-to-library', {
+                method: 'POST',
+                body: formData,
+                credentials: 'include'
+            });
+            
+            const data = await res.json();
+            
+            if (res.ok) {
+                statusEl.innerHTML = '<div style="color: green;">✅ Vidéo uploadée avec succès!</div>';
+                setTimeout(() => {
+                    document.getElementById('upload-video-modal').style.display = 'none';
+                    statusEl.innerHTML = '';
+                    uploadVideoForm.reset();
+                    // Reload video list
+                    if (typeof loadVideos === 'function') {
+                        loadVideos();
+                    }
+                }, 2000);
+            } else {
+                statusEl.innerHTML = `<div style="color: red;">❌ Erreur: ${data.error || 'Erreur inconnue'}</div>`;
+            }
+        } catch (err) {
+            statusEl.innerHTML = `<div style="color: red;">❌ Erreur: ${err.message}</div>`;
+        }
+    });
+}
+
+// Upload audio to library form handler
+const uploadAudioForm = document.getElementById('upload-audio-form');
+if (uploadAudioForm) {
+    uploadAudioForm.addEventListener('submit', async function(e) {
+        e.preventDefault();
+        
+        const fileInput = document.getElementById('upload-audio-file');
+        const folder = document.getElementById('upload-audio-folder');
+        const sourceLang = document.getElementById('upload-audio-source-lang');
+        const statusEl = document.getElementById('upload-audio-status');
+        
+        if (!fileInput.files || fileInput.files.length === 0) {
+            statusEl.innerHTML = '<div style="color: red;">Veuillez sélectionner un fichier audio.</div>';
+            return;
+        }
+        
+        const formData = new FormData();
+        formData.append('file', fileInput.files[0]);
+        if (folder.value) formData.append('folder_path', folder.value);
+        formData.append('source_language', sourceLang.value);
+        
+        statusEl.innerHTML = '<div style="color: blue;">Upload en cours...</div>';
+        
+        try {
+            const res = await fetch('/api/upload-audio-to-library', {
+                method: 'POST',
+                body: formData,
+                credentials: 'include'
+            });
+            
+            const data = await res.json();
+            
+            if (res.ok) {
+                statusEl.innerHTML = '<div style="color: green;">✅ Fichier audio uploadé avec succès!</div>';
+                setTimeout(() => {
+                    document.getElementById('upload-audio-modal').style.display = 'none';
+                    statusEl.innerHTML = '';
+                    uploadAudioForm.reset();
+                    if (typeof loadVideos === 'function') {
+                        loadVideos();
+                    }
+                }, 2000);
+            } else {
+                statusEl.innerHTML = `<div style="color: red;">❌ Erreur: ${data.error || 'Erreur inconnue'}</div>`;
+            }
+        } catch (err) {
+            statusEl.innerHTML = `<div style="color: red;">❌ Erreur: ${err.message}</div>`;
+        }
+    });
+}
+
+// Upload text to library form handler
+const uploadTextForm = document.getElementById('upload-text-form');
+if (uploadTextForm) {
+    uploadTextForm.addEventListener('submit', async function(e) {
+        e.preventDefault();
+        
+        const fileInput = document.getElementById('upload-text-file');
+        const folder = document.getElementById('upload-text-folder');
+        const sourceLang = document.getElementById('upload-text-source-lang');
+        const statusEl = document.getElementById('upload-text-status');
+        
+        if (!fileInput.files || fileInput.files.length === 0) {
+            statusEl.innerHTML = '<div style="color: red;">Veuillez sélectionner un fichier texte.</div>';
+            return;
+        }
+        
+        const formData = new FormData();
+        formData.append('file', fileInput.files[0]);
+        if (folder.value) formData.append('folder_path', folder.value);
+        formData.append('source_language', sourceLang.value);
+        
+        statusEl.innerHTML = '<div style="color: blue;">Upload en cours...</div>';
+        
+        try {
+            const res = await fetch('/api/upload-text-to-library', {
+                method: 'POST',
+                body: formData,
+                credentials: 'include'
+            });
+            
+            const data = await res.json();
+            
+            if (res.ok) {
+                statusEl.innerHTML = '<div style="color: green;">✅ Fichier texte uploadé avec succès!</div>';
+                setTimeout(() => {
+                    document.getElementById('upload-text-modal').style.display = 'none';
+                    statusEl.innerHTML = '';
+                    uploadTextForm.reset();
+                    if (typeof loadVideos === 'function') {
+                        loadVideos();
+                    }
+                }, 2000);
+            } else {
+                statusEl.innerHTML = `<div style="color: red;">❌ Erreur: ${data.error || 'Erreur inconnue'}</div>`;
+            }
+        } catch (err) {
+            statusEl.innerHTML = `<div style="color: red;">❌ Erreur: ${err.message}</div>`;
+        }
+    });
+}
+
