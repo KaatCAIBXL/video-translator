@@ -7,9 +7,10 @@ import tempfile
 import uuid
 import requests
 import base64
+import httpx
 from fastapi import FastAPI, UploadFile, File, Form, Request
 from fastapi.concurrency import run_in_threadpool
-from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, RedirectResponse
+from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from .auth import get_role_from_request, is_editor, is_admin, create_session, can_generate_video, can_manage_characters, can_read_admin_messages, get_session_count, session_exists
@@ -217,10 +218,11 @@ def _combined_subtitle_key(path: Path) -> Optional[str]:
 
 @app.get("/")
 async def index(request: Request):
-    """Redirect to role selection if no session, otherwise show main page."""
+    """Show home page first, then redirect to role selection if no session."""
     role = get_role_from_request(request)
     if not role:
-        return RedirectResponse(url="/select-role", status_code=302)
+        # Show home page first
+        return templates.TemplateResponse("home.html", {"request": request})
     
     try:
         return templates.TemplateResponse(
@@ -246,6 +248,27 @@ async def index(request: Request):
 @app.get("/select-role")
 async def select_role(request: Request):
     """Role selection page."""
+    module = request.query_params.get("module")
+    
+    # Als er een module parameter is, stuur door naar de juiste module
+    if module == "live-translator":
+        return RedirectResponse(url="/live-translator", status_code=302)
+    elif module == "saints":
+        # TODO: Implement saints module
+        return templates.TemplateResponse("select_role.html", {"request": request})
+    elif module == "itech":
+        # Set editor role and redirect to main app
+        session_id = create_session("editor")
+        response = RedirectResponse(url="/", status_code=302)
+        response.set_cookie(key="session_id", value=session_id, httponly=True, max_age=86400)
+        return response
+    elif module == "admin":
+        # Set admin role and redirect to main app
+        session_id = create_session("admin")
+        response = RedirectResponse(url="/", status_code=302)
+        response.set_cookie(key="session_id", value=session_id, httponly=True, max_age=86400)
+        return response
+    
     return templates.TemplateResponse("select_role.html", {"request": request})
 
 @app.post("/api/set-role")
@@ -2728,4 +2751,169 @@ async def delete_character_endpoint(request: Request, character_id: str):
         return JSONResponse(
             {"error": "Personnage non trouvé."},
             status_code=404
+        )
+
+
+# ==================== LIVE TRANSLATOR ROUTES ====================
+
+@app.get("/live-translator")
+async def live_translator_page(request: Request):
+    """Live translator frontend page."""
+    return templates.TemplateResponse("live_translator.html", {"request": request})
+
+
+# ==================== LIVE TRANSLATOR SESSION STATE ====================
+# Simple session state for live translator (kan later uitgebreid worden met proper session management)
+_live_translator_sessions: Dict[str, Dict] = {}
+_last_speaker_timestamp: Optional[float] = None
+
+def _get_session_id(request: Request) -> str:
+    """Get or create session ID for live translator."""
+    session_id = request.cookies.get("session_id")
+    if not session_id:
+        session_id = str(uuid.uuid4())
+    return session_id
+
+def _get_session_state(session_id: str) -> Dict:
+    """Get or create session state."""
+    if session_id not in _live_translator_sessions:
+        _live_translator_sessions[session_id] = {
+            "vorige_zinnen": [],
+            "seen_transcriptions": set(),
+        }
+    return _live_translator_sessions[session_id]
+
+@app.post("/api/translate")
+async def live_translate_audio(request: Request, audio: UploadFile = File(...)):
+    """Live translate audio - werkende versie met bestaande services."""
+    global _last_speaker_timestamp
+    
+    try:
+        form = await request.form()
+        session_id = _get_session_id(request)
+        session_state = _get_session_state(session_id)
+        
+        bron_taal = form.get("from", "fr").lower()
+        doel_taal = form.get("to", "nl").lower()
+        interpreter_lang = form.get("interpreter_lang", "").lower()
+        
+        # Save audio to temp file
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".webm") as tmp:
+            audio_path = Path(tmp.name)
+            content = await audio.read()
+            audio_path.write_bytes(content)
+        
+        try:
+            # Transcribe audio using existing service
+            from .services import transcribe_audio_whisper
+            from .audio_text_services import improve_text_with_ai, translate_text
+            
+            # Map language codes for Whisper
+            whisper_lang_map = {
+                "fr": "fr", "nl": "nl", "en": "en", "es": "es", 
+                "pt": "pt", "lingala": "ln", "kituba": "kg", 
+                "kikongo": "kg", "tshiluba": "lu"
+            }
+            whisper_lang = whisper_lang_map.get(bron_taal, None)
+            
+            # Transcribe
+            whisper_result = await run_in_threadpool(
+                transcribe_audio_whisper, audio_path, language=whisper_lang
+            )
+            
+            ruwe_tekst = whisper_result.get("text", "").strip()
+            if not ruwe_tekst:
+                return JSONResponse({
+                    "recognized": "",
+                    "corrected": "",
+                    "translation": "",
+                    "silenceDetected": True,
+                })
+            
+            # Apply subscription corrections (wordt al gedaan in improve_text_with_ai)
+            tekst = ruwe_tekst
+            
+            # Simple context-aware improvement (kan later uitgebreid worden)
+            vorige_zinnen = session_state["vorige_zinnen"]
+            verbeterde_zin = await run_in_threadpool(
+                improve_text_with_ai, tekst, language=bron_taal
+            )
+            
+            # Translate
+            vertaling = ""
+            if verbeterde_zin:
+                vertaling = await run_in_threadpool(
+                    translate_text, verbeterde_zin, bron_taal, doel_taal
+                )
+                # Fallback: gebruik gecorrigeerde tekst als vertaling leeg is
+                if not vertaling or not vertaling.strip():
+                    vertaling = verbeterde_zin
+            
+            # Update session state
+            session_state["vorige_zinnen"].append(verbeterde_zin)
+            if len(session_state["vorige_zinnen"]) > 10:
+                session_state["vorige_zinnen"] = session_state["vorige_zinnen"][-10:]
+            
+            return JSONResponse({
+                "recognized": tekst,
+                "corrected": verbeterde_zin,
+                "translation": vertaling,
+            })
+            
+        finally:
+            # Cleanup
+            if audio_path.exists():
+                audio_path.unlink()
+                
+    except Exception as e:
+        logger.error(f"Error in live translate: {e}", exc_info=True)
+        return JSONResponse(
+            {"error": f"Translation error: {str(e)}"},
+            status_code=500
+        )
+
+
+@app.post("/api/speak")
+async def live_speak_text(request: Request):
+    """Generate TTS audio for live translator."""
+    try:
+        form = await request.form()
+        text = form.get("text", "").strip()
+        lang = form.get("lang", "nl").strip() or "nl"
+        speak = form.get("speak", "true") == "true"
+        
+        if not speak:
+            return JSONResponse({"error": "Spraakuitvoer is uitgeschakeld"}, status_code=400)
+        
+        if not text:
+            return JSONResponse({"error": "Geen tekst om uit te spreken"}, status_code=400)
+        
+        # Generate TTS audio using existing service
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as tmp:
+            tmp_path = Path(tmp.name)
+        
+        try:
+            await generate_long_tts_audio(text, lang, tmp_path)
+            
+            # Read the generated audio file
+            audio_content = tmp_path.read_bytes()
+            
+            # Clean up
+            tmp_path.unlink()
+            
+            return Response(
+                content=audio_content,
+                media_type="audio/mpeg",
+                headers={"Content-Disposition": "attachment; filename=tts.mp3"}
+            )
+        except Exception as e:
+            if tmp_path.exists():
+                tmp_path.unlink()
+            raise e
+            
+    except Exception as e:
+        logger.error(f"Error generating TTS: {e}")
+        return JSONResponse(
+            {"error": f"TTS service error: {str(e)}"},
+            status_code=500
         )
