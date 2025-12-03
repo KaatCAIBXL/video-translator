@@ -491,6 +491,10 @@ async def list_videos(request: Request):
                                 # Check if transcribed.txt exists for audio/text files
                                 has_transcription = (item / "transcribed.txt").exists()
                                 
+                                # Get source language and available translations from info.json
+                                source_lang = info.get("source_language")
+                                available_translations = info.get("available_translations", [])
+                                
                                 items.append(
                                     VideoListItem(
                                         id=file_id,
@@ -503,6 +507,8 @@ async def list_videos(request: Request):
                                         has_transcription=has_transcription,
                                         folder_path=file_folder_path,
                                         is_private=file_is_private,
+                                        source_language=source_lang,
+                                        available_translations=available_translations,
                         )
                     )
                 else:
@@ -1815,6 +1821,276 @@ async def upload_text_to_library(
     info_path.write_text(json.dumps(info_data, indent=2), encoding="utf-8")
     
     return JSONResponse({"message": "Fichier texte téléchargé avec succès.", "id": file_id})
+
+
+# ============================================================
+# AUDIO TRANSLATION AND TEXT EDITING
+# ============================================================
+
+@app.post("/api/audio/translate")
+async def translate_audio(request: Request):
+    """Generate a translated audio version from an existing audio file."""
+    if not is_editor(request):
+        return JSONResponse({"error": "Seuls les éditeurs peuvent générer des traductions audio."}, status_code=403)
+    
+    # Parse JSON body
+    try:
+        body = await request.json()
+        audio_id = body.get("audio_id")
+        source_language = body.get("source_language")
+        target_language = body.get("target_language")
+    except Exception:
+        return JSONResponse({"error": "Données JSON invalides."}, status_code=400)
+    
+    if not audio_id or not source_language or not target_language:
+        return JSONResponse({"error": "audio_id, source_language et target_language sont requis."}, status_code=400)
+    
+    if target_language not in ALLOWED_LANGUAGE_CODES:
+        return JSONResponse({"error": f"Langue cible non supportée: {target_language}"}, status_code=400)
+    
+    # Find audio directory
+    audio_dir = _find_video_directory(audio_id)
+    if not audio_dir or not audio_dir.exists():
+        return JSONResponse({"error": "Fichier audio non trouvé."}, status_code=404)
+    
+    # Check if it's actually an audio file
+    info = _load_video_info(audio_dir)
+    if info.get("file_type") != "audio":
+        return JSONResponse({"error": "Ce fichier n'est pas un fichier audio."}, status_code=400)
+    
+    # Get original audio file
+    original_path = None
+    for ext in ['.mp3', '.wav', '.m4a', '.ogg', '.flac']:
+        test_path = audio_dir / f"original{ext}"
+        if test_path.exists():
+            original_path = test_path
+            break
+    
+    if not original_path:
+        return JSONResponse({"error": "Fichier audio original non trouvé."}, status_code=404)
+    
+    try:
+        # Step 1: Transcribe audio if not already transcribed
+        transcribed_path = audio_dir / "transcribed.txt"
+        if not transcribed_path.exists():
+            logger.info(f"Transcribing audio {audio_id} for translation")
+            transcribed_text = await run_in_threadpool(
+                transcribe_long_audio,
+                original_path,
+                source_language
+            )
+            if transcribed_text and transcribed_text.strip():
+                transcribed_path.write_text(transcribed_text, encoding="utf-8")
+            else:
+                return JSONResponse({"error": "La transcription a échoué ou est vide."}, status_code=500)
+        
+        transcribed_text = transcribed_path.read_text(encoding="utf-8")
+        
+        # Step 2: Apply manual corrections
+        from .audio_text_services import _apply_subscription_corrections
+        transcribed_text = _apply_subscription_corrections(transcribed_text)
+        
+        # Step 3: Translate text
+        logger.info(f"Translating audio {audio_id} from {source_language} to {target_language}")
+        translated_text = await run_in_threadpool(
+            translate_text,
+            transcribed_text,
+            source_language,
+            target_language
+        )
+        
+        if not translated_text or not translated_text.strip():
+            return JSONResponse({"error": "La traduction a échoué ou est vide."}, status_code=500)
+        
+        # Step 4: Generate TTS audio
+        translated_audio_path = audio_dir / f"audio_{target_language}.mp3"
+        logger.info(f"Generating TTS audio for {audio_id} in {target_language}")
+        await generate_long_tts_audio(translated_text, target_language, translated_audio_path)
+        
+        # Update info.json to track available translations
+        info_data = info.copy()
+        if "available_translations" not in info_data:
+            info_data["available_translations"] = []
+        if target_language not in info_data["available_translations"]:
+            info_data["available_translations"].append(target_language)
+        info_path = audio_dir / "info.json"
+        info_path.write_text(json.dumps(info_data, indent=2), encoding="utf-8")
+        
+        return JSONResponse({
+            "message": f"Traduction audio générée avec succès en {target_language}.",
+            "audio_path": str(translated_audio_path)
+        })
+    except Exception as e:
+        logger.exception(f"Error translating audio {audio_id}")
+        return JSONResponse({"error": f"Erreur lors de la traduction audio: {e}"}, status_code=500)
+
+
+@app.post("/api/videos/generate-subtitles")
+async def generate_video_subtitles(request: Request):
+    """Generate subtitles for a video in specified languages."""
+    if not is_editor(request):
+        return JSONResponse({"error": "Seuls les éditeurs peuvent générer des sous-titres."}, status_code=403)
+    
+    # Parse JSON body
+    try:
+        body = await request.json()
+        video_id = body.get("video_id")
+        languages = body.get("languages", [])
+    except Exception:
+        return JSONResponse({"error": "Données JSON invalides."}, status_code=400)
+    
+    if not video_id or not languages:
+        return JSONResponse({"error": "video_id et languages sont requis."}, status_code=400)
+    
+    # Find video directory
+    video_dir = _find_video_directory(video_id)
+    if not video_dir or not video_dir.exists():
+        return JSONResponse({"error": "Vidéo non trouvée."}, status_code=404)
+    
+    # Validate languages
+    invalid_langs = [lang for lang in languages if lang not in ALLOWED_LANGUAGE_CODES]
+    if invalid_langs:
+        return JSONResponse({"error": f"Langues non supportées: {', '.join(invalid_langs)}"}, status_code=400)
+    
+    try:
+        # Get or create transcription
+        transcribed_path = video_dir / "transcribed.txt"
+        audio_path = video_dir / "audio.wav"
+        
+        if not transcribed_path.exists():
+            if not audio_path.exists():
+                # Extract audio from video
+                video_path = _find_original_video(video_dir)
+                if not video_path:
+                    return JSONResponse({"error": "Fichier vidéo original non trouvé."}, status_code=404)
+                await run_in_threadpool(extract_audio, video_path, audio_path)
+            
+            # Transcribe
+            meta = _load_video_metadata(video_dir)
+            source_lang = meta.original_language if meta else "fr"
+            transcribed_text = await run_in_threadpool(
+                transcribe_long_audio,
+                audio_path,
+                source_lang
+            )
+            if transcribed_text and transcribed_text.strip():
+                transcribed_path.write_text(transcribed_text, encoding="utf-8")
+            else:
+                return JSONResponse({"error": "La transcription a échoué."}, status_code=500)
+        
+        transcribed_text = transcribed_path.read_text(encoding="utf-8")
+        
+        # Apply manual corrections
+        from .audio_text_services import _apply_subscription_corrections
+        transcribed_text = _apply_subscription_corrections(transcribed_text)
+        
+        # Load or create metadata
+        meta = _load_video_metadata(video_dir)
+        if not meta:
+            # Create basic metadata
+            meta = VideoMetadata(
+                id=video_id,
+                filename=video_dir.name,
+                original_language="fr",
+                sentence_pairs=[],
+                translations={}
+            )
+        
+        # Generate subtitles for each language
+        from .services import build_sentence_segments, generate_vtt
+        sentence_pairs = meta.sentence_pairs if meta.sentence_pairs else []
+        
+        if not sentence_pairs:
+            # Build sentence pairs from transcription
+            # For now, create simple segments (can be improved)
+            segments = build_sentence_segments(transcribed_text)
+            sentence_pairs = [{"start": s.get("start", 0), "end": s.get("end", 0), "text": s.get("text", "")} for s in segments]
+        
+        # Update metadata with translations
+        for target_lang in languages:
+            # Translate segments
+            translated_segments = []
+            for pair in sentence_pairs:
+                translated_text_seg = await run_in_threadpool(
+                    translate_text,
+                    pair.get("text", ""),
+                    meta.original_language,
+                    target_lang
+                )
+                translated_segments.append({
+                    "start": pair.get("start", 0),
+                    "end": pair.get("end", 0),
+                    "text": translated_text_seg,
+                    "language": target_lang
+                })
+            
+            # Generate VTT file
+            vtt_path = video_dir / f"subs_{target_lang}.vtt"
+            vtt_content = generate_vtt(translated_segments)
+            vtt_path.write_text(vtt_content, encoding="utf-8")
+            
+            # Update metadata for this language
+            meta.translations[target_lang] = translated_segments
+        
+        # Save updated metadata
+        meta_path = video_dir / "metadata.json"
+        await run_in_threadpool(save_metadata, meta, meta_path)
+        
+        return JSONResponse({
+            "message": f"Sous-titres générés avec succès pour {len(languages)} langue(s).",
+            "languages": languages
+        })
+    except Exception as e:
+        logger.exception(f"Error generating subtitles for video {video_id}")
+        return JSONResponse({"error": f"Erreur lors de la génération des sous-titres: {e}"}, status_code=500)
+
+
+@app.post("/api/texts/save")
+async def save_text_file(request: Request):
+    """Save edited text file."""
+    if not is_editor(request):
+        return JSONResponse({"error": "Seuls les éditeurs peuvent modifier des fichiers texte."}, status_code=403)
+    
+    # Parse JSON body
+    try:
+        body = await request.json()
+        text_id = body.get("text_id")
+        content = body.get("content")
+    except Exception:
+        return JSONResponse({"error": "Données JSON invalides."}, status_code=400)
+    
+    if not text_id or content is None:
+        return JSONResponse({"error": "text_id et content sont requis."}, status_code=400)
+    
+    # Find text directory
+    text_dir = _find_video_directory(text_id)
+    if not text_dir or not text_dir.exists():
+        return JSONResponse({"error": "Fichier texte non trouvé."}, status_code=404)
+    
+    # Check if it's actually a text file
+    info = _load_video_info(text_dir)
+    if info.get("file_type") != "text":
+        return JSONResponse({"error": "Ce fichier n'est pas un fichier texte."}, status_code=400)
+    
+    try:
+        # Save to original file
+        original_path = None
+        for ext in ['.txt', '.text']:
+            test_path = text_dir / f"original{ext}"
+            if test_path.exists():
+                original_path = test_path
+                break
+        
+        if not original_path:
+            # Create new file if doesn't exist
+            original_path = text_dir / "original.txt"
+        
+        original_path.write_text(content, encoding="utf-8")
+        
+        return JSONResponse({"message": "Texte enregistré avec succès."})
+    except Exception as e:
+        logger.exception(f"Error saving text {text_id}")
+        return JSONResponse({"error": f"Erreur lors de l'enregistrement: {e}"}, status_code=500)
 
 
 # ============================================================

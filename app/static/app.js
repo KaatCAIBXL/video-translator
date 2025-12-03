@@ -4739,12 +4739,35 @@ function renderVideoDetail(video) {
     // Thumbnail
     html += `<img src="/videos/${video.id}/thumbnail?t=${Date.now()}" alt="${video.filename}" style="max-width: 100%; border-radius: 8px; margin-bottom: 20px;" onerror="this.style.display='none'">`;
     
-    // Play button - use existing playVideo function
+    // Subtitle language selection
+    html += `<div style="margin-bottom: 15px;">`;
+    html += `<label style="display: block; margin-bottom: 5px; font-weight: bold;">Sous-titres (cocher pour activer):</label>`;
+    html += `<div id="video-subtitle-checkboxes" style="display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 10px;">`;
+    if (video.available_subtitles && video.available_subtitles.length > 0) {
+        video.available_subtitles.forEach(lang => {
+            const langLabels = {
+                'en': 'Anglais', 'nl': 'Néerlandais', 'fr': 'Français', 'es': 'Espagnol',
+                'sv': 'Suédois', 'fi': 'Finnois', 'pt-br': 'Portugais (Brésil)', 'pt-pt': 'Portugais (Angola/Portugal)',
+                'ln': 'Lingala', 'lua': 'Tshiluba', 'kg': 'Kikongo (Kituba)', 'mg': 'Malagasy', 'yo': 'Yoruba'
+            };
+            html += `<label style="display: flex; align-items: center; cursor: pointer;"><input type="checkbox" value="${lang}" class="subtitle-lang-checkbox" style="margin-right: 5px;">${langLabels[lang] || lang.toUpperCase()}</label>`;
+        });
+    } else {
+        html += `<p style="color: #666; font-size: 0.9em;">Aucune sous-titre disponible. Utilisez "Générer sous-titres" pour en créer.</p>`;
+    }
+    html += `</div>`;
+    html += `</div>`;
+    
+    // Play button - use existing playVideo function with subtitle selection
     const videoJson = JSON.stringify(video).replace(/'/g, "\\'");
-    html += `<button onclick="playVideo(${videoJson}, {}); document.getElementById('item-detail-modal').style.display='none';" style="padding: 12px 24px; background: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; margin-right: 10px;">▶️ Lire</button>`;
+    html += `<button onclick="playVideoWithSubtitles('${video.id}', ${videoJson})" style="padding: 12px 24px; background: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; margin-right: 10px;">▶️ Lire</button>`;
     
     // Editor controls if applicable
     if (isEditor) {
+        html += `<button onclick="showGenerateSubtitles('${video.id}')" style="padding: 12px 24px; background: #9c27b0; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; margin-right: 10px;">📝 Générer sous-titres</button>`;
+        if (video.available_subtitles && video.available_subtitles.length > 0) {
+            html += `<button onclick="showEditSubtitles('${video.id}', ${JSON.stringify(video).replace(/'/g, "\\'")})" style="padding: 12px 24px; background: #ff9800; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; margin-right: 10px;">✏️ Éditer sous-titres</button>`;
+        }
         html += `<button onclick="renameVideo('${video.id}'); document.getElementById('item-detail-modal').style.display='none';" style="padding: 12px 24px; background: #6c757d; color: white; border: none; border-radius: 5px; cursor: pointer; margin-right: 10px;">✏️ Renommer</button>`;
         html += `<button onclick="if(confirm('Êtes-vous sûr de vouloir supprimer ce fichier?')) { deleteVideo('${video.id}'); document.getElementById('item-detail-modal').style.display='none'; }" style="padding: 12px 24px; background: #dc3545; color: white; border: none; border-radius: 5px; cursor: pointer;">🗑️ Supprimer</button>`;
     }
@@ -4756,13 +4779,42 @@ function renderVideoDetail(video) {
 
 // Render audio detail content
 function renderAudioDetail(audio) {
-    let html = `<div>`;
-    html += `<p>Fichier audio</p>`;
-    html += `<button onclick="alert('Audio playback coming soon')" style="padding: 12px 24px; background: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: bold;">▶️ Écouter</button>`;
+    // Get source language from audio info
+    const sourceLang = audio.source_language || 'fr';
+    
+    let html = `<div style="margin-bottom: 20px;">`;
+    html += `<p><strong>Fichier audio:</strong> ${audio.filename}</p>`;
+    
+    // Language selection for playback/download
+    html += `<div style="margin-bottom: 15px;">`;
+    html += `<label style="display: block; margin-bottom: 5px; font-weight: bold;">Langue pour écouter/télécharger:</label>`;
+    html += `<select id="audio-language-select" style="width: 100%; padding: 8px; margin-bottom: 10px;">`;
+    html += `<option value="${sourceLang}">Original (${sourceLang.toUpperCase()})</option>`;
+    // Add translated versions if they exist
+    if (audio.available_translations && audio.available_translations.length > 0) {
+        audio.available_translations.forEach(lang => {
+            const langLabels = {
+                'en': 'Anglais', 'nl': 'Néerlandais', 'fr': 'Français', 'es': 'Espagnol',
+                'sv': 'Suédois', 'fi': 'Finnois', 'pt-br': 'Portugais (Brésil)', 'pt-pt': 'Portugais (Angola/Portugal)',
+                'ln': 'Lingala', 'lua': 'Tshiluba', 'kg': 'Kikongo (Kituba)', 'mg': 'Malagasy', 'yo': 'Yoruba'
+            };
+            html += `<option value="${lang}">${langLabels[lang] || lang.toUpperCase()}</option>`;
+        });
+    }
+    html += `</select>`;
+    html += `</div>`;
+    
+    // Listen button
+    html += `<button onclick="playAudio('${audio.id}', document.getElementById('audio-language-select').value)" style="padding: 12px 24px; background: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; margin-right: 10px;">▶️ Écouter</button>`;
+    
+    // Download button
+    html += `<button onclick="downloadAudio('${audio.id}', document.getElementById('audio-language-select').value)" style="padding: 12px 24px; background: #28a745; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; margin-right: 10px;">📥 Télécharger</button>`;
     
     if (isEditor) {
-        html += `<button onclick="renameVideo('${audio.id}'); document.getElementById('item-detail-modal').style.display='none';" style="padding: 12px 24px; background: #6c757d; color: white; border: none; border-radius: 5px; cursor: pointer; margin-left: 10px;">✏️ Renommer</button>`;
-        html += `<button onclick="if(confirm('Êtes-vous sûr de vouloir supprimer ce fichier?')) { deleteVideo('${audio.id}'); document.getElementById('item-detail-modal').style.display='none'; }" style="padding: 12px 24px; background: #dc3545; color: white; border: none; border-radius: 5px; cursor: pointer; margin-left: 10px;">🗑️ Supprimer</button>`;
+        // Add translation button
+        html += `<button onclick="showAddAudioTranslation('${audio.id}', '${sourceLang}')" style="padding: 12px 24px; background: #9c27b0; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; margin-right: 10px;">🌍 Ajouter traduction</button>`;
+        html += `<button onclick="renameVideo('${audio.id}'); document.getElementById('item-detail-modal').style.display='none';" style="padding: 12px 24px; background: #6c757d; color: white; border: none; border-radius: 5px; cursor: pointer; margin-right: 10px;">✏️ Renommer</button>`;
+        html += `<button onclick="if(confirm('Êtes-vous sûr de vouloir supprimer ce fichier?')) { deleteVideo('${audio.id}'); document.getElementById('item-detail-modal').style.display='none'; }" style="padding: 12px 24px; background: #dc3545; color: white; border: none; border-radius: 5px; cursor: pointer;">🗑️ Supprimer</button>`;
     }
     
     html += `</div>`;
@@ -4771,13 +4823,20 @@ function renderAudioDetail(audio) {
 
 // Render text detail content
 function renderTextDetail(text) {
-    let html = `<div>`;
-    html += `<p>Document texte</p>`;
-    html += `<button onclick="alert('Text reading coming soon')" style="padding: 12px 24px; background: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: bold;">📖 Lire</button>`;
+    let html = `<div style="margin-bottom: 20px;">`;
+    html += `<p><strong>Document texte:</strong> ${text.filename}</p>`;
+    
+    // Read button - opens text editor
+    html += `<button onclick="readText('${text.id}')" style="padding: 12px 24px; background: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; margin-right: 10px;">📖 Lire</button>`;
+    
+    // Download button
+    html += `<button onclick="downloadText('${text.id}')" style="padding: 12px 24px; background: #28a745; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; margin-right: 10px;">📥 Télécharger</button>`;
     
     if (isEditor) {
-        html += `<button onclick="renameVideo('${text.id}'); document.getElementById('item-detail-modal').style.display='none';" style="padding: 12px 24px; background: #6c757d; color: white; border: none; border-radius: 5px; cursor: pointer; margin-left: 10px;">✏️ Renommer</button>`;
-        html += `<button onclick="if(confirm('Êtes-vous sûr de vouloir supprimer ce fichier?')) { deleteVideo('${text.id}'); document.getElementById('item-detail-modal').style.display='none'; }" style="padding: 12px 24px; background: #dc3545; color: white; border: none; border-radius: 5px; cursor: pointer; margin-left: 10px;">🗑️ Supprimer</button>`;
+        // Edit button
+        html += `<button onclick="editText('${text.id}')" style="padding: 12px 24px; background: #ff9800; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; margin-right: 10px;">✏️ Éditer</button>`;
+        html += `<button onclick="renameVideo('${text.id}'); document.getElementById('item-detail-modal').style.display='none';" style="padding: 12px 24px; background: #6c757d; color: white; border: none; border-radius: 5px; cursor: pointer; margin-right: 10px;">✏️ Renommer</button>`;
+        html += `<button onclick="if(confirm('Êtes-vous sûr de vouloir supprimer ce fichier?')) { deleteVideo('${text.id}'); document.getElementById('item-detail-modal').style.display='none'; }" style="padding: 12px 24px; background: #dc3545; color: white; border: none; border-radius: 5px; cursor: pointer;">🗑️ Supprimer</button>`;
     }
     
     html += `</div>`;
@@ -4785,6 +4844,297 @@ function renderTextDetail(text) {
 }
 
 // Initialize tabs and load library when DOM is ready
+// ============================================================
+// HELPER FUNCTIONS FOR DETAIL MODALS
+// ============================================================
+
+// Audio functions
+function playAudio(audioId, lang) {
+    // TODO: Implement audio playback
+    alert(`Audio playback for ${audioId} in ${lang} - coming soon`);
+}
+
+function downloadAudio(audioId, lang) {
+    const link = document.createElement('a');
+    if (lang && lang !== 'original') {
+        // Download translated version
+        link.href = `/files/${encodeURIComponent(audioId)}/audio_${lang}.mp3`;
+    } else {
+        // Download original
+        link.href = `/files/${encodeURIComponent(audioId)}/original.mp3`;
+    }
+    link.download = '';
+    link.click();
+}
+
+function showAddAudioTranslation(audioId, sourceLang) {
+    const modal = document.getElementById('item-detail-modal');
+    const content = document.getElementById('item-detail-content');
+    
+    let html = `<h2 style="margin-top: 0;">Ajouter une traduction audio</h2>`;
+    html += `<p>Générer une version audio dans une autre langue pour: ${audioId}</p>`;
+    html += `<div style="margin-bottom: 15px;">`;
+    html += `<label style="display: block; margin-bottom: 5px; font-weight: bold;">Langue cible:</label>`;
+    html += `<select id="audio-translation-target-lang" style="width: 100%; padding: 8px;">`;
+    const languages = [
+        {code: 'en', label: 'Anglais'}, {code: 'nl', label: 'Néerlandais'}, {code: 'fr', label: 'Français'},
+        {code: 'es', label: 'Espagnol'}, {code: 'sv', label: 'Suédois'}, {code: 'fi', label: 'Finnois'},
+        {code: 'pt-br', label: 'Portugais (Brésil)'}, {code: 'pt-pt', label: 'Portugais (Angola/Portugal)'},
+        {code: 'ln', label: 'Lingala'}, {code: 'lua', label: 'Tshiluba'}, {code: 'kg', label: 'Kikongo (Kituba)'},
+        {code: 'mg', label: 'Malagasy'}, {code: 'yo', label: 'Yoruba'}
+    ];
+    languages.forEach(lang => {
+        if (lang.code !== sourceLang) {
+            html += `<option value="${lang.code}">${lang.label}</option>`;
+        }
+    });
+    html += `</select>`;
+    html += `</div>`;
+    html += `<div style="display: flex; gap: 10px;">`;
+    html += `<button onclick="addAudioTranslation('${audioId}', '${sourceLang}')" style="flex: 1; padding: 12px 24px; background: #9c27b0; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: bold;">Générer</button>`;
+    html += `<button onclick="openItemDetailModal(${JSON.stringify({id: audioId, file_type: 'audio', filename: 'Audio'})})" style="flex: 1; padding: 12px 24px; background: #6c757d; color: white; border: none; border-radius: 5px; cursor: pointer;">Annuler</button>`;
+    html += `</div>`;
+    html += `<div id="audio-translation-status" style="margin-top: 15px;"></div>`;
+    
+    content.innerHTML = html;
+}
+
+async function addAudioTranslation(audioId, sourceLang) {
+    const targetLang = document.getElementById('audio-translation-target-lang').value;
+    const statusEl = document.getElementById('audio-translation-status');
+    
+    statusEl.innerHTML = '<div style="color: blue;">Génération de la traduction audio en cours...</div>';
+    
+    try {
+        const res = await fetch('/api/audio/translate', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                audio_id: audioId,
+                source_language: sourceLang,
+                target_language: targetLang
+            }),
+            credentials: 'include'
+        });
+        
+        const data = await res.json();
+        
+        if (res.ok) {
+            statusEl.innerHTML = '<div style="color: green;">✅ Traduction audio générée avec succès!</div>';
+            setTimeout(() => {
+                // Reload library and reopen detail modal
+                if (typeof fetchVideos === 'function') {
+                    fetchVideos();
+                }
+                // Close modal
+                document.getElementById('item-detail-modal').style.display = 'none';
+            }, 2000);
+        } else {
+            statusEl.innerHTML = `<div style="color: red;">❌ Erreur: ${data.error || 'Erreur inconnue'}</div>`;
+        }
+    } catch (err) {
+        statusEl.innerHTML = `<div style="color: red;">❌ Erreur: ${err.message}</div>`;
+    }
+}
+
+// Video functions
+function playVideoWithSubtitles(videoId, video) {
+    const checkboxes = document.querySelectorAll('.subtitle-lang-checkbox:checked');
+    const selectedLangs = Array.from(checkboxes).map(cb => cb.value);
+    
+    // Close modal
+    document.getElementById('item-detail-modal').style.display = 'none';
+    
+    // Play video with selected subtitles
+    if (typeof playVideo === 'function') {
+        if (selectedLangs.length > 0) {
+            // Use mode "subs" with selected languages
+            playVideo(video, {mode: "subs", langs: selectedLangs});
+        } else {
+            // Play without subtitles
+            playVideo(video, {});
+        }
+    }
+}
+
+function showGenerateSubtitles(videoId) {
+    const modal = document.getElementById('item-detail-modal');
+    const content = document.getElementById('item-detail-content');
+    
+    let html = `<h2 style="margin-top: 0;">Générer des sous-titres</h2>`;
+    html += `<p>Sélectionnez les langues pour lesquelles vous voulez générer des sous-titres:</p>`;
+    html += `<div style="margin-bottom: 15px;">`;
+    html += `<div id="subtitle-lang-checkboxes" style="display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 10px;">`;
+    const languages = [
+        {code: 'en', label: 'Anglais'}, {code: 'nl', label: 'Néerlandais'}, {code: 'fr', label: 'Français'},
+        {code: 'es', label: 'Espagnol'}, {code: 'sv', label: 'Suédois'}, {code: 'fi', label: 'Finnois'},
+        {code: 'pt-br', label: 'Portugais (Brésil)'}, {code: 'pt-pt', label: 'Portugais (Angola/Portugal)'},
+        {code: 'ln', label: 'Lingala'}, {code: 'lua', label: 'Tshiluba'}, {code: 'kg', label: 'Kikongo (Kituba)'},
+        {code: 'mg', label: 'Malagasy'}, {code: 'yo', label: 'Yoruba'}
+    ];
+    languages.forEach(lang => {
+        html += `<label style="display: flex; align-items: center; cursor: pointer;"><input type="checkbox" value="${lang.code}" class="generate-subtitle-lang" style="margin-right: 5px;">${lang.label}</label>`;
+    });
+    html += `</div>`;
+    html += `</div>`;
+    html += `<div style="display: flex; gap: 10px;">`;
+    html += `<button onclick="generateSubtitles('${videoId}')" style="flex: 1; padding: 12px 24px; background: #9c27b0; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: bold;">Générer</button>`;
+    html += `<button onclick="openItemDetailModal(${JSON.stringify({id: videoId, file_type: 'video', filename: 'Video'})})" style="flex: 1; padding: 12px 24px; background: #6c757d; color: white; border: none; border-radius: 5px; cursor: pointer;">Annuler</button>`;
+    html += `</div>`;
+    html += `<div id="subtitle-generation-status" style="margin-top: 15px;"></div>`;
+    
+    content.innerHTML = html;
+}
+
+async function generateSubtitles(videoId) {
+    const checkboxes = document.querySelectorAll('.generate-subtitle-lang:checked');
+    const selectedLangs = Array.from(checkboxes).map(cb => cb.value);
+    
+    if (selectedLangs.length === 0) {
+        alert('Veuillez sélectionner au moins une langue');
+        return;
+    }
+    
+    const statusEl = document.getElementById('subtitle-generation-status');
+    statusEl.innerHTML = '<div style="color: blue;">Génération des sous-titres en cours...</div>';
+    
+    try {
+        const res = await fetch('/api/videos/generate-subtitles', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                video_id: videoId,
+                languages: selectedLangs
+            }),
+            credentials: 'include'
+        });
+        
+        const data = await res.json();
+        
+        if (res.ok) {
+            statusEl.innerHTML = '<div style="color: green;">✅ Sous-titres générés avec succès!</div>';
+            setTimeout(() => {
+                if (typeof fetchVideos === 'function') {
+                    fetchVideos();
+                }
+                document.getElementById('item-detail-modal').style.display = 'none';
+            }, 2000);
+        } else {
+            statusEl.innerHTML = `<div style="color: red;">❌ Erreur: ${data.error || 'Erreur inconnue'}</div>`;
+        }
+    } catch (err) {
+        statusEl.innerHTML = `<div style="color: red;">❌ Erreur: ${err.message}</div>`;
+    }
+}
+
+function showEditSubtitles(videoId, video) {
+    // Use existing editSubtitle function if available
+    if (typeof editSubtitle === 'function') {
+        // Show language selection if multiple languages available
+        if (video && video.available_subtitles && video.available_subtitles.length > 0) {
+            if (video.available_subtitles.length === 1) {
+                // Only one language, edit directly
+                editSubtitle(videoId, video.available_subtitles[0]);
+                document.getElementById('item-detail-modal').style.display = 'none';
+            } else {
+                // Multiple languages, show selection
+                const modal = document.getElementById('item-detail-modal');
+                const content = document.getElementById('item-detail-content');
+                
+                let html = `<h2 style="margin-top: 0;">Éditer les sous-titres</h2>`;
+                html += `<p>Sélectionnez la langue à éditer:</p>`;
+                html += `<div style="margin-bottom: 15px;">`;
+                video.available_subtitles.forEach(lang => {
+                    const langLabels = {
+                        'en': 'Anglais', 'nl': 'Néerlandais', 'fr': 'Français', 'es': 'Espagnol',
+                        'sv': 'Suédois', 'fi': 'Finnois', 'pt-br': 'Portugais (Brésil)', 'pt-pt': 'Portugais (Angola/Portugal)',
+                        'ln': 'Lingala', 'lua': 'Tshiluba', 'kg': 'Kikongo (Kituba)', 'mg': 'Malagasy', 'yo': 'Yoruba'
+                    };
+                    html += `<button onclick="editSubtitle('${videoId}', '${lang}'); document.getElementById('item-detail-modal').style.display='none';" style="display: block; width: 100%; padding: 12px; margin-bottom: 10px; background: #ff9800; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: bold;">${langLabels[lang] || lang.toUpperCase()}</button>`;
+                });
+                html += `</div>`;
+                html += `<button onclick="openItemDetailModal(${JSON.stringify(video).replace(/'/g, "\\'")})" style="padding: 12px 24px; background: #6c757d; color: white; border: none; border-radius: 5px; cursor: pointer;">Retour</button>`;
+                
+                content.innerHTML = html;
+            }
+        } else {
+            alert('Aucune sous-titre disponible pour cette vidéo');
+        }
+    } else {
+        alert('Fonction d\'édition de sous-titres non disponible');
+    }
+}
+
+// Text functions
+function readText(textId) {
+    // Open text in a new modal or page
+    window.open(`/files/${encodeURIComponent(textId)}/original.txt`, '_blank');
+}
+
+function downloadText(textId) {
+    const link = document.createElement('a');
+    link.href = `/files/${encodeURIComponent(textId)}/original.txt`;
+    link.download = '';
+    link.click();
+}
+
+function editText(textId) {
+    const modal = document.getElementById('item-detail-modal');
+    const content = document.getElementById('item-detail-content');
+    
+    // Load text content
+    fetch(`/files/${encodeURIComponent(textId)}/original.txt`)
+        .then(res => res.text())
+        .then(textContent => {
+            let html = `<h2 style="margin-top: 0;">Éditer le texte</h2>`;
+            html += `<div style="margin-bottom: 15px;">`;
+            html += `<textarea id="text-edit-content" style="width: 100%; height: 400px; padding: 10px; font-family: monospace; border: 1px solid #ddd; border-radius: 5px;">${textContent.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</textarea>`;
+            html += `</div>`;
+            html += `<div style="display: flex; gap: 10px;">`;
+            html += `<button onclick="saveText('${textId}')" style="flex: 1; padding: 12px 24px; background: #28a745; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: bold;">Enregistrer</button>`;
+            html += `<button onclick="document.getElementById('item-detail-modal').style.display='none'" style="flex: 1; padding: 12px 24px; background: #6c757d; color: white; border: none; border-radius: 5px; cursor: pointer;">Annuler</button>`;
+            html += `</div>`;
+            html += `<div id="text-save-status" style="margin-top: 15px;"></div>`;
+            
+            content.innerHTML = html;
+        })
+        .catch(err => {
+            alert('Erreur lors du chargement du texte: ' + err.message);
+        });
+}
+
+async function saveText(textId) {
+    const content = document.getElementById('text-edit-content').value;
+    const statusEl = document.getElementById('text-save-status');
+    
+    statusEl.innerHTML = '<div style="color: blue;">Enregistrement en cours...</div>';
+    
+    try {
+        const res = await fetch('/api/texts/save', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                text_id: textId,
+                content: content
+            }),
+            credentials: 'include'
+        });
+        
+        const data = await res.json();
+        
+        if (res.ok) {
+            statusEl.innerHTML = '<div style="color: green;">✅ Texte enregistré avec succès!</div>';
+            setTimeout(() => {
+                document.getElementById('item-detail-modal').style.display = 'none';
+            }, 1500);
+        } else {
+            statusEl.innerHTML = `<div style="color: red;">❌ Erreur: ${data.error || 'Erreur inconnue'}</div>`;
+        }
+    } catch (err) {
+        statusEl.innerHTML = `<div style="color: red;">❌ Erreur: ${err.message}</div>`;
+    }
+}
+
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => {
         initLibraryTabs();

@@ -28,6 +28,8 @@ class VideoListItem(BaseModel):
     has_transcription: bool = False  # Whether transcribed.txt exists
     folder_path: Optional[str] = None  # Path to folder containing this video
     is_private: bool = False  # Only visible to editors
+    source_language: Optional[str] = None  # Source language for audio/text files
+    available_translations: List[str] = Field(default_factory=list)  # Available translated audio versions
 
 class FolderItem(BaseModel):
     name: str
