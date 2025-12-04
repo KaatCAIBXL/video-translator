@@ -4,6 +4,7 @@ import logging
 import re
 import shutil
 import tempfile
+import time
 import uuid
 import requests
 import base64
@@ -3590,7 +3591,20 @@ def _get_session_state(session_id: str) -> Dict:
 
 @app.post("/api/translate")
 async def live_translate_audio(request: Request, audio: UploadFile = File(...)):
-    """Live translate audio - werkende versie met bestaande services."""
+    """Live translate audio - met volledige functionaliteit: context-aware correctie, duplicate detection, audio preprocessing, speaker/interpreter filtering."""
+    from .live_translator_service import (
+        _apply_subscription_corrections,
+        corrigeer_zin_met_context,
+        verwijder_ongewenste_transcripties,
+        _is_duplicate_transcription,
+        _should_filter_interpreter_segment,
+        AudioPreprocessingConfig,
+        _preprocess_audio_file,
+        map_whisper_language_hint,
+    )
+    from .services import transcribe_audio_whisper
+    from .audio_text_services import translate_text
+    
     global _last_speaker_timestamp
     
     try:
@@ -3601,6 +3615,7 @@ async def live_translate_audio(request: Request, audio: UploadFile = File(...)):
         bron_taal = form.get("from", "fr").lower()
         doel_taal = form.get("to", "nl").lower()
         interpreter_lang = form.get("interpreter_lang", "").lower()
+        interpreter_lang_hint = map_whisper_language_hint(interpreter_lang) if interpreter_lang else None
         
         # Save audio to temp file
         with tempfile.NamedTemporaryFile(delete=False, suffix=".webm") as tmp:
@@ -3609,17 +3624,21 @@ async def live_translate_audio(request: Request, audio: UploadFile = File(...)):
             audio_path.write_bytes(content)
         
         try:
-            # Transcribe audio using existing service
-            from .services import transcribe_audio_whisper
-            from .audio_text_services import improve_text_with_ai, translate_text
+            # Audio preprocessing (normalize, filter, trim silence)
+            preprocess_config = AudioPreprocessingConfig.from_request(form)
+            speech_remains = await run_in_threadpool(
+                _preprocess_audio_file, str(audio_path), preprocess_config
+            )
+            if not speech_remains:
+                return JSONResponse({
+                    "recognized": "",
+                    "corrected": "",
+                    "translation": "",
+                    "silenceDetected": True,
+                })
             
             # Map language codes for Whisper
-            whisper_lang_map = {
-                "fr": "fr", "nl": "nl", "en": "en", "es": "es", 
-                "pt": "pt", "lingala": "ln", "kituba": "kg", 
-                "kikongo": "kg", "tshiluba": "lu"
-            }
-            whisper_lang = whisper_lang_map.get(bron_taal, None)
+            whisper_lang = map_whisper_language_hint(bron_taal)
             
             # Transcribe
             whisper_result = await run_in_threadpool(
@@ -3627,6 +3646,9 @@ async def live_translate_audio(request: Request, audio: UploadFile = File(...)):
             )
             
             ruwe_tekst = whisper_result.get("text", "").strip()
+            detected_language = whisper_result.get("language")
+            segment_timestamp = time.time()
+            
             if not ruwe_tekst:
                 return JSONResponse({
                     "recognized": "",
@@ -3635,14 +3657,72 @@ async def live_translate_audio(request: Request, audio: UploadFile = File(...)):
                     "silenceDetected": True,
                 })
             
-            # Apply subscription corrections (wordt al gedaan in improve_text_with_ai)
-            tekst = ruwe_tekst
+            # Speaker/interpreter filtering
+            if interpreter_lang_hint:
+                should_filter = await run_in_threadpool(
+                    _should_filter_interpreter_segment,
+                    detected_language,
+                    interpreter_lang_hint,
+                    ruwe_tekst,
+                    segment_timestamp
+                )
+                if should_filter:
+                    return JSONResponse({
+                        "recognized": "",
+                        "corrected": "",
+                        "translation": "",
+                        "silenceDetected": True,
+                        "interpreterFiltered": True,
+                    })
             
-            # Simple context-aware improvement (kan later uitgebreid worden)
+            # Remove unwanted transcriptions
+            tekst = await run_in_threadpool(verwijder_ongewenste_transcripties, ruwe_tekst)
+            if not tekst:
+                return JSONResponse({
+                    "recognized": "",
+                    "corrected": "",
+                    "translation": "",
+                    "silenceDetected": True,
+                })
+            
+            # Apply subscription corrections
+            tekst = await run_in_threadpool(_apply_subscription_corrections, tekst)
+            
+            # Context-aware correction with full GPT prompt
             vorige_zinnen = session_state["vorige_zinnen"]
             verbeterde_zin = await run_in_threadpool(
-                improve_text_with_ai, tekst, language=bron_taal
+                corrigeer_zin_met_context, tekst, vorige_zinnen
             )
+            verbeterde_zin = await run_in_threadpool(
+                verwijder_ongewenste_transcripties, verbeterde_zin
+            )
+            
+            if not verbeterde_zin:
+                return JSONResponse({
+                    "recognized": "",
+                    "corrected": "",
+                    "translation": "",
+                    "silenceDetected": True,
+                })
+            
+            # Duplicate detection
+            if await run_in_threadpool(_is_duplicate_transcription, tekst, verbeterde_zin):
+                logger.info("Duplicate transcription detected, skipping")
+                return JSONResponse({
+                    "recognized": "",
+                    "corrected": "",
+                    "translation": "",
+                    "silenceDetected": True,
+                })
+            
+            # Add to seen transcriptions
+            from .live_translator_service import _normalize_text_for_dedup, _seen_transcriptions
+            norm_recognized = await run_in_threadpool(_normalize_text_for_dedup, tekst)
+            norm_corrected = await run_in_threadpool(_normalize_text_for_dedup, verbeterde_zin)
+            if norm_recognized:
+                _seen_transcriptions.add(norm_recognized)
+            if norm_corrected and norm_corrected != norm_recognized:
+                _seen_transcriptions.add(norm_corrected)
             
             # Translate
             vertaling = ""
