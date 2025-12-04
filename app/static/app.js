@@ -4789,8 +4789,46 @@ function openItemDetailModal(item) {
 function renderVideoDetail(video) {
     let html = `<div style="margin-bottom: 20px;">`;
     
-    // Thumbnail
-    html += `<img src="/videos/${video.id}/thumbnail?t=${Date.now()}" alt="${video.filename}" style="max-width: 100%; border-radius: 8px; margin-bottom: 20px;" onerror="this.style.display='none'">`;
+    // Thumbnail met play-knop overlay
+    const videoJson = JSON.stringify(video).replace(/'/g, "\\'");
+    html += `<div style="position: relative; display: inline-block; margin-bottom: 20px;">`;
+    html += `<img src="/videos/${video.id}/thumbnail?t=${Date.now()}" alt="${video.filename}" style="max-width: 100%; border-radius: 8px; display: block;" onerror="this.style.display='none'">`;
+    // Transparante play-knop over de thumbnail
+    html += `
+        <button
+            type="button"
+            onclick="playVideoWithSubtitles('${video.id}', ${videoJson})"
+            style="
+                position: absolute;
+                top: 50%;
+                left: 50%;
+                transform: translate(-50%, -50%);
+                width: 80px;
+                height: 80px;
+                border-radius: 50%;
+                border: 4px solid rgba(255, 255, 255, 0.9);
+                background: rgba(0, 0, 0, 0.35);
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                cursor: pointer;
+                transition: background 0.15s ease, transform 0.15s ease;
+                padding: 0;
+            "
+            onmouseenter="this.style.background='rgba(0,0,0,0.55)'; this.style.transform='translate(-50%, -50%) scale(1.05)';"
+            onmouseleave="this.style.background='rgba(0,0,0,0.35)'; this.style.transform='translate(-50%, -50%) scale(1)';"
+        >
+            <div style="
+                width: 0;
+                height: 0;
+                border-top: 16px solid transparent;
+                border-bottom: 16px solid transparent;
+                border-left: 26px solid rgba(255,255,255,0.95);
+                margin-left: 4px;
+            "></div>
+        </button>
+    `;
+    html += `</div>`;
     
     // Subtitle language selection
     html += `<div style="margin-bottom: 15px;">`;
@@ -4810,10 +4848,6 @@ function renderVideoDetail(video) {
     }
     html += `</div>`;
     html += `</div>`;
-    
-    // Play button - use existing playVideo function with subtitle selection
-    const videoJson = JSON.stringify(video).replace(/'/g, "\\'");
-    html += `<button onclick="playVideoWithSubtitles('${video.id}', ${videoJson})" style="padding: 12px 24px; background: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; margin-right: 10px;">▶️ Lire</button>`;
     
     // Editor controls if applicable
     if (isEditor) {
