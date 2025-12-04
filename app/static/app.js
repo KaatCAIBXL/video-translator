@@ -4791,14 +4791,13 @@ function renderVideoDetail(video) {
     let html = `<div style="margin-bottom: 20px;">`;
     
     // Thumbnail met play-knop overlay
-    const videoJson = JSON.stringify(video).replace(/'/g, "\\'");
     html += `<div style="position: relative; display: inline-block; margin-bottom: 20px;">`;
     html += `<img src="/videos/${video.id}/thumbnail?t=${Date.now()}" alt="${video.filename}" style="max-width: 100%; border-radius: 8px; display: block;" onerror="this.style.display='none'">`;
     // Transparante play-knop over de thumbnail
     html += `
         <button
             type="button"
-            onclick="playVideoWithSubtitles('${video.id}', ${videoJson})"
+            onclick="playVideoWithSubtitles('${video.id}')"
             style="
                 position: absolute;
                 top: 50%;
@@ -5043,7 +5042,8 @@ async function addAudioTranslation(audioId, sourceLang) {
 }
 
 // Video functions
-function playVideoWithSubtitles(videoId, video) {
+function playVideoWithSubtitles(videoId) {
+    console.log("playVideoWithSubtitles called", { videoId });
     const checkboxes = document.querySelectorAll('.subtitle-lang-checkbox:checked');
     const selectedLangs = Array.from(checkboxes).map(cb => cb.value);
     
@@ -5051,14 +5051,17 @@ function playVideoWithSubtitles(videoId, video) {
     const container = document.getElementById('detail-video-player-container');
     const player = document.getElementById('detail-video-player');
     if (!container || !player) {
-        console.error("Inline video player container not found");
+        console.error("Inline video player container not found", {
+            containerExists: !!container,
+            playerExists: !!player,
+        });
         return;
     }
 
     container.style.display = 'block';
 
     // Set video source (original video)
-    const baseUrl = `/videos/${encodeURIComponent(video.id)}/original`;
+    const baseUrl = `/videos/${encodeURIComponent(videoId)}/original`;
     // Remove existing tracks
     Array.from(player.querySelectorAll('track')).forEach(t => t.remove());
     // Reset source to force reload
@@ -5070,7 +5073,7 @@ function playVideoWithSubtitles(videoId, video) {
         track.kind = 'subtitles';
         track.srclang = lang;
         track.label = (lang || '').toUpperCase();
-        track.src = `/videos/${encodeURIComponent(video.id)}/subs/${encodeURIComponent(lang)}`;
+        track.src = `/videos/${encodeURIComponent(videoId)}/subs/${encodeURIComponent(lang)}`;
         if (index === 0) {
             track.default = true;
         }
