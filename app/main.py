@@ -2124,7 +2124,7 @@ async def generate_video_subtitles(request: Request):
         # Update metadata with translations
         for target_lang in languages:
             # Translate segments
-            translated_segments = []
+            translated_segments: List[TranslationSegment] = []
             for pair in sentence_pairs:
                 translated_text_seg = await run_in_threadpool(
                     translate_text,
@@ -2132,17 +2132,19 @@ async def generate_video_subtitles(request: Request):
                     meta.original_language,
                     target_lang
                 )
-                translated_segments.append({
-                    "start": pair.get("start", 0),
-                    "end": pair.get("end", 0),
-                    "text": translated_text_seg,
-                    "language": target_lang
-                })
+                translated_segments.append(
+                    TranslationSegment(
+                        start=pair.get("start", 0),
+                        end=pair.get("end", 0),
+                        text=translated_text_seg,
+                        language=target_lang,
+                    )
+                )
             
             # Generate VTT file
             vtt_path = video_dir / f"subs_{target_lang}.vtt"
-            vtt_content = generate_vtt(translated_segments)
-            vtt_path.write_text(vtt_content, encoding="utf-8")
+            # Gebruik dezelfde helper als elders in de code: generate_vtt schrijft zelf naar disk
+            await run_in_threadpool(generate_vtt, translated_segments, vtt_path)
             
             # Update metadata for this language
             meta.translations[target_lang] = translated_segments
