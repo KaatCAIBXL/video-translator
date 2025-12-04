@@ -4831,6 +4831,15 @@ function renderVideoDetail(video) {
     `;
     html += `</div>`;
     
+    // Inline video player container (hidden until play is pressed)
+    html += `
+      <div id="detail-video-player-container" style="margin-top: 16px; display: none;">
+        <video id="detail-video-player" controls style="width: 100%; border-radius: 8px; background: #000;">
+          Votre navigateur ne supporte pas la balise vidéo.
+        </video>
+      </div>
+    `;
+    
     // Subtitle language selection
     html += `<div style="margin-bottom: 15px;">`;
     html += `<label style="display: block; margin-bottom: 5px; font-weight: bold;">Sous-titres (cocher pour activer):</label>`;
@@ -5038,19 +5047,40 @@ function playVideoWithSubtitles(videoId, video) {
     const checkboxes = document.querySelectorAll('.subtitle-lang-checkbox:checked');
     const selectedLangs = Array.from(checkboxes).map(cb => cb.value);
     
-    // Close modal
-    document.getElementById('item-detail-modal').style.display = 'none';
-    
-    // Play video with selected subtitles
-    if (typeof playVideo === 'function') {
-        if (selectedLangs.length > 0) {
-            // Use mode "subs" with selected languages
-            playVideo(video, {mode: "subs", langs: selectedLangs});
-        } else {
-            // Play without subtitles
-            playVideo(video, {});
-        }
+    // Inline video player inside the detail modal (do not close the modal)
+    const container = document.getElementById('detail-video-player-container');
+    const player = document.getElementById('detail-video-player');
+    if (!container || !player) {
+        console.error("Inline video player container not found");
+        return;
     }
+
+    container.style.display = 'block';
+
+    // Set video source (original video)
+    const baseUrl = `/videos/${encodeURIComponent(video.id)}/original`;
+    // Remove existing tracks
+    Array.from(player.querySelectorAll('track')).forEach(t => t.remove());
+    // Reset source to force reload
+    player.src = baseUrl;
+
+    // Add subtitle tracks for selected languages
+    selectedLangs.forEach((lang, index) => {
+        const track = document.createElement('track');
+        track.kind = 'subtitles';
+        track.srclang = lang;
+        track.label = (lang || '').toUpperCase();
+        track.src = `/videos/${encodeURIComponent(video.id)}/subs/${encodeURIComponent(lang)}`;
+        if (index === 0) {
+            track.default = true;
+        }
+        player.appendChild(track);
+    });
+
+    // Start playback
+    player.play().catch(err => {
+        console.error("Error starting inline video playback:", err);
+    });
 }
 
 function showGenerateSubtitles(videoId) {

@@ -44,6 +44,7 @@ from .audio_text_services import (
     translate_text,
     generate_long_tts_audio,
 )
+from .live_translator_service import verwijder_ongewenste_transcripties
 
 from .languages import (
     get_language_options,
@@ -1510,6 +1511,11 @@ async def transcribe_file_download(
             audio_file_path,
             source_language
         )
+        # Remove unwanted subtitle-like phrases (same blacklist as live translator)
+        transcribed_text = await run_in_threadpool(
+            verwijder_ongewenste_transcripties,
+            transcribed_text or ""
+        )
         
         if not transcribed_text or not transcribed_text.strip():
             return JSONResponse({"error": "La transcription est vide."}, status_code=400)
@@ -1930,6 +1936,11 @@ async def translate_audio(request: Request):
                 original_path,
                 source_language
             )
+            # Remove unwanted subtitle-like phrases
+            transcribed_text = await run_in_threadpool(
+                verwijder_ongewenste_transcripties,
+                transcribed_text or ""
+            )
             if transcribed_text and transcribed_text.strip():
                 transcribed_path.write_text(transcribed_text, encoding="utf-8")
             else:
@@ -2094,6 +2105,11 @@ async def generate_video_subtitles(request: Request):
                 transcribe_long_audio,
                 audio_path,
                 source_lang
+            )
+            # Remove unwanted subtitle-like phrases
+            transcribed_text = await run_in_threadpool(
+                verwijder_ongewenste_transcripties,
+                transcribed_text or ""
             )
             if transcribed_text and transcribed_text.strip():
                 transcribed_path.write_text(transcribed_text, encoding="utf-8")
@@ -2328,12 +2344,14 @@ async def handle_audio_text_upload(
                 logger.info(f"Transcribing audio: {original_path}")
                 try:
                     transcribed_text = transcribe_long_audio(original_path, language=source_language)
+                    # Remove unwanted subtitle-like phrases
+                    transcribed_text = verwijder_ongewenste_transcripties(transcribed_text or "")
                     if transcribed_text and transcribed_text.strip():
                         text_path = file_dir / "transcribed.txt"
                         text_path.write_text(transcribed_text, encoding="utf-8")
                         results["transcribed"] = str(text_path)
                     else:
-                        logger.warning("Transcription returned empty text, skipping file creation")
+                        logger.warning("Transcription returned empty text after blacklist filtering, skipping file creation")
                 except Exception as e:
                     logger.exception(f"Error during transcription: {e}")
                     # Don't write error to file, just log it
