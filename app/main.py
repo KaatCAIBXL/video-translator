@@ -105,10 +105,15 @@ def _find_video_directory(video_id: str) -> Optional[Path]:
     def _search(directory: Path) -> Optional[Path]:
         for item in directory.iterdir():
             if item.is_dir():
+                # 1) Als er metadata is, gebruik die (voor video's)
                 meta = _load_video_metadata(item)
                 if meta and meta.id == video_id:
                     return item
-                # Recursively search subdirectories
+                # 2) Voor simpele library-items (audio/tekst) zonder metadata:
+                #    gebruik de map-naam als ID
+                if item.name == video_id:
+                    return item
+                # 3) Recursief verder zoeken in submappen
                 found = _search(item)
                 if found:
                     return found
