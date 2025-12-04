@@ -1830,7 +1830,7 @@ async def upload_text_to_library(
 
 @app.post("/api/audio/translate")
 async def translate_audio(request: Request):
-    """Generate a translated audio version from an existing audio file."""
+    """Generate a translated audio version from an existing audio file (TTS-based)."""
     if not is_editor(request):
         return JSONResponse({"error": "Seuls les éditeurs peuvent générer des traductions audio."}, status_code=403)
     
@@ -1926,6 +1926,77 @@ async def translate_audio(request: Request):
         return JSONResponse({"error": f"Erreur lors de la traduction audio: {e}"}, status_code=500)
 
 
+@app.post("/api/audio/upload-translation")
+async def upload_audio_translation(
+    request: Request,
+    audio_id: str = Form(...),
+    target_language: str = Form(...),
+    file: UploadFile = File(...),
+):
+    """
+    Upload een reeds bestaande vertaalde audio voor een bestaand audio-item.
+    De vertaalde audio wordt opgeslagen als audio_{lang}.ext onder dezelfde titel.
+    """
+    if not is_editor(request):
+        return JSONResponse(
+            {"error": "Seuls les éditeurs peuvent ajouter des traductions audio."},
+            status_code=403,
+        )
+
+    if target_language not in ALLOWED_LANGUAGE_CODES:
+        return JSONResponse(
+            {"error": f"Langue cible non supportée: {target_language}"},
+            status_code=400,
+        )
+
+    # Vind de map van dit audio-item
+    audio_dir = _find_video_directory(audio_id)
+    if not audio_dir or not audio_dir.exists():
+        return JSONResponse(
+            {"error": "Fichier audio non trouvé."},
+            status_code=404,
+        )
+
+    # Bepaal extensie op basis van upload
+    ext = Path(file.filename).suffix or ".mp3"
+    translated_audio_path = audio_dir / f"audio_{target_language}{ext}"
+
+    try:
+        with open(translated_audio_path, "wb") as f:
+            shutil.copyfileobj(file.file, f)
+
+        # Metadata bijwerken
+        info_path = audio_dir / "info.json"
+        info = {}
+        if info_path.exists():
+            try:
+                info = json.loads(info_path.read_text(encoding="utf-8"))
+            except Exception:
+                info = {}
+
+        if "available_translations" not in info or not isinstance(
+            info.get("available_translations"), list
+        ):
+            info["available_translations"] = []
+
+        if target_language not in info["available_translations"]:
+            info["available_translations"].append(target_language)
+
+        info_path.write_text(json.dumps(info, indent=2), encoding="utf-8")
+
+        return JSONResponse(
+            {
+                "message": f"Traduction audio téléchargée avec succès pour {target_language}.",
+                "audio_path": str(translated_audio_path),
+            }
+        )
+    except Exception as e:
+        logger.exception("Failed to upload audio translation")
+        return JSONResponse(
+            {"error": f"Erreur lors du téléchargement de la traduction audio: {e}"},
+            status_code=500,
+        )
+
 @app.post("/api/videos/generate-subtitles")
 async def generate_video_subtitles(request: Request):
     """Generate subtitles for a video in specified languages."""
@@ -1998,14 +2069,26 @@ async def generate_video_subtitles(request: Request):
             )
         
         # Generate subtitles for each language
-        from .services import build_sentence_segments, generate_vtt
+        from .services import generate_vtt
         sentence_pairs = meta.sentence_pairs if meta.sentence_pairs else []
         
         if not sentence_pairs:
-            # Build sentence pairs from transcription
-            # For now, create simple segments (can be improved)
-            segments = build_sentence_segments(transcribed_text)
-            sentence_pairs = [{"start": s.get("start", 0), "end": s.get("end", 0), "text": s.get("text", "")} for s in segments]
+            # Build very simple sentence segments op basis van de platte tekst.
+            # We splitsen op regeleinden: elke regel wordt één subtitle-segment.
+            sentence_pairs = []
+            current_start = 0.0
+            default_duration = 3.0  # eenvoudige placeholder-duur per regel
+            for line in transcribed_text.splitlines():
+                text = (line or "").strip()
+                if not text:
+                    continue
+                pair = {
+                    "start": current_start,
+                    "end": current_start + default_duration,
+                    "text": text,
+                }
+                sentence_pairs.append(pair)
+                current_start += default_duration
         
         # Update metadata with translations
         for target_lang in languages:

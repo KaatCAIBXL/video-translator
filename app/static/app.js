@@ -4872,10 +4872,10 @@ function showAddAudioTranslation(audioId, sourceLang) {
     const content = document.getElementById('item-detail-content');
     
     let html = `<h2 style="margin-top: 0;">Ajouter une traduction audio</h2>`;
-    html += `<p>Générer une version audio dans une autre langue pour: ${audioId}</p>`;
+    html += `<p>Téléversez une version audio existante dans une autre langue pour: ${audioId}</p>`;
     html += `<div style="margin-bottom: 15px;">`;
     html += `<label style="display: block; margin-bottom: 5px; font-weight: bold;">Langue cible:</label>`;
-    html += `<select id="audio-translation-target-lang" style="width: 100%; padding: 8px;">`;
+    html += `<select id="audio-translation-target-lang" style="width: 100%; padding: 8px; margin-bottom: 10px;">`;
     const languages = [
         {code: 'en', label: 'Anglais'}, {code: 'nl', label: 'Néerlandais'}, {code: 'fr', label: 'Français'},
         {code: 'es', label: 'Espagnol'}, {code: 'sv', label: 'Suédois'}, {code: 'fi', label: 'Finnois'},
@@ -4890,8 +4890,12 @@ function showAddAudioTranslation(audioId, sourceLang) {
     });
     html += `</select>`;
     html += `</div>`;
+    html += `<div style="margin-bottom: 15px;">`;
+    html += `<label style="display: block; margin-bottom: 5px; font-weight: bold;">Fichier audio (traduction):</label>`;
+    html += `<input type="file" id="audio-translation-file" accept="audio/*" style="width: 100%; padding: 6px; background: #111827; color: #e5e7eb; border-radius: 4px; border: 1px solid #4b5563;">`;
+    html += `</div>`;
     html += `<div style="display: flex; gap: 10px;">`;
-    html += `<button onclick="addAudioTranslation('${audioId}', '${sourceLang}')" style="flex: 1; padding: 12px 24px; background: #9c27b0; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: bold;">Générer</button>`;
+    html += `<button onclick="addAudioTranslation('${audioId}', '${sourceLang}')" style="flex: 1; padding: 12px 24px; background: #9c27b0; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: bold;">Téléverser</button>`;
     html += `<button onclick="openItemDetailModal(${JSON.stringify({id: audioId, file_type: 'audio', filename: 'Audio'})})" style="flex: 1; padding: 12px 24px; background: #6c757d; color: white; border: none; border-radius: 5px; cursor: pointer;">Annuler</button>`;
     html += `</div>`;
     html += `<div id="audio-translation-status" style="margin-top: 15px;"></div>`;
@@ -4901,32 +4905,36 @@ function showAddAudioTranslation(audioId, sourceLang) {
 
 async function addAudioTranslation(audioId, sourceLang) {
     const targetLang = document.getElementById('audio-translation-target-lang').value;
+    const fileInput = document.getElementById('audio-translation-file');
     const statusEl = document.getElementById('audio-translation-status');
-    
-    statusEl.innerHTML = '<div style="color: blue;">Génération de la traduction audio en cours...</div>';
-    
+
+    if (!fileInput.files || fileInput.files.length === 0) {
+        alert("Veuillez sélectionner un fichier audio à téléverser.");
+        return;
+    }
+
+    const formData = new FormData();
+    formData.append('audio_id', audioId);
+    formData.append('target_language', targetLang);
+    formData.append('file', fileInput.files[0]);
+
+    statusEl.innerHTML = '<div style="color: blue;">Téléversement de la traduction audio en cours...</div>';
+
     try {
-        const res = await fetch('/api/audio/translate', {
+        const res = await fetch('/api/audio/upload-translation', {
             method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({
-                audio_id: audioId,
-                source_language: sourceLang,
-                target_language: targetLang
-            }),
+            body: formData,
             credentials: 'include'
         });
-        
+
         const data = await res.json();
-        
+
         if (res.ok) {
-            statusEl.innerHTML = '<div style="color: green;">✅ Traduction audio générée avec succès!</div>';
+            statusEl.innerHTML = '<div style="color: green;">✅ Traduction audio ajoutée avec succès!</div>';
             setTimeout(() => {
-                // Reload library and reopen detail modal
                 if (typeof fetchVideos === 'function') {
                     fetchVideos();
                 }
-                // Close modal
                 document.getElementById('item-detail-modal').style.display = 'none';
             }, 2000);
         } else {
