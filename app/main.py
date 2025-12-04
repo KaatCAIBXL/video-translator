@@ -89,6 +89,19 @@ app.mount("/static", StaticFiles(directory=str(BASE_DIR / "app" / "static")), na
 
 logger = logging.getLogger(__name__)
 
+# Try to determine last update date from git (used on home page)
+try:
+    import subprocess
+
+    repo_root = Path(__file__).resolve().parents[1]
+    last_update_raw = subprocess.check_output(
+        ["git", "log", "-1", "--format=%cd", "--date=short"],
+        cwd=str(repo_root),
+    )
+    LAST_UPDATE = last_update_raw.decode("utf-8").strip()
+except Exception:
+    LAST_UPDATE = None
+
 def _load_video_metadata(video_dir: Path) -> Optional[VideoMetadata]:
     meta_path = video_dir / "metadata.json"
     if not meta_path.exists():
@@ -234,7 +247,13 @@ async def index(request: Request):
     role = get_role_from_request(request)
     if not role:
         # Show home page first
-        return templates.TemplateResponse("home.html", {"request": request})
+        return templates.TemplateResponse(
+            "home.html",
+            {
+                "request": request,
+                "last_update": LAST_UPDATE,
+            },
+        )
     
     try:
         return templates.TemplateResponse(

@@ -464,9 +464,8 @@
         <div class="brand-text">
           <h1>
             <span class="primary">Video‑Translator</span>
-            <span class="secondary">LIVE · TEACH · ADMIN</span>
+            <span class="secondary">LIVE · ENSEIGNER · ADMIN</span>
           </h1>
-          <p>Één ingang. Drie modules. Live vertalen, onderwijscontent en beheer.</p>
         </div>
       </div>
       <div>
@@ -486,7 +485,14 @@
           Utilisez <strong>Live translator</strong> pour l'interprétation automatique en direct,
           <strong>Les saints du MAI</strong> pour les audios, chants et vidéos de l'église en plusieurs langues,
           et <strong>I‑tech privé</strong> pour traiter et traduire tous vos contenus.
+          <br>(les informations détaillées seront ajoutées plus tard)
         </p>
+
+        {% if last_update %}
+        <p class="hero-subtitle">
+          <strong>Dernière mise à jour :</strong> {{ last_update }}
+        </p>
+        {% endif %}
 
         <div class="hero-grid">
         </div>
@@ -561,11 +567,10 @@
 
         <div class="helper">
           <span>
-            <strong>Tip:</strong> gebruik <strong>Live translator</strong> als eerste module;
-            de andere modules kun je later technisch aansluiten als aparte services.
+            <strong>Astuce :</strong> commencez avec <strong>Live translator</strong>, puis explorez les autres modules selon vos besoins.
           </span>
           <span class="badge">
-            ARCHITECTUUR · <span>MULTI‑SERVICE</span>
+            ARCHITECTURE · <span>MULTI‑SERVICE</span>
           </span>
         </div>
       </section>
