@@ -1607,6 +1607,7 @@ async function deleteVideo(videoId) {
     try {
         const res = await fetch(`/api/videos/${encodeURIComponent(videoId)}`, {
             method: "DELETE",
+            credentials: "include",
         });
         
         if (!res.ok) {

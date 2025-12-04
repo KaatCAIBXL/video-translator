@@ -2467,37 +2467,54 @@ async def download_file(request: Request, file_id: str, filename: str):
 
 @app.delete("/api/videos/{video_id}")
 async def delete_video(request: Request, video_id: str):
-    """Delete a video and all its files."""
+    """Delete a video, audio, text directory or loose file."""
     if not is_editor(request):
         return JSONResponse({"error": "Seuls les éditeurs peuvent supprimer des vidéos."}, status_code=403)
     
-    # Use the existing _find_video_directory function which properly searches recursively
+    # 1) Eerst proberen als directory-gebaseerd item (video/audio/tekst met metadata of info.json)
     video_dir = _find_video_directory(video_id)
-    if not video_dir or not video_dir.exists():
-        logger.warning(f"Video directory not found for ID: {video_id}")
-        return JSONResponse({"error": "Vidéo non trouvée."}, status_code=404)
-    
-    try:
-        # Verify the directory still exists before attempting deletion
-        if not video_dir.exists():
-            logger.warning(f"Video directory does not exist: {video_dir}")
-            return JSONResponse({"error": "Vidéo non trouvée."}, status_code=404)
-        
-        # Double-check metadata to ensure we're deleting the right video
-        meta = _load_video_metadata(video_dir)
-        if not meta or meta.id != video_id:
-            logger.warning(f"Video ID mismatch: expected {video_id}, got {meta.id if meta else 'None'}")
-            return JSONResponse({"error": "Vidéo non trouvée."}, status_code=404)
-        
-        shutil.rmtree(video_dir)
-        logger.info(f"Successfully deleted video {video_id} from {video_dir}")
-        return JSONResponse({"message": "Vidéo supprimée avec succès."})
-    except FileNotFoundError:
-        logger.warning(f"Video directory already deleted: {video_dir}")
-        return JSONResponse({"error": "Vidéo non trouvée."}, status_code=404)
-    except Exception as e:
-        logger.exception(f"Failed to delete video {video_id} from {video_dir}: {e}")
-        return JSONResponse({"error": f"Impossible de supprimer la vidéo: {e}"}, status_code=500)
+    if video_dir and video_dir.exists():
+        try:
+            shutil.rmtree(video_dir)
+            logger.info(f"Successfully deleted directory item {video_id} from {video_dir}")
+            return JSONResponse({"message": "Fichier supprimé avec succès."})
+        except FileNotFoundError:
+            logger.warning(f"Directory already deleted: {video_dir}")
+            return JSONResponse({"error": "Fichier non trouvée."}, status_code=404)
+        except Exception as e:
+            logger.exception(f"Failed to delete directory item {video_id} from {video_dir}: {e}")
+            return JSONResponse({"error": f"Impossible de supprimer le fichier: {e}"}, status_code=500)
+
+    # 2) Zoniet: proberen als los bestand (oude manier, ID met underscores)
+    loose_file = _find_loose_file(video_id)
+    if loose_file and loose_file.exists() and loose_file.is_file():
+        try:
+            parent_dir = loose_file.parent
+            loose_file.unlink()
+
+            # Verwijder lege mappen boven dit bestand binnen PROCESSED_DIR
+            try:
+                while parent_dir != settings.PROCESSED_DIR:
+                    if any(parent_dir.iterdir()):
+                        break
+                    to_remove = parent_dir
+                    parent_dir = parent_dir.parent
+                    to_remove.rmdir()
+            except Exception:
+                # Niet kritisch als opruimen mislukt
+                pass
+
+            logger.info(f"Successfully deleted loose file {video_id} at {loose_file}")
+            return JSONResponse({"message": "Fichier supprimé avec succès."})
+        except FileNotFoundError:
+            logger.warning(f"Loose file already deleted: {loose_file}")
+            return JSONResponse({"error": "Fichier non trouvée."}, status_code=404)
+        except Exception as e:
+            logger.exception(f"Failed to delete loose file {video_id} at {loose_file}: {e}")
+            return JSONResponse({"error": f"Impossible de supprimer le fichier: {e}"}, status_code=500)
+
+    logger.warning(f"File or directory not found for ID: {video_id}")
+    return JSONResponse({"error": "Fichier non trouvée."}, status_code=404)
 
 @app.put("/api/videos/{video_id}/rename")
 async def rename_video(request: Request, video_id: str, new_filename: str = Form(...)):
