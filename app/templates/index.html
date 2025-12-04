@@ -487,7 +487,11 @@
         <!-- 5. Upload audio -->
         <div class="action-card" style="border: 2px solid #00bcd4; border-radius: 8px; padding: 20px; background: #e0f7fa;">
             <h3>🎵 Upload audio</h3>
-            <p style="margin: 10px 0; color: #666; font-size: 0.9em;">Téléchargez un fichier audio de votre PC pour l'ajouter à la bibliothèque. La langue source est requise.</p>
+            <p style="margin: 10px 0; color: #666; font-size: 0.9em;">
+                Créez un élément audio avec un <strong>titre commun</strong> et
+                <strong>plusieurs fichiers audio</strong>, chacun dans une langue différente.
+                Lors de l'écoute ou du téléchargement dans la bibliothèque, vous pourrez choisir la langue.
+            </p>
             <button type="button" class="action-button" id="upload-audio-button" style="width: 100%; padding: 12px; background: #00bcd4; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 16px; font-weight: bold;">
                 Upload audio
             </button>
@@ -496,8 +500,8 @@
                     <h3 style="margin-top: 0;">Uploader un fichier audio vers la bibliothèque</h3>
                     <form id="upload-audio-form">
                         <div style="margin-bottom: 15px;">
-                            <label style="display: block; margin-bottom: 5px; font-weight: bold;">Fichier audio :</label>
-                            <input type="file" id="upload-audio-file" accept="audio/*" required style="width: 100%; padding: 8px;">
+                            <label style="display: block; margin-bottom: 5px; font-weight: bold;">Titre (commun pour toutes les langues) :</label>
+                            <input type="text" id="upload-audio-title" required style="width: 100%; padding: 8px;">
                         </div>
                         <div style="margin-bottom: 15px;">
                             <label style="display: block; margin-bottom: 5px; font-weight: bold;">Dossier (optionnel) :</label>
@@ -506,14 +510,28 @@
                             </select>
                         </div>
                         <div style="margin-bottom: 15px;">
-                            <label style="display: block; margin-bottom: 5px; font-weight: bold;">Langue source :</label>
-                            <select id="upload-audio-source-lang" required style="width: 100%; padding: 8px;">
-                                <option value="fr">Français</option>
-                                <option value="nl">Néerlandais</option>
-                                <option value="en">Anglais</option>
-                                <option value="es">Espagnol</option>
-                                <option value="pt">Portugais</option>
-                            </select>
+                            <label style="display: block; margin-bottom: 5px; font-weight: bold;">Pistes audio (une par langue) :</label>
+                            <div id="upload-audio-tracks">
+                                <div class="audio-track-row" style="display: flex; gap: 8px; margin-bottom: 8px; align-items: center;">
+                                    <select class="audio-track-lang" style="flex: 0 0 40%; padding: 8px;">
+                                        <option value="fr">Français</option>
+                                        <option value="nl">Néerlandais</option>
+                                        <option value="en">Anglais</option>
+                                        <option value="es">Espagnol</option>
+                                        <option value="pt-pt">Portugais (Angola/Portugal)</option>
+                                        <option value="pt-br">Portugais (Brésil)</option>
+                                        <option value="ln">Lingala</option>
+                                        <option value="lua">Tshiluba</option>
+                                        <option value="kg">Kikongo (Kituba)</option>
+                                        <option value="mg">Malagasy</option>
+                                        <option value="yo">Yoruba</option>
+                                    </select>
+                                    <input type="file" class="audio-track-file" accept="audio/*" required style="flex: 1; padding: 8px;">
+                                </div>
+                            </div>
+                            <button type="button" id="add-audio-track-btn" style="margin-top: 8px; padding: 8px 12px; background: #e0f2fe; border: 1px solid #90cdf4; border-radius: 4px; cursor: pointer; font-size: 0.9em;">
+                                + Ajouter une langue / un fichier audio
+                            </button>
                         </div>
                         <div style="display: flex; gap: 10px; margin-top: 20px;">
                             <button type="submit" style="flex: 1; padding: 12px; background: #00bcd4; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: bold;">

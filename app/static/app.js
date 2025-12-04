@@ -4306,23 +4306,76 @@ if (uploadVideoForm) {
 // Upload audio to library form handler
 const uploadAudioForm = document.getElementById('upload-audio-form');
 if (uploadAudioForm) {
+    // Dynamisch extra taal/audio-rijen toevoegen
+    const addTrackBtn = document.getElementById('add-audio-track-btn');
+    if (addTrackBtn) {
+        addTrackBtn.addEventListener('click', () => {
+            const container = document.getElementById('upload-audio-tracks');
+            if (!container) return;
+            
+            const row = document.createElement('div');
+            row.className = 'audio-track-row';
+            row.style.display = 'flex';
+            row.style.gap = '8px';
+            row.style.marginBottom = '8px';
+            row.style.alignItems = 'center';
+            
+            row.innerHTML = `
+                <select class="audio-track-lang" style="flex: 0 0 40%; padding: 8px;">
+                    <option value="fr">Français</option>
+                    <option value="nl">Néerlandais</option>
+                    <option value="en">Anglais</option>
+                    <option value="es">Espagnol</option>
+                    <option value="pt-pt">Portugais (Angola/Portugal)</option>
+                    <option value="pt-br">Portugais (Brésil)</option>
+                    <option value="ln">Lingala</option>
+                    <option value="lua">Tshiluba</option>
+                    <option value="kg">Kikongo (Kituba)</option>
+                    <option value="mg">Malagasy</option>
+                    <option value="yo">Yoruba</option>
+                </select>
+                <input type="file" class="audio-track-file" accept="audio/*" style="flex: 1; padding: 8px;">
+            `;
+            
+            container.appendChild(row);
+        });
+    }
+
     uploadAudioForm.addEventListener('submit', async function(e) {
         e.preventDefault();
         
-        const fileInput = document.getElementById('upload-audio-file');
+        const titleInput = document.getElementById('upload-audio-title');
         const folder = document.getElementById('upload-audio-folder');
-        const sourceLang = document.getElementById('upload-audio-source-lang');
         const statusEl = document.getElementById('upload-audio-status');
         
-        if (!fileInput.files || fileInput.files.length === 0) {
-            statusEl.innerHTML = '<div style="color: red;">Veuillez sélectionner un fichier audio.</div>';
+        const title = titleInput ? titleInput.value.trim() : '';
+        if (!title) {
+            statusEl.innerHTML = '<div style="color: red;">Veuillez saisir un titre pour cet élément audio.</div>';
+            return;
+        }
+
+        const rows = Array.from(document.querySelectorAll('#upload-audio-tracks .audio-track-row'));
+        const files = [];
+        const languages = [];
+        rows.forEach(row => {
+            const fileInput = row.querySelector('.audio-track-file');
+            const langSelect = row.querySelector('.audio-track-lang');
+            if (fileInput && fileInput.files && fileInput.files.length > 0) {
+                files.push(fileInput.files[0]);
+                languages.push(langSelect ? langSelect.value : 'fr');
+            }
+        });
+
+        if (files.length === 0) {
+            statusEl.innerHTML = '<div style="color: red;">Veuillez ajouter au moins un fichier audio.</div>';
             return;
         }
         
         const formData = new FormData();
-        formData.append('file', fileInput.files[0]);
+        formData.append('title', title);
         if (folder.value) formData.append('folder_path', folder.value);
-        formData.append('source_language', sourceLang.value);
+        files.forEach(file => formData.append('files', file));
+        languages.forEach(lang => formData.append('languages', lang));
         
         statusEl.innerHTML = '<div style="color: blue;">Upload en cours...</div>';
         

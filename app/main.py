@@ -490,7 +490,8 @@ async def list_videos(request: Request):
                                     break
                             
                             if original_file:
-                                filename = original_file.name
+                                # Gebruik titel uit info.json indien aanwezig, anders bestandsnaam
+                                filename = info.get("title") or original_file.name
                                 # Use directory name as ID (same as video)
                                 file_id = item.name
                                 
@@ -1729,16 +1730,27 @@ async def upload_video_to_library(
 @app.post("/api/upload-audio-to-library")
 async def upload_audio_to_library(
     request: Request,
-    file: UploadFile = File(...),
+    files: List[UploadFile] = File(...),
     folder_path: str = Form(None),
-    source_language: str = Form(...)
+    languages: List[str] = Form(...),
+    title: str = Form(...)
 ):
-    """Upload audio to library without processing (only save file + metadata)."""
+    """Upload één audio-item met meerdere taalvarianten naar de bibliotheek.
+    
+    - Alle bestanden delen hetzelfde titelveld.
+    - De eerste taal wordt beschouwd als de brontaal (source_language).
+    - Extra talen worden opgeslagen als beschikbare vertalingen (available_translations).
+    """
     if not is_editor(request):
         return JSONResponse({"error": "Seuls les éditeurs peuvent télécharger des fichiers."}, status_code=403)
     
+    if not files or len(files) == 0:
+        return JSONResponse({"error": "Au moins un fichier audio est requis."}, status_code=400)
+    
+    if not languages or len(languages) != len(files):
+        return JSONResponse({"error": "Le nombre de langues doit correspondre au nombre de fichiers audio."}, status_code=400)
+    
     file_id = str(uuid.uuid4())
-    ext = Path(file.filename).suffix
     
     # Handle folder structure
     if folder_path:
@@ -1754,15 +1766,27 @@ async def upload_audio_to_library(
     
     file_dir.mkdir(parents=True, exist_ok=True)
     
-    original_path = file_dir / f"original{ext}"
+    available_translations: List[str] = []
+    source_language: Optional[str] = None
     
     try:
-        # Save audio file
-        with open(original_path, "wb") as f:
-            shutil.copyfileobj(file.file, f)
+        for idx, (upload, lang) in enumerate(zip(files, languages)):
+            ext = Path(upload.filename).suffix or ".mp3"
+            if idx == 0:
+                # Eerste bestand = originele bron
+                source_language = lang
+                target_path = file_dir / f"original{ext}"
+            else:
+                # Verdere bestanden = vertalingen
+                target_path = file_dir / f"audio_{lang}{ext}"
+                if lang not in available_translations:
+                    available_translations.append(lang)
+            
+            with open(target_path, "wb") as f:
+                shutil.copyfileobj(upload.file, f)
     except Exception:
         logger.exception("Failed to store uploaded audio")
-        return JSONResponse({"error": "Impossible de sauvegarder le fichier audio."}, status_code=500)
+        return JSONResponse({"error": "Impossible de sauvegarder les fichiers audio."}, status_code=500)
     
     # Save info.json
     info_path = file_dir / "info.json"
@@ -1770,7 +1794,9 @@ async def upload_audio_to_library(
         "folder_path": folder_path if folder_path else None,
         "is_private": False,
         "file_type": "audio",
-        "source_language": source_language
+        "source_language": source_language,
+        "available_translations": available_translations,
+        "title": title,
     }
     info_path.write_text(json.dumps(info_data, indent=2), encoding="utf-8")
     
