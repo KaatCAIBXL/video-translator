@@ -4306,40 +4306,40 @@ if (uploadVideoForm) {
 // Upload audio to library form handler
 const uploadAudioForm = document.getElementById('upload-audio-form');
 if (uploadAudioForm) {
-    // Dynamisch extra taal/audio-rijen toevoegen
-    const addTrackBtn = document.getElementById('add-audio-track-btn');
-    if (addTrackBtn) {
-        addTrackBtn.addEventListener('click', () => {
-            const container = document.getElementById('upload-audio-tracks');
-            if (!container) return;
-            
-            const row = document.createElement('div');
-            row.className = 'audio-track-row';
-            row.style.display = 'flex';
-            row.style.gap = '8px';
-            row.style.marginBottom = '8px';
-            row.style.alignItems = 'center';
-            
-            row.innerHTML = `
-                <select class="audio-track-lang" style="flex: 0 0 40%; padding: 8px;">
-                    <option value="fr">Français</option>
-                    <option value="nl">Néerlandais</option>
-                    <option value="en">Anglais</option>
-                    <option value="es">Espagnol</option>
-                    <option value="pt-pt">Portugais (Angola/Portugal)</option>
-                    <option value="pt-br">Portugais (Brésil)</option>
-                    <option value="ln">Lingala</option>
-                    <option value="lua">Tshiluba</option>
-                    <option value="kg">Kikongo (Kituba)</option>
-                    <option value="mg">Malagasy</option>
-                    <option value="yo">Yoruba</option>
-                </select>
-                <input type="file" class="audio-track-file" accept="audio/*" style="flex: 1; padding: 8px;">
-            `;
-            
-            container.appendChild(row);
-        });
-    }
+    // Dynamisch extra taal/audio-rijen toevoegen (delegatie zodat het altijd werkt)
+    document.addEventListener('click', (event) => {
+        const addBtn = event.target.closest('#add-audio-track-btn');
+        if (!addBtn) return;
+
+        const container = document.getElementById('upload-audio-tracks');
+        if (!container) return;
+        
+        const row = document.createElement('div');
+        row.className = 'audio-track-row';
+        row.style.display = 'flex';
+        row.style.gap = '8px';
+        row.style.marginBottom = '8px';
+        row.style.alignItems = 'center';
+        
+        row.innerHTML = `
+            <select class="audio-track-lang" style="flex: 0 0 40%; padding: 8px;">
+                <option value="fr">Français</option>
+                <option value="nl">Néerlandais</option>
+                <option value="en">Anglais</option>
+                <option value="es">Espagnol</option>
+                <option value="pt-pt">Portugais (Angola/Portugal)</option>
+                <option value="pt-br">Portugais (Brésil)</option>
+                <option value="ln">Lingala</option>
+                <option value="lua">Tshiluba</option>
+                <option value="kg">Kikongo (Kituba)</option>
+                <option value="mg">Malagasy</option>
+                <option value="yo">Yoruba</option>
+            </select>
+            <input type="file" class="audio-track-file" accept="audio/*" style="flex: 1; padding: 8px;">
+        `;
+        
+        container.appendChild(row);
+    });
 
     uploadAudioForm.addEventListener('submit', async function(e) {
         e.preventDefault();
