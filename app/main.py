@@ -2120,20 +2120,29 @@ async def generate_video_subtitles(request: Request):
                 if not video_path:
                     logger.error(f"Video file not found for video_id: {video_id}")
                     return JSONResponse({"error": "Fichier vidéo original non trouvé."}, status_code=404)
-                logger.info(f"Extracting audio from video {video_id}")
-                await run_in_threadpool(extract_audio, video_path, audio_path)
+                logger.info(f"Extracting audio from video {video_id}, video_path: {video_path}")
+                try:
+                    await run_in_threadpool(extract_audio, video_path, audio_path)
+                except Exception as extract_exc:
+                    logger.exception(f"Error extracting audio from video {video_id}: {extract_exc}")
+                    return JSONResponse({
+                        "error": f"Erreur lors de l'extraction audio: {str(extract_exc)}"
+                    }, status_code=500)
             
             # Verify audio file exists and has content
             if not audio_path.exists():
                 logger.error(f"Audio file not created for video_id: {video_id}")
                 return JSONResponse({"error": "Impossible d'extraire l'audio de la vidéo."}, status_code=500)
             
-            if audio_path.stat().st_size == 0:
+            audio_size = audio_path.stat().st_size
+            if audio_size == 0:
                 logger.error(f"Audio file is empty for video_id: {video_id}")
                 return JSONResponse({"error": "Le fichier audio extrait est vide."}, status_code=500)
             
+            logger.info(f"Audio file ready for transcription: {audio_path}, size: {audio_size} bytes")
+            
             # Transcribe with Whisper to get timing information
-            logger.info(f"Starting transcription with timing for video_id: {video_id}, language: {source_lang}")
+            logger.info(f"Starting transcription with timing for video_id: {video_id}, language: {source_lang}, audio_path: {audio_path}, size: {audio_path.stat().st_size if audio_path.exists() else 0} bytes")
             
             try:
                 whisper_result = await run_in_threadpool(
@@ -2143,11 +2152,37 @@ async def generate_video_subtitles(request: Request):
                 )
             except Exception as transcribe_exc:
                 logger.exception(f"Transcription failed for video {video_id}: {transcribe_exc}")
-                raise RuntimeError(f"Transcription failed: {str(transcribe_exc)}") from transcribe_exc
+                # Return more detailed error message
+                error_msg = str(transcribe_exc)
+                if "API" in error_msg or "OpenAI" in error_msg:
+                    return JSONResponse({
+                        "error": f"Erreur API Whisper: {error_msg}. Vérifiez votre clé API OpenAI."
+                    }, status_code=500)
+                elif "empty" in error_msg.lower() or "no audio" in error_msg.lower():
+                    return JSONResponse({
+                        "error": "La vidéo ne contient pas d'audio audible ou l'audio est vide."
+                    }, status_code=500)
+                else:
+                    return JSONResponse({
+                        "error": f"Erreur lors de la transcription: {error_msg}"
+                    }, status_code=500)
+            
+            if not whisper_result:
+                logger.error(f"Whisper returned empty result for video_id: {video_id}")
+                return JSONResponse({
+                    "error": "La transcription a retourné un résultat vide. Vérifiez que la vidéo contient de l'audio audible."
+                }, status_code=500)
             
             transcribed_text = whisper_result.get("text", "").strip()
+            segments = whisper_result.get("segments", [])
             
-            logger.info(f"Transcription result length: {len(transcribed_text) if transcribed_text else 0} characters, {len(whisper_result.get('segments', []))} segments")
+            logger.info(f"Transcription result length: {len(transcribed_text) if transcribed_text else 0} characters, {len(segments)} segments")
+            
+            if not transcribed_text:
+                logger.error(f"Transcription text is empty for video_id: {video_id}, segments: {len(segments)}")
+                return JSONResponse({
+                    "error": "La transcription est vide. Vérifiez que la vidéo contient de l'audio audible."
+                }, status_code=500)
             
             # Remove unwanted subtitle-like phrases
             original_length = len(transcribed_text) if transcribed_text else 0
@@ -2158,11 +2193,14 @@ async def generate_video_subtitles(request: Request):
             
             filtered_length = len(transcribed_text) if transcribed_text else 0
             if original_length > 0 and filtered_length == 0:
-                logger.warning(f"All transcription text was filtered out for video_id: {video_id}")
+                logger.warning(f"All transcription text was filtered out for video_id: {video_id}. Original text sample: {transcribed_text[:100] if transcribed_text else 'N/A'}")
+                return JSONResponse({
+                    "error": "Tout le texte de transcription a été filtré. La vidéo peut contenir uniquement de la musique ou des sons non vocaux."
+                }, status_code=500)
             
             if transcribed_text and transcribed_text.strip():
                 transcribed_path.write_text(transcribed_text, encoding="utf-8")
-                logger.info(f"Transcription saved successfully for video_id: {video_id}")
+                logger.info(f"Transcription saved successfully for video_id: {video_id}, length: {len(transcribed_text)} characters")
             else:
                 logger.error(f"Transcription failed or empty for video_id: {video_id}. Original length: {original_length}, Filtered length: {filtered_length}")
                 return JSONResponse({
