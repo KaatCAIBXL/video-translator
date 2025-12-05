@@ -2085,6 +2085,23 @@ async def generate_video_subtitles(request: Request):
     if invalid_langs:
         return JSONResponse({"error": f"Langues non supportées: {', '.join(invalid_langs)}"}, status_code=400)
     
+    # Check API configuration before starting
+    try:
+        from .audio_text_services import get_openai_client
+        client = get_openai_client()
+        if not client:
+            return JSONResponse({
+                "error": "Configuration API manquante. Vérifiez que OPENAI_API_KEY est configurée."
+            }, status_code=500)
+    except ValueError as e:
+        logger.error(f"OpenAI API key not configured: {e}")
+        return JSONResponse({
+            "error": "Clé API OpenAI non configurée. Veuillez configurer OPENAI_API_KEY."
+        }, status_code=500)
+    except Exception as e:
+        logger.warning(f"Could not verify OpenAI client: {e}")
+        # Continue anyway, might work later
+    
     try:
         # Get or create transcription
         transcribed_path = video_dir / "transcribed.txt"
@@ -2095,26 +2112,52 @@ async def generate_video_subtitles(request: Request):
                 # Extract audio from video
                 video_path = _find_original_video(video_dir)
                 if not video_path:
+                    logger.error(f"Video file not found for video_id: {video_id}")
                     return JSONResponse({"error": "Fichier vidéo original non trouvé."}, status_code=404)
+                logger.info(f"Extracting audio from video {video_id}")
                 await run_in_threadpool(extract_audio, video_path, audio_path)
+            
+            # Verify audio file exists and has content
+            if not audio_path.exists():
+                logger.error(f"Audio file not created for video_id: {video_id}")
+                return JSONResponse({"error": "Impossible d'extraire l'audio de la vidéo."}, status_code=500)
+            
+            if audio_path.stat().st_size == 0:
+                logger.error(f"Audio file is empty for video_id: {video_id}")
+                return JSONResponse({"error": "Le fichier audio extrait est vide."}, status_code=500)
             
             # Transcribe
             meta = _load_video_metadata(video_dir)
             source_lang = meta.original_language if meta else "fr"
+            logger.info(f"Starting transcription for video_id: {video_id}, language: {source_lang}")
+            
             transcribed_text = await run_in_threadpool(
                 transcribe_long_audio,
                 audio_path,
                 source_lang
             )
+            
+            logger.info(f"Transcription result length: {len(transcribed_text) if transcribed_text else 0} characters")
+            
             # Remove unwanted subtitle-like phrases
+            original_length = len(transcribed_text) if transcribed_text else 0
             transcribed_text = await run_in_threadpool(
                 verwijder_ongewenste_transcripties,
                 transcribed_text or ""
             )
+            
+            filtered_length = len(transcribed_text) if transcribed_text else 0
+            if original_length > 0 and filtered_length == 0:
+                logger.warning(f"All transcription text was filtered out for video_id: {video_id}")
+            
             if transcribed_text and transcribed_text.strip():
                 transcribed_path.write_text(transcribed_text, encoding="utf-8")
+                logger.info(f"Transcription saved successfully for video_id: {video_id}")
             else:
-                return JSONResponse({"error": "La transcription a échoué."}, status_code=500)
+                logger.error(f"Transcription failed or empty for video_id: {video_id}. Original length: {original_length}, Filtered length: {filtered_length}")
+                return JSONResponse({
+                    "error": "La transcription a échoué. Vérifiez que la vidéo contient de l'audio audible."
+                }, status_code=500)
         
         transcribed_text = transcribed_path.read_text(encoding="utf-8")
         
@@ -2193,8 +2236,27 @@ async def generate_video_subtitles(request: Request):
             "languages": languages
         })
     except Exception as e:
-        logger.exception(f"Error generating subtitles for video {video_id}")
-        return JSONResponse({"error": f"Erreur lors de la génération des sous-titres: {e}"}, status_code=500)
+        error_msg = str(e)
+        error_type = type(e).__name__
+        logger.exception(f"Error generating subtitles for video {video_id}: {error_type}: {error_msg}")
+        
+        # Provide more specific error messages based on error type
+        if "OpenAI" in error_msg or "API" in error_msg or "key" in error_msg.lower():
+            return JSONResponse({
+                "error": "Erreur de configuration API (OpenAI). Vérifiez que la clé API est correctement configurée."
+            }, status_code=500)
+        elif "audio" in error_msg.lower() or "wav" in error_msg.lower():
+            return JSONResponse({
+                "error": "Erreur lors du traitement audio. Vérifiez que la vidéo contient de l'audio valide."
+            }, status_code=500)
+        elif "translation" in error_msg.lower() or "translate" in error_msg.lower():
+            return JSONResponse({
+                "error": "Erreur lors de la traduction. Vérifiez la configuration du service de traduction."
+            }, status_code=500)
+        else:
+            return JSONResponse({
+                "error": f"Erreur lors de la génération des sous-titres: {error_msg}"
+            }, status_code=500)
 
 
 @app.post("/api/texts/save")

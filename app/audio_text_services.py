@@ -244,7 +244,19 @@ def split_audio_efficient(audio_path: Path, chunk_length_ms: int = 60000) -> Lis
 def transcribe_audio_whisper_api(audio_path: Path, language: str = "fr") -> str:
     """Transcribe audio using Whisper API with optimized settings for speed."""
     try:
+        if not audio_path.exists():
+            logger.error(f"Audio file does not exist: {audio_path}")
+            return ""
+        
+        if audio_path.stat().st_size == 0:
+            logger.error(f"Audio file is empty: {audio_path}")
+            return ""
+        
         client = get_openai_client()
+        if not client:
+            logger.error("OpenAI client not available - check API key configuration")
+            return ""
+        
         with open(audio_path, "rb") as audio_file:
             transcript = client.audio.transcriptions.create(
                 model="whisper-1",
@@ -253,24 +265,35 @@ def transcribe_audio_whisper_api(audio_path: Path, language: str = "fr") -> str:
                 temperature=0.0,  # More deterministic, faster processing
                 response_format="text"  # Simpler format, faster response
             )
-            return transcript.strip() if isinstance(transcript, str) else transcript.text.strip()
+            result = transcript.strip() if isinstance(transcript, str) else transcript.text.strip()
+            if result:
+                logger.debug(f"Transcribed {audio_path.name}: {len(result)} characters")
+            else:
+                logger.warning(f"Whisper API returned empty transcript for {audio_path.name}")
+            return result
     except Exception as e:
-        logger.error(f"Whisper API error for {audio_path}: {e}")
+        logger.error(f"Whisper API error for {audio_path}: {e}", exc_info=True)
         return ""
 
 
 def transcribe_long_audio(audio_path: Path, language: str = "fr", max_workers: int = 3) -> str:
     """Split long audio and transcribe each chunk in parallel for faster processing."""
+    if not audio_path.exists():
+        logger.error(f"Audio file does not exist: {audio_path}")
+        return ""
+    
     chunks = split_audio_efficient(audio_path)
     if not chunks:
+        logger.warning(f"No audio chunks created from {audio_path}")
         return ""
     
     total = len(chunks)
-    logger.info(f"Transcribing {total} chunks in parallel (max {max_workers} workers)...")
+    logger.info(f"Transcribing {total} chunks in parallel (max {max_workers} workers) for language: {language}")
     
     # Store results with their index to maintain order
     results = {}
     full_text_parts = []
+    failed_chunks = 0
     
     # Process chunks in parallel
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
@@ -286,12 +309,18 @@ def transcribe_long_audio(audio_path: Path, language: str = "fr", max_workers: i
             idx, chunk = future_to_chunk[future]
             try:
                 text = future.result()
-                results[idx] = text
-                completed += 1
-                progress = math.ceil((completed / total) * 100)
-                logger.info(f"Chunk {idx + 1}/{total} completed ({progress}% total)")
+                if text and text.strip():
+                    results[idx] = text
+                    completed += 1
+                    progress = math.ceil((completed / total) * 100)
+                    logger.info(f"Chunk {idx + 1}/{total} completed ({progress}% total) - {len(text)} chars")
+                else:
+                    logger.warning(f"Chunk {idx + 1}/{total} returned empty text")
+                    failed_chunks += 1
+                    results[idx] = ""
             except Exception as e:
-                logger.error(f"Error transcribing chunk {idx + 1}: {e}")
+                logger.error(f"Error transcribing chunk {idx + 1}: {e}", exc_info=True)
+                failed_chunks += 1
                 results[idx] = ""
             finally:
                 # Clean up chunk file
@@ -306,8 +335,16 @@ def transcribe_long_audio(audio_path: Path, language: str = "fr", max_workers: i
             full_text_parts.append(results[idx])
     
     full_text = "\n".join(full_text_parts).strip()
+    
+    if failed_chunks > 0:
+        logger.warning(f"{failed_chunks}/{total} chunks failed during transcription")
+    
     if full_text:
         full_text = _apply_subscription_corrections(full_text)
+        logger.info(f"Transcription completed: {len(full_text)} characters total")
+    else:
+        logger.error(f"Transcription failed: no text extracted from {total} chunks")
+    
     return full_text
 
 
