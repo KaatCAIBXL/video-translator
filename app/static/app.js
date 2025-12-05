@@ -4791,9 +4791,9 @@ function renderVideoDetail(video) {
     let html = `<div style="margin-bottom: 20px;">`;
     
     // Thumbnail met play-knop overlay
-    html += `<div style="position: relative; display: inline-block; margin-bottom: 20px;">`;
-    html += `<img src="/videos/${video.id}/thumbnail?t=${Date.now()}" alt="${video.filename}" style="max-width: 100%; border-radius: 8px; display: block;" onerror="this.style.display='none'">`;
-    // Transparante play-knop over de thumbnail
+    html += `<div style="position: relative; display: inline-block; margin-bottom: 20px; min-width: 300px; min-height: 200px; background: #000; border-radius: 8px; overflow: hidden;">`;
+    html += `<img src="/videos/${video.id}/thumbnail?t=${Date.now()}" alt="${video.filename}" style="width: 100%; max-width: 100%; height: auto; border-radius: 8px; display: block; min-height: 200px; object-fit: cover;" onerror="this.style.display='none'; this.parentElement.style.background='#1a1a1a';">`;
+    // Transparante play-knop over de thumbnail (altijd gecentreerd)
     html += `
         <button
             type="button"
@@ -4814,6 +4814,7 @@ function renderVideoDetail(video) {
                 cursor: pointer;
                 transition: background 0.15s ease, transform 0.15s ease;
                 padding: 0;
+                z-index: 10;
             "
             onmouseenter="this.style.background='rgba(0,0,0,0.55)'; this.style.transform='translate(-50%, -50%) scale(1.05)';"
             onmouseleave="this.style.background='rgba(0,0,0,0.35)'; this.style.transform='translate(-50%, -50%) scale(1)';"
