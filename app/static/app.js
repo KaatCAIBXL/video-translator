@@ -5236,11 +5236,6 @@ async function playVideoWithSubtitles(videoId) {
     const checkboxes = document.querySelectorAll('.subtitle-lang-checkbox:checked');
     const selectedLangs = Array.from(checkboxes).map(cb => cb.value);
     
-    if (selectedLangs.length === 0) {
-        alert("Veuillez sélectionner au moins une langue de sous-titre.");
-        return;
-    }
-    
     // Inline video player inside the detail modal (do not close the modal)
     const container = document.getElementById('detail-video-player-container');
     const player = document.getElementById('detail-video-player');
@@ -5260,6 +5255,16 @@ async function playVideoWithSubtitles(videoId) {
     Array.from(player.querySelectorAll('track')).forEach(t => t.remove());
     // Reset source to force reload
     player.src = baseUrl;
+
+    // If no languages selected, just play the video without subtitles
+    if (selectedLangs.length === 0) {
+        console.log("Playing video without subtitles");
+        // Start playback
+        player.play().catch(err => {
+            console.error("Error starting inline video playback:", err);
+        });
+        return;
+    }
 
     // Create or get subtitle overlay for custom rendering
     let subtitleOverlay = container.querySelector('.subtitle-overlay-inline');
