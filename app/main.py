@@ -246,6 +246,27 @@ def _combined_subtitle_key(path: Path) -> Optional[str]:
 async def index(request: Request):
     """Show home page first, then redirect to role selection if no session."""
     role = get_role_from_request(request)
+    module = request.query_params.get("module")
+    
+    # If coming from I-tech module, set the module cookie and show index
+    if module == "itech":
+        response = templates.TemplateResponse(
+            "index.html",
+            {
+                "request": request,
+                "available_languages": LANGUAGE_OPTIONS,
+                "is_editor": is_editor(request),
+                "is_admin": is_admin(request),
+                "can_generate_video": can_generate_video(request),
+                "can_manage_characters": can_manage_characters(request),
+                "can_read_admin_messages": can_read_admin_messages(request),
+            },
+        )
+        # Set module cookie if not already set
+        if not request.cookies.get("module"):
+            response.set_cookie(key="module", value="itech", httponly=True, max_age=86400, samesite="lax", secure=False)
+        return response
+    
     if not role:
         # Show home page first
         return templates.TemplateResponse(
@@ -292,10 +313,11 @@ async def select_role(request: Request):
         response.set_cookie(key="session_id", value=session_id, httponly=True, max_age=86400, samesite="lax", secure=False)
         return response
     elif module == "itech":
-        # Set editor role and redirect to main app
+        # Set editor role and redirect to main app with module flag
         session_id = create_session("editor")
-        response = RedirectResponse(url="/", status_code=302)
+        response = RedirectResponse(url="/?module=itech", status_code=302)
         response.set_cookie(key="session_id", value=session_id, httponly=True, max_age=86400, samesite="lax", secure=False)
+        response.set_cookie(key="module", value="itech", httponly=True, max_age=86400, samesite="lax", secure=False)
         return response
     elif module == "admin":
         # Set admin role and redirect to main app

@@ -24,7 +24,18 @@ def get_role_from_request(request: Request) -> Optional[str]:
     return get_role_from_session(session_id)
 
 def is_editor(request: Request) -> bool:
-    """Check if the user is an editor (I-tech)."""
+    """Check if the user is an editor (I-tech).
+    
+    Users are considered editors if:
+    1. They have editor or admin role in session, OR
+    2. They have the 'module=itech' cookie (accessing I-tech privé module)
+    """
+    # Check if user is accessing I-tech privé module (cookie-based)
+    module = request.cookies.get("module")
+    if module == "itech":
+        return True
+    
+    # Check role-based access
     role = get_role_from_request(request)
     return role == "editor" or role == "admin"  # Admins can also edit
 
