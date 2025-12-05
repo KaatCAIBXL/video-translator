@@ -2107,7 +2107,13 @@ async def generate_video_subtitles(request: Request):
         transcribed_path = video_dir / "transcribed.txt"
         audio_path = video_dir / "audio.wav"
         
-        if not transcribed_path.exists():
+        # Load or create metadata
+        meta = _load_video_metadata(video_dir)
+        source_lang = meta.original_language if meta else "fr"
+        
+        # Check if we need to transcribe (either no transcription file or no segments in metadata)
+        whisper_result = None
+        if not transcribed_path.exists() or (meta and not meta.sentence_pairs):
             if not audio_path.exists():
                 # Extract audio from video
                 video_path = _find_original_video(video_dir)
@@ -2126,18 +2132,22 @@ async def generate_video_subtitles(request: Request):
                 logger.error(f"Audio file is empty for video_id: {video_id}")
                 return JSONResponse({"error": "Le fichier audio extrait est vide."}, status_code=500)
             
-            # Transcribe
-            meta = _load_video_metadata(video_dir)
-            source_lang = meta.original_language if meta else "fr"
-            logger.info(f"Starting transcription for video_id: {video_id}, language: {source_lang}")
+            # Transcribe with Whisper to get timing information
+            logger.info(f"Starting transcription with timing for video_id: {video_id}, language: {source_lang}")
             
-            transcribed_text = await run_in_threadpool(
-                transcribe_long_audio,
-                audio_path,
-                source_lang
-            )
+            try:
+                whisper_result = await run_in_threadpool(
+                    transcribe_audio_whisper,
+                    audio_path,
+                    source_lang
+                )
+            except Exception as transcribe_exc:
+                logger.exception(f"Transcription failed for video {video_id}: {transcribe_exc}")
+                raise RuntimeError(f"Transcription failed: {str(transcribe_exc)}") from transcribe_exc
             
-            logger.info(f"Transcription result length: {len(transcribed_text) if transcribed_text else 0} characters")
+            transcribed_text = whisper_result.get("text", "").strip()
+            
+            logger.info(f"Transcription result length: {len(transcribed_text) if transcribed_text else 0} characters, {len(whisper_result.get('segments', []))} segments")
             
             # Remove unwanted subtitle-like phrases
             original_length = len(transcribed_text) if transcribed_text else 0
@@ -2158,21 +2168,25 @@ async def generate_video_subtitles(request: Request):
                 return JSONResponse({
                     "error": "La transcription a échoué. Vérifiez que la vidéo contient de l'audio audible."
                 }, status_code=500)
+        else:
+            # Transcription file exists, read it
+            transcribed_text = transcribed_path.read_text(encoding="utf-8")
         
-        transcribed_text = transcribed_path.read_text(encoding="utf-8")
+        # If we have whisper_result with segments, use it for timing; otherwise try to load from metadata
+        if not whisper_result and meta and meta.sentence_pairs:
+            # We already have segments in metadata, use them
+            logger.info(f"Using existing segments from metadata for video_id: {video_id}")
         
         # Apply manual corrections
         from .audio_text_services import _apply_subscription_corrections
         transcribed_text = _apply_subscription_corrections(transcribed_text)
         
-        # Load or create metadata
-        meta = _load_video_metadata(video_dir)
         if not meta:
             # Create basic metadata
             meta = VideoMetadata(
                 id=video_id,
                 filename=video_dir.name,
-                original_language="fr",
+                original_language=source_lang,
                 sentence_pairs=[],
                 translations={}
             )
@@ -2182,113 +2196,227 @@ async def generate_video_subtitles(request: Request):
         sentence_pairs = meta.sentence_pairs if meta.sentence_pairs else []
         
         if not sentence_pairs:
-            # Build sentence segments op basis van de platte tekst met betere timing.
-            # We splitsen op regeleinden en berekenen timing op basis van tekstlengte.
-            from .services import _get_audio_duration
-            
-            # Get audio duration to calculate proper timing
-            audio_duration = 0.0
-            if audio_path.exists():
-                try:
-                    audio_duration = await run_in_threadpool(_get_audio_duration, audio_path)
-                except Exception as e:
-                    logger.warning(f"Could not get audio duration for timing: {e}")
-            
-            lines = [line.strip() for line in transcribed_text.splitlines() if line.strip()]
-            if not lines:
-                logger.warning("No text lines found for subtitle generation")
-                sentence_pairs = []
-            else:
-                sentence_pairs = []
+            # Use Whisper segments with timing if available
+            if whisper_result and whisper_result.get("segments"):
+                logger.info(f"Using Whisper segments with timing for subtitle generation")
+                # Build segments from Whisper result
+                raw_segments = build_sentence_segments(whisper_result, base_offset=0.0)
                 
-                # Split long lines into smaller chunks (max 80 characters per subtitle)
-                max_chars_per_subtitle = 80
-                split_lines = []
-                for line in lines:
-                    if len(line) <= max_chars_per_subtitle:
-                        split_lines.append(line)
-                    else:
-                        # Split long line into smaller chunks at sentence boundaries or spaces
-                        words = line.split()
-                        current_chunk = []
-                        current_length = 0
-                        
-                        for word in words:
-                            word_length = len(word) + 1  # +1 for space
-                            if current_length + word_length > max_chars_per_subtitle and current_chunk:
-                                # Save current chunk and start new one
-                                split_lines.append(" ".join(current_chunk))
-                                current_chunk = [word]
-                                current_length = len(word)
-                            else:
-                                current_chunk.append(word)
-                                current_length += word_length
-                        
-                        # Add remaining chunk
-                        if current_chunk:
-                            split_lines.append(" ".join(current_chunk))
+                # Apply text filtering to segments
+                from .models import Segment
+                filtered_segments = []
+                for seg in raw_segments:
+                    filtered_text = await run_in_threadpool(
+                        verwijder_ongewenste_transcripties,
+                        seg.text or ""
+                    )
+                    if filtered_text and filtered_text.strip():
+                        # Create new segment with filtered text
+                        filtered_segments.append(Segment(
+                            start=seg.start,
+                            end=seg.end,
+                            text=filtered_text.strip()
+                        ))
                 
-                lines = split_lines
-                
-                # Calculate total characters for proportional timing
-                total_chars = sum(len(line) for line in lines)
-                
-                # Timing parameters
-                min_duration = 2.0  # Minimum 2 seconds per subtitle
-                max_duration = 7.0  # Maximum 7 seconds per subtitle
-                base_reading_speed = 12.0  # Characters per second (reading speed)
-                
-                # If we have audio duration, use it; otherwise estimate from text
-                if audio_duration > 0:
-                    total_time = audio_duration
+                if not filtered_segments:
+                    logger.warning("All segments were filtered out")
+                    sentence_pairs = []
                 else:
-                    # Estimate: assume average reading speed
-                    total_time = max(total_chars / base_reading_speed, len(lines) * min_duration)
+                    # Process segments: merge segments that are very close together, and ensure
+                    # each subtitle stays visible until the next one starts
+                    sentence_pairs = []
+                    max_chars_per_subtitle = 80
+                    min_gap_between_sentences = 0.3  # If gap is less than 0.3s, merge or extend
+                    
+                    i = 0
+                    while i < len(filtered_segments):
+                        current_seg = filtered_segments[i]
+                        current_text = current_seg.text
+                        current_start = current_seg.start
+                        current_end = current_seg.end
+                        
+                        # Check if we should merge with next segment(s)
+                        # Merge if: gap is small (< 0.3s) AND combined text is not too long
+                        j = i + 1
+                        while j < len(filtered_segments):
+                            next_seg = filtered_segments[j]
+                            gap = next_seg.start - current_end
+                            combined_text = current_text + " " + next_seg.text
+                            
+                            # Merge if gap is small and text is not too long
+                            if gap < min_gap_between_sentences and len(combined_text) <= max_chars_per_subtitle:
+                                current_text = combined_text
+                                current_end = next_seg.end
+                                j += 1
+                            else:
+                                break
+                        
+                        # Split long text into multiple subtitles if needed
+                        if len(current_text) > max_chars_per_subtitle:
+                            words = current_text.split()
+                            chunks = []
+                            current_chunk = []
+                            current_chunk_length = 0
+                            
+                            # Distribute words across chunks
+                            for word in words:
+                                word_length = len(word) + 1  # +1 for space
+                                if current_chunk_length + word_length > max_chars_per_subtitle and current_chunk:
+                                    chunks.append(" ".join(current_chunk))
+                                    current_chunk = [word]
+                                    current_chunk_length = len(word)
+                                else:
+                                    current_chunk.append(word)
+                                    current_chunk_length += word_length
+                            
+                            if current_chunk:
+                                chunks.append(" ".join(current_chunk))
+                            
+                            # Distribute timing across chunks
+                            total_duration = current_end - current_start
+                            chunk_duration = total_duration / len(chunks)
+                            for chunk_idx, chunk_text in enumerate(chunks):
+                                chunk_start = current_start + (chunk_idx * chunk_duration)
+                                chunk_end = current_start + ((chunk_idx + 1) * chunk_duration)
+                                
+                                sentence_pairs.append({
+                                    "start": chunk_start,
+                                    "end": chunk_end,
+                                    "text": chunk_text,
+                                })
+                        else:
+                            # Use segment timing, but extend end time to next segment start if gap is small
+                            end_time = current_end
+                            if j < len(filtered_segments):
+                                next_seg = filtered_segments[j]
+                                gap = next_seg.start - current_end
+                                # If gap is small, extend this subtitle to start of next
+                                if gap < min_gap_between_sentences:
+                                    end_time = next_seg.start
+                                else:
+                                    # Add small buffer (0.2s) so subtitle doesn't disappear too quickly
+                                    end_time = current_end + 0.2
+                            else:
+                                # Last segment: add small buffer
+                                end_time = current_end + 0.2
+                            
+                            sentence_pairs.append({
+                                "start": current_start,
+                                "end": end_time,
+                                "text": current_text,
+                            })
+                        
+                        i = j
+                    
+                    logger.info(f"Generated {len(sentence_pairs)} subtitle segments from Whisper timing")
+            else:
+                # Fallback: use text-based timing if no Whisper segments available
+                logger.warning("No Whisper segments available, falling back to text-based timing")
+                from .services import _get_audio_duration
                 
-                current_start = 0.0
-                gap_between_subtitles = 0.1  # Small gap between subtitles (100ms)
+                # Get audio duration to calculate proper timing
+                audio_duration = 0.0
+                if audio_path.exists():
+                    try:
+                        audio_duration = await run_in_threadpool(_get_audio_duration, audio_path)
+                    except Exception as e:
+                        logger.warning(f"Could not get audio duration for timing: {e}")
                 
-                for i, line in enumerate(lines):
-                    # Calculate duration based on text length
-                    char_count = len(line)
-                    proportional_duration = char_count / base_reading_speed
+                lines = [line.strip() for line in transcribed_text.splitlines() if line.strip()]
+                if not lines:
+                    logger.warning("No text lines found for subtitle generation")
+                    sentence_pairs = []
+                else:
+                    sentence_pairs = []
                     
-                    # Ensure minimum and maximum duration
-                    duration = max(min_duration, min(max_duration, proportional_duration))
+                    # Split long lines into smaller chunks (max 80 characters per subtitle)
+                    max_chars_per_subtitle = 80
+                    split_lines = []
+                    for line in lines:
+                        if len(line) <= max_chars_per_subtitle:
+                            split_lines.append(line)
+                        else:
+                            # Split long line into smaller chunks at sentence boundaries or spaces
+                            words = line.split()
+                            current_chunk = []
+                            current_length = 0
+                            
+                            for word in words:
+                                word_length = len(word) + 1  # +1 for space
+                                if current_length + word_length > max_chars_per_subtitle and current_chunk:
+                                    # Save current chunk and start new one
+                                    split_lines.append(" ".join(current_chunk))
+                                    current_chunk = [word]
+                                    current_length = len(word)
+                                else:
+                                    current_chunk.append(word)
+                                    current_length += word_length
+                            
+                            # Add remaining chunk
+                            if current_chunk:
+                                split_lines.append(" ".join(current_chunk))
                     
-                    # Add a small buffer at the end so subtitle doesn't disappear too quickly
-                    duration += 0.3  # Add 300ms buffer
+                    lines = split_lines
                     
-                    # Calculate end time
-                    end_time = current_start + duration
+                    # Calculate total characters for proportional timing
+                    total_chars = sum(len(line) for line in lines)
                     
-                    # If this is the last line and we have audio duration, extend to end
-                    if i == len(lines) - 1 and audio_duration > 0:
-                        # Extend to end of audio, but don't go beyond
-                        if end_time < audio_duration:
+                    # Timing parameters
+                    min_duration = 2.0  # Minimum 2 seconds per subtitle
+                    max_duration = 7.0  # Maximum 7 seconds per subtitle
+                    base_reading_speed = 12.0  # Characters per second (reading speed)
+                    
+                    # If we have audio duration, use it; otherwise estimate from text
+                    if audio_duration > 0:
+                        total_time = audio_duration
+                    else:
+                        # Estimate: assume average reading speed
+                        total_time = max(total_chars / base_reading_speed, len(lines) * min_duration)
+                    
+                    current_start = 0.0
+                    gap_between_subtitles = 0.1  # Small gap between subtitles (100ms)
+                    
+                    for i, line in enumerate(lines):
+                        # Calculate duration based on text length
+                        char_count = len(line)
+                        proportional_duration = char_count / base_reading_speed
+                        
+                        # Ensure minimum and maximum duration
+                        duration = max(min_duration, min(max_duration, proportional_duration))
+                        
+                        # Add a small buffer at the end so subtitle doesn't disappear too quickly
+                        duration += 0.3  # Add 300ms buffer
+                        
+                        # Calculate end time
+                        end_time = current_start + duration
+                        
+                        # If this is the last line and we have audio duration, extend to end
+                        if i == len(lines) - 1 and audio_duration > 0:
+                            # Extend to end of audio, but don't go beyond
+                            if end_time < audio_duration:
+                                end_time = audio_duration
+                            duration = end_time - current_start
+                        
+                        # Ensure we don't exceed audio duration
+                        if audio_duration > 0 and end_time > audio_duration:
                             end_time = audio_duration
-                        duration = end_time - current_start
+                            duration = end_time - current_start
+                        
+                        pair = {
+                            "start": current_start,
+                            "end": end_time,
+                            "text": line,
+                        }
+                        sentence_pairs.append(pair)
+                        
+                        # Next subtitle starts after a small gap
+                        current_start = end_time + gap_between_subtitles
+                        
+                        # If we have audio duration, make sure we don't go beyond it
+                        if audio_duration > 0 and current_start >= audio_duration:
+                            break
                     
-                    # Ensure we don't exceed audio duration
-                    if audio_duration > 0 and end_time > audio_duration:
-                        end_time = audio_duration
-                        duration = end_time - current_start
-                    
-                    pair = {
-                        "start": current_start,
-                        "end": end_time,
-                        "text": line,
-                    }
-                    sentence_pairs.append(pair)
-                    
-                    # Next subtitle starts after a small gap
-                    current_start = end_time + gap_between_subtitles
-                    
-                    # If we have audio duration, make sure we don't go beyond it
-                    if audio_duration > 0 and current_start >= audio_duration:
-                        break
-                
-                logger.info(f"Generated {len(sentence_pairs)} subtitle segments with timing (total duration: {current_start:.1f}s, audio duration: {audio_duration:.1f}s)")
+                    logger.info(f"Generated {len(sentence_pairs)} subtitle segments with fallback timing (total duration: {current_start:.1f}s, audio duration: {audio_duration:.1f}s)")
         
         # Update metadata with translations
         for target_lang in languages:
