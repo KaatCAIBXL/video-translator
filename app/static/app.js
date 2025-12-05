@@ -2475,6 +2475,15 @@ if (uploadForm && isEditor) {
                         const err = await res.json();
                         errorMessage = err.error || res.statusText || `Status ${res.status}`;
                         console.error(`Upload error for file ${file.name}:`, err);
+                        
+                        // If it's a permission error, suggest re-authenticating
+                        if (res.status === 403 && (errorMessage.includes("éditeurs") || errorMessage.includes("editor"))) {
+                            const shouldReload = confirm("Votre session a peut-être expiré. Voulez-vous recharger la page pour vous reconnecter?");
+                            if (shouldReload) {
+                                window.location.href = "/";
+                                return;
+                            }
+                        }
                     } catch (e) {
                         // If response is not JSON, try to get text
                         try {
@@ -4333,7 +4342,17 @@ if (uploadVideoForm) {
                     }
                 }, 2000);
             } else {
-                statusEl.innerHTML = `<div style="color: red;">❌ Erreur: ${data.error || 'Erreur inconnue'}</div>`;
+                let errorMsg = data.error || 'Erreur inconnue';
+                // If it's a permission error, suggest re-authenticating
+                if (res.status === 403 && (errorMsg.includes("éditeurs") || errorMsg.includes("editor"))) {
+                    errorMsg += "\n\nVotre session a peut-être expiré. Veuillez recharger la page et vous reconnecter.";
+                    const shouldReload = confirm(errorMsg + "\n\nVoulez-vous recharger la page maintenant?");
+                    if (shouldReload) {
+                        window.location.href = "/";
+                        return;
+                    }
+                }
+                statusEl.innerHTML = `<div style="color: red;">❌ Erreur: ${errorMsg}</div>`;
             }
         } catch (err) {
             statusEl.innerHTML = `<div style="color: red;">❌ Erreur: ${err.message}</div>`;
@@ -4437,7 +4456,17 @@ if (uploadAudioForm) {
                     }
                 }, 2000);
             } else {
-                statusEl.innerHTML = `<div style="color: red;">❌ Erreur: ${data.error || 'Erreur inconnue'}</div>`;
+                let errorMsg = data.error || 'Erreur inconnue';
+                // If it's a permission error, suggest re-authenticating
+                if (res.status === 403 && (errorMsg.includes("éditeurs") || errorMsg.includes("editor"))) {
+                    errorMsg += "\n\nVotre session a peut-être expiré. Veuillez recharger la page et vous reconnecter.";
+                    const shouldReload = confirm(errorMsg + "\n\nVoulez-vous recharger la page maintenant?");
+                    if (shouldReload) {
+                        window.location.href = "/";
+                        return;
+                    }
+                }
+                statusEl.innerHTML = `<div style="color: red;">❌ Erreur: ${errorMsg}</div>`;
             }
         } catch (err) {
             statusEl.innerHTML = `<div style="color: red;">❌ Erreur: ${err.message}</div>`;
@@ -4488,7 +4517,17 @@ if (uploadTextForm) {
                     }
                 }, 2000);
             } else {
-                statusEl.innerHTML = `<div style="color: red;">❌ Erreur: ${data.error || 'Erreur inconnue'}</div>`;
+                let errorMsg = data.error || 'Erreur inconnue';
+                // If it's a permission error, suggest re-authenticating
+                if (res.status === 403 && (errorMsg.includes("éditeurs") || errorMsg.includes("editor"))) {
+                    errorMsg += "\n\nVotre session a peut-être expiré. Veuillez recharger la page et vous reconnecter.";
+                    const shouldReload = confirm(errorMsg + "\n\nVoulez-vous recharger la page maintenant?");
+                    if (shouldReload) {
+                        window.location.href = "/";
+                        return;
+                    }
+                }
+                statusEl.innerHTML = `<div style="color: red;">❌ Erreur: ${errorMsg}</div>`;
             }
         } catch (err) {
             statusEl.innerHTML = `<div style="color: red;">❌ Erreur: ${err.message}</div>`;
