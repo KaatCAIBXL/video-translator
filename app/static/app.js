@@ -959,6 +959,25 @@ function handleFullscreenChange() {
             .then(() => requestContainerFullscreen())
             .catch(() => {});
     }
+    
+    // Ensure subtitle overlay is visible in fullscreen
+    const overlay = document.getElementById("subtitle-overlay");
+    if (overlay && fullscreenElement === videoContainer) {
+        // Force overlay to be visible and update its position
+        overlay.style.zIndex = '2147483647';
+        overlay.style.display = overlay.classList.contains('hidden') ? 'none' : 'flex';
+    }
+    
+    // Also handle inline subtitle overlay in modal
+    const inlineOverlay = document.querySelector('.subtitle-overlay-inline');
+    if (inlineOverlay) {
+        const detailContainer = document.getElementById('detail-video-player-container');
+        const detailPlayer = document.getElementById('detail-video-player');
+        if (detailContainer && detailPlayer && fullscreenElement === detailContainer) {
+            inlineOverlay.style.zIndex = '2147483647';
+            inlineOverlay.style.display = inlineOverlay.children.length === 0 ? 'none' : 'flex';
+        }
+    }
 }
 
 document.addEventListener("fullscreenchange", handleFullscreenChange);
@@ -5247,7 +5266,7 @@ async function playVideoWithSubtitles(videoId) {
     if (!subtitleOverlay) {
         subtitleOverlay = document.createElement('div');
         subtitleOverlay.className = 'subtitle-overlay-inline';
-        subtitleOverlay.style.cssText = 'position: absolute; left: 50%; bottom: 12%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 6px; max-width: 90%; text-align: center; pointer-events: none; z-index: 10;';
+        subtitleOverlay.style.cssText = 'position: absolute; left: 50%; bottom: 12%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 6px; max-width: 90%; text-align: center; pointer-events: none; z-index: 1000;';
         container.style.position = 'relative';
         container.appendChild(subtitleOverlay);
     }

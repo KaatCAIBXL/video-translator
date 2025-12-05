@@ -193,12 +193,14 @@ button {
     max-width: 90%;
     text-align: center;
     pointer-events: none;
+    z-index: 1000;
 }
 
 #video-container:fullscreen #subtitle-overlay {
     max-width: 80%;
     font-size: clamp(18px, 2.8vw, 34px);
     bottom: 8%;
+    z-index: 2147483647; /* Maximum z-index to ensure visibility in fullscreen */
 }
 
 #subtitle-overlay.hidden {
