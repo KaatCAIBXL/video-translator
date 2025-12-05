@@ -1710,17 +1710,27 @@ async def upload_video_to_library(
         video_dir = settings.PROCESSED_DIR / video_id
     
     video_dir.mkdir(parents=True, exist_ok=True)
+    logger.info(f"Created video directory: {video_dir}")
     
     video_path = video_dir / f"original{ext}"
     thumbnail_path = video_dir / "thumbnail.jpg"
     
     try:
         # Save video file
+        logger.info(f"Starting to save video file: {video_path}, size: {file.size if hasattr(file, 'size') else 'unknown'}")
         with open(video_path, "wb") as f:
             shutil.copyfileobj(file.file, f)
-    except Exception:
-        logger.exception("Failed to store uploaded video")
-        return JSONResponse({"error": "Impossible de sauvegarder la vidéo."}, status_code=500)
+        logger.info(f"Video file saved successfully: {video_path}, size: {video_path.stat().st_size} bytes")
+    except Exception as e:
+        logger.exception(f"Failed to store uploaded video: {e}")
+        # Clean up directory if video save failed
+        try:
+            if video_dir.exists():
+                shutil.rmtree(video_dir)
+                logger.info(f"Cleaned up failed upload directory: {video_dir}")
+        except Exception:
+            pass
+        return JSONResponse({"error": f"Impossible de sauvegarder la vidéo: {str(e)}"}, status_code=500)
     
     # Process thumbnail
     if thumbnail_source:
@@ -1736,24 +1746,35 @@ async def upload_video_to_library(
             logger.exception(f"Failed to process thumbnail: {e}")
     
     # Save minimal metadata
-    meta = VideoMetadata(
-        id=video_id,
-        filename=file.filename,
-        original_language=source_language,
-        sentence_pairs=[],
-        translations={}
-    )
-    meta_path = video_dir / "metadata.json"
-    await run_in_threadpool(save_metadata, meta, meta_path)
+    try:
+        meta = VideoMetadata(
+            id=video_id,
+            filename=file.filename,
+            original_language=source_language,
+            sentence_pairs=[],
+            translations={}
+        )
+        meta_path = video_dir / "metadata.json"
+        await run_in_threadpool(save_metadata, meta, meta_path)
+        logger.info(f"Metadata saved: {meta_path}")
+    except Exception as e:
+        logger.exception(f"Failed to save metadata: {e}")
+        return JSONResponse({"error": f"Impossible de sauvegarder les métadonnées: {str(e)}"}, status_code=500)
     
     # Save info.json with folder and privacy info
-    info_path = video_dir / "info.json"
-    info_data = {
-        "folder_path": folder_path if folder_path else None,
-        "is_private": False,
-    }
-    info_path.write_text(json.dumps(info_data, indent=2), encoding="utf-8")
+    try:
+        info_path = video_dir / "info.json"
+        info_data = {
+            "folder_path": folder_path if folder_path else None,
+            "is_private": False,
+        }
+        info_path.write_text(json.dumps(info_data, indent=2), encoding="utf-8")
+        logger.info(f"Info.json saved: {info_path}")
+    except Exception as e:
+        logger.exception(f"Failed to save info.json: {e}")
+        return JSONResponse({"error": f"Impossible de sauvegarder info.json: {str(e)}"}, status_code=500)
     
+    logger.info(f"Video upload completed successfully: {video_id}, path: {video_dir}")
     return JSONResponse({"message": "Vidéo téléchargée avec succès.", "id": video_id})
 
 

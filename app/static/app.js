@@ -4319,30 +4319,63 @@ if (uploadVideoForm) {
             }
         }
         
-        statusEl.innerHTML = '<div style="color: blue;">Upload en cours...</div>';
+        statusEl.innerHTML = '<div style="color: blue;">⏳ Upload en cours... (cela peut prendre du temps pour les grandes vidéos)</div>';
+        
+        // Disable form during upload
+        const submitBtn = uploadVideoForm.querySelector('button[type="submit"]');
+        const originalBtnText = submitBtn ? submitBtn.textContent : '';
+        if (submitBtn) {
+            submitBtn.disabled = true;
+            submitBtn.textContent = '⏳ Upload en cours...';
+        }
         
         try {
+            // Create AbortController for timeout
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 600000); // 10 minutes timeout
+            
             const res = await fetch('/api/upload-video-to-library', {
                 method: 'POST',
                 body: formData,
-                credentials: 'include'
+                credentials: 'include',
+                signal: controller.signal
             });
             
-            const data = await res.json();
+            clearTimeout(timeoutId);
+            
+            let data;
+            try {
+                data = await res.json();
+            } catch (e) {
+                // If response is not JSON, try to get text
+                const text = await res.text();
+                throw new Error(`Réponse invalide du serveur: ${text || res.statusText}`);
+            }
             
             if (res.ok) {
                 statusEl.innerHTML = '<div style="color: green;">✅ Vidéo uploadée avec succès!</div>';
+                console.log('Video uploaded successfully, ID:', data.id);
+                
+                // Reload library items immediately
+                if (typeof fetchVideos === 'function') {
+                    try {
+                        await fetchVideos();
+                        console.log('Library refreshed after video upload');
+                    } catch (fetchErr) {
+                        console.error('Error refreshing library:', fetchErr);
+                        statusEl.innerHTML += '<div style="color: orange;">⚠️ Vidéo uploadée mais erreur lors du rafraîchissement. Veuillez recharger la page.</div>';
+                    }
+                }
+                
                 setTimeout(() => {
                     document.getElementById('upload-video-modal').style.display = 'none';
                     statusEl.innerHTML = '';
                     uploadVideoForm.reset();
-                    // Reload library items
-                    if (typeof fetchVideos === 'function') {
-                        fetchVideos();
-                    }
                 }, 2000);
             } else {
                 let errorMsg = data.error || 'Erreur inconnue';
+                console.error('Upload error:', res.status, errorMsg);
+                
                 // If it's a permission error, suggest re-authenticating
                 if (res.status === 403 && (errorMsg.includes("éditeurs") || errorMsg.includes("editor"))) {
                     errorMsg += "\n\nVotre session a peut-être expiré. Veuillez recharger la page et vous reconnecter.";
@@ -4355,7 +4388,23 @@ if (uploadVideoForm) {
                 statusEl.innerHTML = `<div style="color: red;">❌ Erreur: ${errorMsg}</div>`;
             }
         } catch (err) {
-            statusEl.innerHTML = `<div style="color: red;">❌ Erreur: ${err.message}</div>`;
+            console.error('Upload exception:', err);
+            let errorMsg = err.message || 'Erreur inconnue';
+            
+            // Handle timeout
+            if (err.name === 'AbortError') {
+                errorMsg = 'Upload timeout: la vidéo est peut-être trop grande ou la connexion est trop lente. Veuillez réessayer avec une vidéo plus petite ou vérifier votre connexion.';
+            } else if (err.message.includes('Failed to fetch') || err.message.includes('NetworkError')) {
+                errorMsg = 'Erreur de connexion: impossible de contacter le serveur. Vérifiez votre connexion internet.';
+            }
+            
+            statusEl.innerHTML = `<div style="color: red;">❌ Erreur: ${errorMsg}</div>`;
+        } finally {
+            // Re-enable form
+            if (submitBtn) {
+                submitBtn.disabled = false;
+                submitBtn.textContent = originalBtnText;
+            }
         }
     });
 }
