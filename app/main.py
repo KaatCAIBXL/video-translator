@@ -289,19 +289,19 @@ async def select_role(request: Request):
         # Set viewer role and redirect to main app (for now, later can have dedicated saints page)
         session_id = create_session("viewer")
         response = RedirectResponse(url="/", status_code=302)
-        response.set_cookie(key="session_id", value=session_id, httponly=True, max_age=86400)
+        response.set_cookie(key="session_id", value=session_id, httponly=True, max_age=86400, samesite="lax", secure=False)
         return response
     elif module == "itech":
         # Set editor role and redirect to main app
         session_id = create_session("editor")
         response = RedirectResponse(url="/", status_code=302)
-        response.set_cookie(key="session_id", value=session_id, httponly=True, max_age=86400)
+        response.set_cookie(key="session_id", value=session_id, httponly=True, max_age=86400, samesite="lax", secure=False)
         return response
     elif module == "admin":
         # Set admin role and redirect to main app
         session_id = create_session("admin")
         response = RedirectResponse(url="/", status_code=302)
-        response.set_cookie(key="session_id", value=session_id, httponly=True, max_age=86400)
+        response.set_cookie(key="session_id", value=session_id, httponly=True, max_age=86400, samesite="lax", secure=False)
         return response
     
     return templates.TemplateResponse("select_role.html", {"request": request})
@@ -1686,7 +1686,12 @@ async def upload_video_to_library(
     thumbnail_file: UploadFile = File(None)
 ):
     """Upload video to library without processing (only save file + thumbnail + metadata)."""
+    session_id = request.cookies.get("session_id")
+    role = get_role_from_request(request)
+    logger.info(f"Upload video request - session_id: {session_id}, role: {role}, is_editor: {is_editor(request)}, cookies: {list(request.cookies.keys())}")
+    
     if not is_editor(request):
+        logger.warning(f"Upload video denied - session_id: {session_id}, role: {role}, is_editor: {is_editor(request)}")
         return JSONResponse({"error": "Seuls les éditeurs peuvent télécharger des fichiers."}, status_code=403)
     
     video_id = str(uuid.uuid4())
@@ -1766,7 +1771,12 @@ async def upload_audio_to_library(
     - De eerste taal wordt beschouwd als de brontaal (source_language).
     - Extra talen worden opgeslagen als beschikbare vertalingen (available_translations).
     """
+    session_id = request.cookies.get("session_id")
+    role = get_role_from_request(request)
+    logger.info(f"Upload audio request - session_id: {session_id}, role: {role}, is_editor: {is_editor(request)}, cookies: {list(request.cookies.keys())}")
+    
     if not is_editor(request):
+        logger.warning(f"Upload audio denied - session_id: {session_id}, role: {role}, is_editor: {is_editor(request)}")
         return JSONResponse({"error": "Seuls les éditeurs peuvent télécharger des fichiers."}, status_code=403)
     
     if not files or len(files) == 0:
@@ -1836,7 +1846,12 @@ async def upload_text_to_library(
     source_language: str = Form(...)
 ):
     """Upload text to library without processing (only save file + metadata)."""
+    session_id = request.cookies.get("session_id")
+    role = get_role_from_request(request)
+    logger.info(f"Upload text request - session_id: {session_id}, role: {role}, is_editor: {is_editor(request)}, cookies: {list(request.cookies.keys())}")
+    
     if not is_editor(request):
+        logger.warning(f"Upload text denied - session_id: {session_id}, role: {role}, is_editor: {is_editor(request)}")
         return JSONResponse({"error": "Seuls les éditeurs peuvent télécharger des fichiers."}, status_code=403)
     
     file_id = str(uuid.uuid4())
