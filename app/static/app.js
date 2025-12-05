@@ -4884,7 +4884,7 @@ function renderAudioDetail(audio) {
     // Language selection for playback/download
     html += `<div style="margin-bottom: 15px;">`;
     html += `<label style="display: block; margin-bottom: 5px; font-weight: bold;">Langue pour écouter/télécharger:</label>`;
-    html += `<select id="audio-language-select" style="width: 100%; padding: 8px; margin-bottom: 10px;">`;
+    html += `<select id="audio-language-select" onchange="updateAudioLanguage('${audio.id}')" style="width: 100%; padding: 8px; margin-bottom: 10px;">`;
     html += `<option value="${sourceLang}">Original (${sourceLang.toUpperCase()})</option>`;
     // Add translated versions if they exist
     if (audio.available_translations && audio.available_translations.length > 0) {
@@ -4899,6 +4899,15 @@ function renderAudioDetail(audio) {
     }
     html += `</select>`;
     html += `</div>`;
+    
+    // Audio player container (hidden until play is pressed)
+    html += `
+      <div id="audio-player-container" style="margin-top: 16px; margin-bottom: 16px; display: none;">
+        <audio id="audio-player" controls style="width: 100%;">
+          Votre navigateur ne supporte pas la balise audio.
+        </audio>
+      </div>
+    `;
     
     // Listen button
     html += `<button onclick="playAudio('${audio.id}', document.getElementById('audio-language-select').value)" style="padding: 12px 24px; background: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; margin-right: 10px;">▶️ Écouter</button>`;
@@ -4946,8 +4955,68 @@ function renderTextDetail(text) {
 
 // Audio functions
 function playAudio(audioId, lang) {
-    // TODO: Implement audio playback
-    alert(`Audio playback for ${audioId} in ${lang} - coming soon`);
+    console.log("playAudio called", { audioId, lang });
+    
+    const container = document.getElementById('audio-player-container');
+    const player = document.getElementById('audio-player');
+    
+    if (!container || !player) {
+        console.error("Audio player container not found", {
+            containerExists: !!container,
+            playerExists: !!player,
+        });
+        alert("Erreur: lecteur audio non trouvé");
+        return;
+    }
+    
+    // Show audio player
+    container.style.display = 'block';
+    
+    // Update audio source
+    updateAudioSource(audioId, lang, player);
+    
+    // Start playback
+    player.play().catch(err => {
+        console.error("Error starting audio playback:", err);
+        alert(`Erreur lors de la lecture audio: ${err.message}`);
+    });
+}
+
+function updateAudioLanguage(audioId) {
+    const select = document.getElementById('audio-language-select');
+    const player = document.getElementById('audio-player');
+    const container = document.getElementById('audio-player-container');
+    
+    if (!select || !player) {
+        return;
+    }
+    
+    const lang = select.value;
+    
+    // If player is visible, update the source
+    if (container && container.style.display !== 'none') {
+        updateAudioSource(audioId, lang, player);
+        // Restart playback with new source
+        player.load();
+        player.play().catch(err => {
+            console.error("Error updating audio playback:", err);
+        });
+    }
+}
+
+function updateAudioSource(audioId, lang, player) {
+    // Build audio URL
+    let audioUrl;
+    if (lang && lang !== 'original') {
+        // Translated version
+        audioUrl = `/files/${encodeURIComponent(audioId)}/audio_${encodeURIComponent(lang)}.mp3`;
+    } else {
+        // Original
+        audioUrl = `/files/${encodeURIComponent(audioId)}/original.mp3`;
+    }
+    
+    // Set audio source
+    player.src = audioUrl;
 }
 
 function downloadAudio(audioId, lang) {
