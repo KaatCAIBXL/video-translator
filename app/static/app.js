@@ -4954,8 +4954,11 @@ function renderTextDetail(text) {
 // ============================================================
 
 // Audio functions
-function playAudio(audioId, lang) {
+async function playAudio(audioId, lang) {
     console.log("playAudio called", { audioId, lang });
+    
+    // Wait a bit to ensure DOM is ready
+    await new Promise(resolve => setTimeout(resolve, 100));
     
     const container = document.getElementById('audio-player-container');
     const player = document.getElementById('audio-player');
@@ -4964,25 +4967,53 @@ function playAudio(audioId, lang) {
         console.error("Audio player container not found", {
             containerExists: !!container,
             playerExists: !!player,
+            modalContent: document.getElementById('item-detail-content')?.innerHTML?.substring(0, 200),
         });
-        alert("Erreur: lecteur audio non trouvé");
+        alert("Erreur: lecteur audio non trouvé. Veuillez réessayer.");
         return;
     }
     
     // Show audio player
     container.style.display = 'block';
     
-    // Update audio source
-    updateAudioSource(audioId, lang, player);
-    
-    // Start playback
-    player.play().catch(err => {
+    // Update audio source (async)
+    try {
+        await updateAudioSource(audioId, lang, player);
+        
+        // Wait for audio to load
+        await new Promise((resolve, reject) => {
+            const timeout = setTimeout(() => {
+                reject(new Error('Timeout waiting for audio to load'));
+            }, 10000);
+            
+            player.addEventListener('canplay', () => {
+                clearTimeout(timeout);
+                resolve();
+            }, { once: true });
+            
+            player.addEventListener('error', (e) => {
+                clearTimeout(timeout);
+                reject(new Error(`Audio load error: ${player.error?.message || 'Unknown error'}`));
+            }, { once: true });
+            
+            // If already loaded
+            if (player.readyState >= 2) {
+                clearTimeout(timeout);
+                resolve();
+            }
+        });
+        
+        // Start playback
+        await player.play();
+        console.log("Audio playback started successfully");
+    } catch (err) {
         console.error("Error starting audio playback:", err);
-        alert(`Erreur lors de la lecture audio: ${err.message}`);
-    });
+        const errorMsg = err.message || 'Fichier audio non trouvé ou format non supporté';
+        alert(`Erreur lors de la lecture audio: ${errorMsg}`);
+    }
 }
 
-function updateAudioLanguage(audioId) {
+async function updateAudioLanguage(audioId) {
     const select = document.getElementById('audio-language-select');
     const player = document.getElementById('audio-player');
     const container = document.getElementById('audio-player-container');
@@ -4995,28 +5026,58 @@ function updateAudioLanguage(audioId) {
     
     // If player is visible, update the source
     if (container && container.style.display !== 'none') {
-        updateAudioSource(audioId, lang, player);
-        // Restart playback with new source
-        player.load();
-        player.play().catch(err => {
+        try {
+            await updateAudioSource(audioId, lang, player);
+            // Restart playback with new source
+            player.load();
+            await player.play();
+        } catch (err) {
             console.error("Error updating audio playback:", err);
-        });
+        }
     }
 }
 
-function updateAudioSource(audioId, lang, player) {
+async function updateAudioSource(audioId, lang, player) {
     // Build audio URL
     let audioUrl;
     if (lang && lang !== 'original') {
-        // Translated version
+        // Translated version - always .mp3
         audioUrl = `/files/${encodeURIComponent(audioId)}/audio_${encodeURIComponent(lang)}.mp3`;
     } else {
-        // Original
-        audioUrl = `/files/${encodeURIComponent(audioId)}/original.mp3`;
+        // Original - try to find the actual file extension
+        // First try common audio formats
+        const audioExtensions = ['.mp3', '.wav', '.m4a', '.ogg', '.aac', '.flac'];
+        let foundUrl = null;
+        
+        // Try each extension
+        for (const ext of audioExtensions) {
+            const testUrl = `/files/${encodeURIComponent(audioId)}/original${ext}`;
+            try {
+                const response = await fetch(testUrl, { method: 'HEAD' });
+                if (response.ok) {
+                    foundUrl = testUrl;
+                    break;
+                }
+            } catch (e) {
+                // Continue to next extension
+                console.log(`Tried ${testUrl}, not found`);
+            }
+        }
+        
+        if (foundUrl) {
+            audioUrl = foundUrl;
+        } else {
+            // Fallback to .mp3
+            audioUrl = `/files/${encodeURIComponent(audioId)}/original.mp3`;
+        }
     }
     
     // Set audio source
     player.src = audioUrl;
+    console.log("Audio source set to:", audioUrl);
+    
+    // Load the audio
+    player.load();
 }
 
 function downloadAudio(audioId, lang) {

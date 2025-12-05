@@ -2742,17 +2742,53 @@ async def download_file(request: Request, file_id: str, filename: str):
                 logger.warning(f"Download denied - session_id: {session_id}, role: {role}, file_id: {file_id}, filename: {filename}, is_private: {is_private}")
                 return JSONResponse({"error": "Accès refusé."}, status_code=403)
             
-            # Set proper content type for text files
+            # Set proper content type
             content_type = "application/octet-stream"
+            disposition = f'attachment; filename="{filename}"'
+            
             if filename.endswith(".txt"):
                 content_type = "text/plain; charset=utf-8"
+            elif filename.endswith(".mp3"):
+                content_type = "audio/mpeg"
+                # For audio playback, use inline instead of attachment
+                disposition = f'inline; filename="{filename}"'
+            elif filename.endswith(".wav"):
+                content_type = "audio/wav"
+                disposition = f'inline; filename="{filename}"'
+            elif filename.endswith(".m4a") or filename.endswith(".mp4"):
+                content_type = "audio/mp4"
+                disposition = f'inline; filename="{filename}"'
+            elif filename.endswith(".ogg"):
+                content_type = "audio/ogg"
+                disposition = f'inline; filename="{filename}"'
+            elif filename.endswith(".aac"):
+                content_type = "audio/aac"
+                disposition = f'inline; filename="{filename}"'
+            elif filename.endswith(".flac"):
+                content_type = "audio/flac"
+                disposition = f'inline; filename="{filename}"'
+            elif filename.startswith("original.") and any(filename.endswith(ext) for ext in [".mp3", ".wav", ".m4a", ".ogg", ".aac", ".flac"]):
+                # Original audio files - determine type from extension
+                if filename.endswith(".mp3"):
+                    content_type = "audio/mpeg"
+                elif filename.endswith(".wav"):
+                    content_type = "audio/wav"
+                elif filename.endswith(".m4a"):
+                    content_type = "audio/mp4"
+                elif filename.endswith(".ogg"):
+                    content_type = "audio/ogg"
+                elif filename.endswith(".aac"):
+                    content_type = "audio/aac"
+                elif filename.endswith(".flac"):
+                    content_type = "audio/flac"
+                disposition = f'inline; filename="{filename}"'
             
             return FileResponse(
                 path=str(file_path),
                 filename=filename,
                 media_type=content_type,
                 headers={
-                    "Content-Disposition": f'attachment; filename="{filename}"',
+                    "Content-Disposition": disposition,
                 },
             )
     
