@@ -4862,7 +4862,8 @@ function renderVideoDetail(video) {
     if (isEditor) {
         html += `<button onclick="showGenerateSubtitles('${video.id}')" style="padding: 12px 24px; background: #9c27b0; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; margin-right: 10px;">📝 Générer sous-titres</button>`;
         if (video.available_subtitles && video.available_subtitles.length > 0) {
-            html += `<button onclick="showEditSubtitles('${video.id}', ${JSON.stringify(video).replace(/'/g, "\\'")})" style="padding: 12px 24px; background: #ff9800; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; margin-right: 10px;">✏️ Éditer sous-titres</button>`;
+            // Use a closure to avoid JSON.stringify issues
+            html += `<button onclick="(function() { const videoData = ${JSON.stringify(video)}; showEditSubtitles('${video.id}', videoData); })()" style="padding: 12px 24px; background: #ff9800; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; margin-right: 10px;">✏️ Éditer sous-titres</button>`;
         }
         html += `<button onclick="renameVideo('${video.id}'); document.getElementById('item-detail-modal').style.display='none';" style="padding: 12px 24px; background: #6c757d; color: white; border: none; border-radius: 5px; cursor: pointer; margin-right: 10px;">✏️ Renommer</button>`;
         html += `<button onclick="if(confirm('Êtes-vous sûr de vouloir supprimer ce fichier?')) { deleteVideo('${video.id}'); document.getElementById('item-detail-modal').style.display='none'; }" style="padding: 12px 24px; background: #dc3545; color: white; border: none; border-radius: 5px; cursor: pointer;">🗑️ Supprimer</button>`;
@@ -5210,10 +5211,15 @@ async function addAudioTranslation(audioId, sourceLang) {
 }
 
 // Video functions
-function playVideoWithSubtitles(videoId) {
+async function playVideoWithSubtitles(videoId) {
     console.log("playVideoWithSubtitles called", { videoId });
     const checkboxes = document.querySelectorAll('.subtitle-lang-checkbox:checked');
     const selectedLangs = Array.from(checkboxes).map(cb => cb.value);
+    
+    if (selectedLangs.length === 0) {
+        alert("Veuillez sélectionner au moins une langue de sous-titre.");
+        return;
+    }
     
     // Inline video player inside the detail modal (do not close the modal)
     const container = document.getElementById('detail-video-player-container');
@@ -5235,18 +5241,97 @@ function playVideoWithSubtitles(videoId) {
     // Reset source to force reload
     player.src = baseUrl;
 
-    // Add subtitle tracks for selected languages
-    selectedLangs.forEach((lang, index) => {
-        const track = document.createElement('track');
-        track.kind = 'subtitles';
-        track.srclang = lang;
-        track.label = (lang || '').toUpperCase();
-        track.src = `/videos/${encodeURIComponent(videoId)}/subs/${encodeURIComponent(lang)}`;
-        if (index === 0) {
-            track.default = true;
-        }
-        player.appendChild(track);
-    });
+    // Create or get subtitle overlay for custom rendering
+    let subtitleOverlay = container.querySelector('.subtitle-overlay-inline');
+    if (!subtitleOverlay) {
+        subtitleOverlay = document.createElement('div');
+        subtitleOverlay.className = 'subtitle-overlay-inline';
+        subtitleOverlay.style.cssText = 'position: absolute; left: 50%; bottom: 12%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 6px; max-width: 90%; text-align: center; pointer-events: none; z-index: 10;';
+        container.style.position = 'relative';
+        container.appendChild(subtitleOverlay);
+    }
+    subtitleOverlay.innerHTML = '';
+
+    // Load subtitles for all selected languages
+    try {
+        const cache = "caches" in window ? await caches.open("video-cache") : null;
+        
+        const subtitles = await Promise.all(
+            selectedLangs.map(async (lang) => {
+                const subUrl = `/videos/${encodeURIComponent(videoId)}/subs/${encodeURIComponent(lang)}`;
+                
+                let res;
+                if (cache) {
+                    const cached = await cache.match(subUrl);
+                    if (cached) {
+                        res = cached;
+                    } else {
+                        res = await fetch(subUrl);
+                        if (res.ok) {
+                            await cache.put(subUrl, res.clone());
+                            res = await cache.match(subUrl);
+                        }
+                    }
+                } else {
+                    res = await fetch(subUrl);
+                }
+                
+                if (!res || !res.ok) {
+                    throw new Error(`Impossible de charger les sous-titres pour ${lang}`);
+                }
+                const text = await res.text();
+                return { lang, cues: parseVtt(text) };
+            })
+        );
+
+        // Update subtitles on timeupdate
+        const updateSubtitles = () => {
+            const currentTime = player.currentTime;
+            subtitleOverlay.innerHTML = "";
+
+            subtitles.forEach(({ lang, cues }) => {
+                const cue = cues.find(
+                    (item) => currentTime >= item.start && currentTime <= item.end
+                );
+                if (cue) {
+                    const line = document.createElement("div");
+                    line.className = "subtitle-line";
+                    line.style.cssText = 'background: rgba(0, 0, 0, 0.75); color: #fff; padding: 6px 10px; border-radius: 6px; font-size: 18px; line-height: 1.4; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4); margin-bottom: 4px;';
+                    
+                    const label = document.createElement("span");
+                    label.className = "subtitle-lang";
+                    label.style.cssText = 'display: block; font-size: 12px; text-transform: uppercase; color: #ffd24c; margin-bottom: 2px;';
+                    label.textContent = lang.toUpperCase();
+                    line.appendChild(label);
+
+                    const textSpan = document.createElement("span");
+                    textSpan.className = "subtitle-text";
+                    cue.text.forEach((segment, index) => {
+                        if (index > 0) {
+                            textSpan.appendChild(document.createElement("br"));
+                        }
+                        textSpan.appendChild(document.createTextNode(segment));
+                    });
+                    line.appendChild(textSpan);
+
+                    subtitleOverlay.appendChild(line);
+                }
+            });
+
+            subtitleOverlay.style.display = subtitleOverlay.children.length === 0 ? 'none' : 'flex';
+        };
+
+        player.addEventListener("timeupdate", updateSubtitles);
+        player.addEventListener("seeked", updateSubtitles);
+        player.addEventListener("ended", () => {
+            subtitleOverlay.innerHTML = '';
+            subtitleOverlay.style.display = 'none';
+        });
+
+    } catch (err) {
+        console.error("Error loading subtitles:", err);
+        alert(`Erreur lors du chargement des sous-titres: ${err.message}`);
+    }
 
     // Start playback
     player.play().catch(err => {
@@ -5350,7 +5435,8 @@ function showEditSubtitles(videoId, video) {
                     html += `<button onclick="editSubtitle('${videoId}', '${lang}'); document.getElementById('item-detail-modal').style.display='none';" style="display: block; width: 100%; padding: 12px; margin-bottom: 10px; background: #ff9800; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: bold;">${langLabels[lang] || lang.toUpperCase()}</button>`;
                 });
                 html += `</div>`;
-                html += `<button onclick="openItemDetailModal(${JSON.stringify(video).replace(/'/g, "\\'")})" style="padding: 12px 24px; background: #6c757d; color: white; border: none; border-radius: 5px; cursor: pointer;">Retour</button>`;
+                // Store video data in a way that can be retrieved without JSON issues
+                html += `<button onclick="(function() { const videoData = ${JSON.stringify(video)}; openItemDetailModal(videoData); })()" style="padding: 12px 24px; background: #6c757d; color: white; border: none; border-radius: 5px; cursor: pointer;">Retour</button>`;
                 
                 content.innerHTML = html;
             }
