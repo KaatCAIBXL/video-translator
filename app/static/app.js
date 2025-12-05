@@ -973,9 +973,27 @@ function handleFullscreenChange() {
     if (inlineOverlay) {
         const detailContainer = document.getElementById('detail-video-player-container');
         const detailPlayer = document.getElementById('detail-video-player');
-        if (detailContainer && detailPlayer && fullscreenElement === detailContainer) {
+        if (detailContainer && detailPlayer && (fullscreenElement === detailContainer || fullscreenElement === detailPlayer)) {
+            // In fullscreen, update overlay positioning to fixed
             inlineOverlay.style.zIndex = '2147483647';
+            inlineOverlay.style.position = 'fixed';
+            inlineOverlay.style.left = '50%';
+            inlineOverlay.style.bottom = '8%';
+            inlineOverlay.style.transform = 'translateX(-50%)';
+            inlineOverlay.style.fontSize = 'clamp(18px, 2.8vw, 34px)';
+            inlineOverlay.style.maxWidth = '80%';
             inlineOverlay.style.display = inlineOverlay.children.length === 0 ? 'none' : 'flex';
+            console.log("Fullscreen: subtitle overlay updated for inline player");
+        } else if (detailContainer && !fullscreenElement) {
+            // Not in fullscreen, restore normal positioning
+            inlineOverlay.style.position = 'absolute';
+            inlineOverlay.style.left = '50%';
+            inlineOverlay.style.bottom = '12%';
+            inlineOverlay.style.transform = 'translateX(-50%)';
+            inlineOverlay.style.fontSize = '18px';
+            inlineOverlay.style.maxWidth = '90%';
+            inlineOverlay.style.zIndex = '1000';
+            console.log("Exited fullscreen: subtitle overlay restored for inline player");
         }
     }
 }
@@ -5346,12 +5364,56 @@ async function playVideoWithSubtitles(videoId) {
             subtitleOverlay.style.display = subtitleOverlay.children.length === 0 ? 'none' : 'flex';
         };
 
-        player.addEventListener("timeupdate", updateSubtitles);
-        player.addEventListener("seeked", updateSubtitles);
-        player.addEventListener("ended", () => {
+        // Store update function so we can reattach it after fullscreen changes
+        const attachSubtitleListeners = () => {
+            player.addEventListener("timeupdate", updateSubtitles);
+            player.addEventListener("seeked", updateSubtitles);
+            player.addEventListener("ended", () => {
+                subtitleOverlay.innerHTML = '';
+                subtitleOverlay.style.display = 'none';
+            });
+        };
+        
+        attachSubtitleListeners();
+        
+        // Handle fullscreen changes for inline player
+        const handleInlineFullscreenChange = () => {
+            const fullscreenElement = document.fullscreenElement;
+            if (fullscreenElement === container || fullscreenElement === player) {
+                // In fullscreen, ensure overlay is visible and properly positioned
+                subtitleOverlay.style.zIndex = '2147483647';
+                subtitleOverlay.style.position = 'fixed';
+                subtitleOverlay.style.left = '50%';
+                subtitleOverlay.style.bottom = '8%';
+                subtitleOverlay.style.transform = 'translateX(-50%)';
+                subtitleOverlay.style.fontSize = 'clamp(18px, 2.8vw, 34px)';
+                subtitleOverlay.style.maxWidth = '80%';
+                // Force update to show current subtitles
+                updateSubtitles();
+            } else {
+                // Not in fullscreen, restore normal positioning
+                subtitleOverlay.style.position = 'absolute';
+                subtitleOverlay.style.left = '50%';
+                subtitleOverlay.style.bottom = '12%';
+                subtitleOverlay.style.transform = 'translateX(-50%)';
+                subtitleOverlay.style.fontSize = '18px';
+                subtitleOverlay.style.maxWidth = '90%';
+                subtitleOverlay.style.zIndex = '1000';
+            }
+        };
+        
+        document.addEventListener("fullscreenchange", handleInlineFullscreenChange);
+        
+        // Cleanup function
+        const cleanup = () => {
+            document.removeEventListener("fullscreenchange", handleInlineFullscreenChange);
+            player.removeEventListener("timeupdate", updateSubtitles);
+            player.removeEventListener("seeked", updateSubtitles);
             subtitleOverlay.innerHTML = '';
             subtitleOverlay.style.display = 'none';
-        });
+        };
+        
+        player.addEventListener("ended", cleanup);
 
     } catch (err) {
         console.error("Error loading subtitles:", err);
