@@ -619,16 +619,19 @@ async def upload_video(
 ):
     # Debug: check session and role
     session_id = request.cookies.get("session_id")
+    module_cookie = request.cookies.get("module")
     role = get_role_from_request(request)
-    logger.info(f"Upload request - session_id: {session_id[:20] if session_id else None}..., role: {role}, is_editor: {is_editor(request)}")
-    logger.info(f"All cookies: {list(request.cookies.keys())}")
+    editor_check = is_editor(request)
+    all_cookies = list(request.cookies.keys())
+    logger.info(f"Upload request - session_id: {session_id[:20] if session_id else None}..., module: {module_cookie}, role: {role}, is_editor: {editor_check}")
+    logger.info(f"All cookies: {all_cookies}")
     logger.info(f"Session store has {get_session_count()} active sessions")
     if session_id:
         logger.info(f"Session lookup: session_id exists in store: {session_exists(session_id)}")
     
     # Only editors can upload
-    if not is_editor(request):
-        logger.warning(f"Upload denied - session_id: {session_id}, role: {role}, is_editor: {is_editor(request)}")
+    if not editor_check:
+        logger.warning(f"Upload denied - session_id: {session_id}, module: {module_cookie}, role: {role}, is_editor: {editor_check}, cookies: {all_cookies}")
         if not role:
             error_msg = "Vous devez sélectionner un rôle pour télécharger des fichiers. Veuillez visiter /select-role et choisir 'I-tech' ou 'Admin'."
         else:
@@ -1709,11 +1712,14 @@ async def upload_video_to_library(
 ):
     """Upload video to library without processing (only save file + thumbnail + metadata)."""
     session_id = request.cookies.get("session_id")
+    module_cookie = request.cookies.get("module")
     role = get_role_from_request(request)
-    logger.info(f"Upload video request - session_id: {session_id}, role: {role}, is_editor: {is_editor(request)}, cookies: {list(request.cookies.keys())}")
+    editor_check = is_editor(request)
+    all_cookies = list(request.cookies.keys())
+    logger.info(f"Upload video request - session_id: {session_id}, module: {module_cookie}, role: {role}, is_editor: {editor_check}, cookies: {all_cookies}")
     
-    if not is_editor(request):
-        logger.warning(f"Upload video denied - session_id: {session_id}, role: {role}, is_editor: {is_editor(request)}")
+    if not editor_check:
+        logger.warning(f"Upload video denied - session_id: {session_id}, module: {module_cookie}, role: {role}, is_editor: {editor_check}, cookies: {all_cookies}")
         return JSONResponse({"error": "Seuls les éditeurs peuvent télécharger des fichiers."}, status_code=403)
     
     video_id = str(uuid.uuid4())
@@ -1815,11 +1821,14 @@ async def upload_audio_to_library(
     - Extra talen worden opgeslagen als beschikbare vertalingen (available_translations).
     """
     session_id = request.cookies.get("session_id")
+    module_cookie = request.cookies.get("module")
     role = get_role_from_request(request)
-    logger.info(f"Upload audio request - session_id: {session_id}, role: {role}, is_editor: {is_editor(request)}, cookies: {list(request.cookies.keys())}")
+    editor_check = is_editor(request)
+    all_cookies = list(request.cookies.keys())
+    logger.info(f"Upload audio request - session_id: {session_id}, module: {module_cookie}, role: {role}, is_editor: {editor_check}, cookies: {all_cookies}")
     
-    if not is_editor(request):
-        logger.warning(f"Upload audio denied - session_id: {session_id}, role: {role}, is_editor: {is_editor(request)}")
+    if not editor_check:
+        logger.warning(f"Upload audio denied - session_id: {session_id}, module: {module_cookie}, role: {role}, is_editor: {editor_check}, cookies: {all_cookies}")
         return JSONResponse({"error": "Seuls les éditeurs peuvent télécharger des fichiers."}, status_code=403)
     
     if not files or len(files) == 0:
@@ -1890,11 +1899,14 @@ async def upload_text_to_library(
 ):
     """Upload text to library without processing (only save file + metadata)."""
     session_id = request.cookies.get("session_id")
+    module_cookie = request.cookies.get("module")
     role = get_role_from_request(request)
-    logger.info(f"Upload text request - session_id: {session_id}, role: {role}, is_editor: {is_editor(request)}, cookies: {list(request.cookies.keys())}")
+    editor_check = is_editor(request)
+    all_cookies = list(request.cookies.keys())
+    logger.info(f"Upload text request - session_id: {session_id}, module: {module_cookie}, role: {role}, is_editor: {editor_check}, cookies: {all_cookies}")
     
-    if not is_editor(request):
-        logger.warning(f"Upload text denied - session_id: {session_id}, role: {role}, is_editor: {is_editor(request)}")
+    if not editor_check:
+        logger.warning(f"Upload text denied - session_id: {session_id}, module: {module_cookie}, role: {role}, is_editor: {editor_check}, cookies: {all_cookies}")
         return JSONResponse({"error": "Seuls les éditeurs peuvent télécharger des fichiers."}, status_code=403)
     
     file_id = str(uuid.uuid4())
