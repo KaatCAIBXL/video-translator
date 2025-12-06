@@ -4223,10 +4223,14 @@ async def live_translate_audio(request: Request, audio: UploadFile = File(...)):
         session_id = _get_session_id(request)
         session_state = _get_session_state(session_id)
         
-        bron_taal = form.get("from", "fr").lower()
-        doel_taal = form.get("to", "nl").lower()
-        interpreter_lang = form.get("interpreter_lang", "").lower()
+        bron_taal = form.get("from", "fr").lower().strip()
+        doel_taal = form.get("to", "nl").lower().strip()
+        interpreter_lang = form.get("interpreter_lang", "").lower().strip()
         interpreter_lang_hint = map_whisper_language_hint(interpreter_lang) if interpreter_lang else None
+        
+        # Check if source and target languages are the same
+        if bron_taal == doel_taal:
+            logger.warning(f"Source and target languages are the same: {bron_taal} == {doel_taal}. Translation will return original text.")
         
         # Save audio to temp file
         with tempfile.NamedTemporaryFile(delete=False, suffix=".webm") as tmp:
@@ -4338,12 +4342,27 @@ async def live_translate_audio(request: Request, audio: UploadFile = File(...)):
             # Translate
             vertaling = ""
             if verbeterde_zin:
-                vertaling = await run_in_threadpool(
-                    translate_text, verbeterde_zin, bron_taal, doel_taal
-                )
-                # Fallback: gebruik gecorrigeerde tekst als vertaling leeg is
-                if not vertaling or not vertaling.strip():
-                    vertaling = verbeterde_zin
+                # Check if source and target languages are the same
+                if bron_taal == doel_taal:
+                    logger.warning(f"Source and target languages are the same ({bron_taal}), skipping translation")
+                    vertaling = ""  # Don't translate if languages are the same
+                else:
+                    try:
+                        vertaling = await run_in_threadpool(
+                            translate_text, verbeterde_zin, bron_taal, doel_taal
+                        )
+                        # Check if translation is the same as original (might indicate an error)
+                        if vertaling and vertaling.strip():
+                            norm_original = verbeterde_zin.lower().strip()
+                            norm_translated = vertaling.lower().strip()
+                            # If translation is very similar to original (more than 90% match), it might be wrong
+                            if norm_original == norm_translated or (len(norm_original) > 10 and norm_translated in norm_original and len(norm_translated) >= len(norm_original) * 0.9):
+                                logger.warning(f"Translation appears to be the same as original: '{verbeterde_zin[:50]}...' -> '{vertaling[:50]}...'")
+                                # Don't use the translation if it's the same as original
+                                vertaling = ""
+                    except Exception as e:
+                        logger.error(f"Translation error: {e}")
+                        vertaling = ""  # Don't use original text as fallback
             
             # Update session state
             session_state["vorige_zinnen"].append(verbeterde_zin)

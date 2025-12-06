@@ -83,6 +83,37 @@ function isDuplicateTranscription(recognized, corrected) {
     return false;
   }
   
+  // Check for self-repetition within the same transcription (e.g., "I wish you the best. I wish you the best")
+  function checkSelfRepetition(text) {
+    if (!text) return false;
+    // Split by common sentence endings
+    const sentences = text.toLowerCase().split(/[.!?…]\s+/).filter(s => s.trim());
+    if (sentences.length < 2) return false;
+    // Check if any sentence appears multiple times
+    const seenSentences = new Set();
+    for (const sentence of sentences) {
+      const normSent = normalizeTextForDedup(sentence);
+      if (normSent && normSent.length > 10) {  // Only check longer sentences
+        if (seenSentences.has(normSent)) {
+          console.log("[Dedup] Self-repetition detected:", sentence.substring(0, 50) + "...");
+          return true;
+        }
+        seenSentences.add(normSent);
+      }
+    }
+    return false;
+  }
+  
+  // Check self-repetition in recognized text
+  if (recognized && checkSelfRepetition(recognized)) {
+    return true;
+  }
+  
+  // Check self-repetition in corrected text
+  if (corrected && corrected !== recognized && checkSelfRepetition(corrected)) {
+    return true;
+  }
+  
   // Check recognized
   if (normalizedRecognized && seenTranscriptions.has(normalizedRecognized)) {
     return true;
@@ -95,13 +126,18 @@ function isDuplicateTranscription(recognized, corrected) {
     }
   }
   
-  // Check of het een substring is van een eerdere transcriptie (overlap detectie)
+  // Check of het een substring is van een eerdere transcriptie (overlap detectie) - maar strenger
   for (const seen of seenTranscriptions) {
-    if (normalizedRecognized && seen.includes(normalizedRecognized) && normalizedRecognized.length > 10) {
-      return true;
+    if (normalizedRecognized && normalizedRecognized.length > 15) {  // Increased from 10 to 15
+      // Check if recognized is a significant part of seen (at least 80% match)
+      if (seen.includes(normalizedRecognized) && normalizedRecognized.length >= seen.length * 0.8) {
+        return true;
+      }
     }
-    if (normalizedCorrected && seen.includes(normalizedCorrected) && normalizedCorrected.length > 10) {
-      return true;
+    if (normalizedCorrected && normalizedCorrected.length > 15) {
+      if (seen.includes(normalizedCorrected) && normalizedCorrected.length >= seen.length * 0.8) {
+        return true;
+      }
     }
   }
   

@@ -427,18 +427,54 @@ def _is_duplicate_transcription(recognized: str, corrected: str) -> bool:
     if not norm_recognized and not norm_corrected:
         return False
     
-    # Check exact matches
-    if norm_recognized and norm_recognized in _seen_transcriptions:
-        return True
-    if norm_corrected and norm_corrected != norm_recognized and norm_corrected in _seen_transcriptions:
+    # Check for self-repetition within the same transcription (e.g., "I wish you the best. I wish you the best")
+    # Split by sentence and check if any sentence appears twice
+    def check_self_repetition(text: str) -> bool:
+        if not text:
+            return False
+        # Split by common sentence endings
+        sentences = re.split(r'[.!?…]\s+', text.lower())
+        sentences = [s.strip() for s in sentences if s.strip()]
+        if len(sentences) < 2:
+            return False
+        # Check if any sentence appears multiple times
+        seen_sentences = set()
+        for sentence in sentences:
+            norm_sent = _normalize_text_for_dedup(sentence)
+            if norm_sent and len(norm_sent) > 10:  # Only check longer sentences
+                if norm_sent in seen_sentences:
+                    logger.info(f"Self-repetition detected: '{sentence[:50]}...' appears twice")
+                    return True
+                seen_sentences.add(norm_sent)
+        return False
+    
+    # Check self-repetition in recognized text
+    if recognized and check_self_repetition(recognized):
         return True
     
-    # Check substring matches (overlap detection)
+    # Check self-repetition in corrected text
+    if corrected and corrected != recognized and check_self_repetition(corrected):
+        return True
+    
+    # Check exact matches in seen transcriptions
+    if norm_recognized and norm_recognized in _seen_transcriptions:
+        logger.info(f"Exact duplicate detected (recognized): '{recognized[:50]}...'")
+        return True
+    if norm_corrected and norm_corrected != norm_recognized and norm_corrected in _seen_transcriptions:
+        logger.info(f"Exact duplicate detected (corrected): '{corrected[:50]}...'")
+        return True
+    
+    # Check substring matches (overlap detection) - but be more strict
     for seen in _seen_transcriptions:
-        if norm_recognized and len(norm_recognized) > 10 and norm_recognized in seen:
-            return True
-        if norm_corrected and len(norm_corrected) > 10 and norm_corrected in seen:
-            return True
+        if norm_recognized and len(norm_recognized) > 15:  # Increased from 10 to 15 for better accuracy
+            # Check if recognized is a significant part of seen (at least 80% match)
+            if norm_recognized in seen and len(norm_recognized) >= len(seen) * 0.8:
+                logger.info(f"Substring duplicate detected (recognized): '{recognized[:50]}...'")
+                return True
+        if norm_corrected and len(norm_corrected) > 15:
+            if norm_corrected in seen and len(norm_corrected) >= len(seen) * 0.8:
+                logger.info(f"Substring duplicate detected (corrected): '{corrected[:50]}...'")
+                return True
     
     return False
 
