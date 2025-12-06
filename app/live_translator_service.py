@@ -479,9 +479,9 @@ class AudioPreprocessingConfig:
     
     normalize_audio: bool = True
     low_pass_cutoff: Optional[int] = 3000
-    silence_threshold_dbfs: float = -40.0
-    min_silence_duration_ms: int = 300
-    silence_padding_ms: int = 120
+    silence_threshold_dbfs: float = -50.0  # Minder agressief: -50 dBFS in plaats van -40 (luistert beter naar zachte spraak)
+    min_silence_duration_ms: int = 500  # Langere stilte nodig voordat we trimmen (was 300ms)
+    silence_padding_ms: int = 200  # Meer padding om spraak niet weg te snijden (was 120ms)
     
     @classmethod
     def from_request(cls, form_data) -> "AudioPreprocessingConfig":
@@ -496,9 +496,9 @@ class AudioPreprocessingConfig:
         return cls(
             normalize_audio=_to_bool(normalize_value, True),
             low_pass_cutoff=cutoff,
-            silence_threshold_dbfs=_to_float(form_data.get("silenceThreshold"), -40.0),
-            min_silence_duration_ms=_to_int(form_data.get("minSilenceMs"), 300),
-            silence_padding_ms=_to_int(form_data.get("silencePaddingMs"), 120),
+            silence_threshold_dbfs=_to_float(form_data.get("silenceThreshold"), -50.0),  # Minder agressief
+            min_silence_duration_ms=_to_int(form_data.get("minSilenceMs"), 500),  # Langere stilte nodig
+            silence_padding_ms=_to_int(form_data.get("silencePaddingMs"), 200),  # Meer padding
         )
 
 
@@ -528,7 +528,7 @@ def _trim_silence(segment: AudioSegment, config: AudioPreprocessingConfig) -> Au
         return AudioSegment.silent(duration=0)
     
     # Ensure minimum segment length to help Whisper with transcription
-    MIN_SEGMENT_LENGTH_MS = 500  # Minimum 500ms for better transcription
+    MIN_SEGMENT_LENGTH_MS = 800  # Minimum 800ms voor betere transcriptie (was 500ms)
     trimmed = segment[start:end]
     if len(trimmed) < MIN_SEGMENT_LENGTH_MS and len(segment) >= MIN_SEGMENT_LENGTH_MS:
         # If trimmed segment is too short but original has enough content,
@@ -538,6 +538,11 @@ def _trim_silence(segment: AudioSegment, config: AudioPreprocessingConfig) -> Au
         start = max(0, center - half_min)
         end = min(len(segment), center + half_min)
         trimmed = segment[start:end]
+    
+    # Als de trimmed segment nog steeds te kort is, gebruik het originele segment (geen trimming)
+    # Dit voorkomt dat we spraak verliezen
+    if len(trimmed) < 300 and len(segment) >= 300:
+        return segment  # Geen trimming als het te kort wordt
     
     return trimmed
 
