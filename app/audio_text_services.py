@@ -310,9 +310,9 @@ def transcribe_long_audio(audio_path: Path, language: str = "fr", max_workers: i
             try:
                 text = future.result()
                 if text and text.strip():
-                    results[idx] = text
-                    completed += 1
-                    progress = math.ceil((completed / total) * 100)
+                results[idx] = text
+                completed += 1
+                progress = math.ceil((completed / total) * 100)
                     logger.info(f"Chunk {idx + 1}/{total} completed ({progress}% total) - {len(text)} chars")
                 else:
                     logger.warning(f"Chunk {idx + 1}/{total} returned empty text")
