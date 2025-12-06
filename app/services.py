@@ -229,9 +229,6 @@ def _transcribe_whisper_file(client: OpenAI, path: Path, initial_prompt: Optiona
                     "file": f,
                     "response_format": "verbose_json",
                     "temperature": 0.0,  # More deterministic, better for consistent quality
-                    "compression_ratio_threshold": 2.4,  # Filter out low-quality transcriptions
-                    "logprob_threshold": -1.0,  # Filter out low-confidence transcriptions
-                    "no_speech_threshold": 0.6,  # Lower threshold to detect more speech
                 }
                 # Use context from previous transcriptions to help Whisper
                 if initial_prompt:
